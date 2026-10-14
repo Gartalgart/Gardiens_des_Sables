@@ -1,0 +1,225 @@
+import { ENEMY_LOOK } from './view/enemyView.js';
+
+const $ = (id) => document.getElementById(id);
+const RANGE = 40; // metres shown from centre to edge of the minimap
+const MAP_PX = 5; // pixels per metre in the pre-rendered map
+const HALF = 60;
+
+export class Hud {
+  // level: collision data of the level (boxes and braziers are drawn on the minimap)
+  constructor(level) {
+    this.el = $('hud');
+    this.mm = $('minimap');
+    this.ctx = this.mm.getContext('2d');
+    this.map = this.#renderMap(level);
+    this.hitTimer = 0;
+    this.bannerTimer = 0;
+    this.pickupTimer = 0;
+    this.lastHealth = 100;
+
+    this.bossBar = document.createElement('div');
+    this.bossBar.id = 'boss-bar';
+    this.bossBar.innerHTML = '<div class="boss-name">LE PHARAON ÉVEILLÉ</div><div class="boss-track"><div class="boss-fill"></div></div>';
+    this.bossBar.style.cssText = 'position:absolute;top:92px;left:50%;transform:translateX(-50%);width:min(520px,60vw);text-align:center;display:none';
+    this.el.appendChild(this.bossBar);
+    const st = document.createElement('style');
+    st.textContent = `.boss-name{font-family:Cinzel,serif;font-weight:800;letter-spacing:.2em;color:#ffd36b;font-size:15px;margin-bottom:4px}
+      .boss-track{height:10px;background:rgba(0,0,0,.6);border:1px solid rgba(232,180,90,.5)}
+      .boss-fill{height:100%;background:linear-gradient(90deg,#8c1a10,#ffb347);transform-origin:left;transition:transform .15s}`;
+    document.head.appendChild(st);
+  }
+
+  show(v) { this.el.classList.toggle('hidden', !v); }
+
+  #renderMap(level) {
+    const c = document.createElement('canvas');
+    c.width = c.height = HALF * 2 * MAP_PX;
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(70, 55, 40, 0.35)';
+    g.fillRect(0, 0, c.width, c.height);
+    const boxes = [...level.boxes].sort((a, b) => a.max.y - b.max.y);
+    for (const b of boxes) {
+      if (b.max.y < 0.8) continue;
+      const h = Math.min(1, b.max.y / 9);
+      const l = Math.round(70 + h * 110);
+      g.fillStyle = `rgb(${l + 20}, ${l}, ${Math.round(l * 0.75)})`;
+      g.fillRect((b.min.x + HALF) * MAP_PX, (b.min.z + HALF) * MAP_PX, (b.max.x - b.min.x) * MAP_PX, (b.max.z - b.min.z) * MAP_PX);
+    }
+    for (const p of level.braziers) {
+      g.fillStyle = '#ff9a40';
+      g.beginPath(); g.arc((p.x + HALF) * MAP_PX, (p.z + HALF) * MAP_PX, 3, 0, Math.PI * 2); g.fill();
+    }
+    return c;
+  }
+
+  drawMinimap(player, enemies) {
+    const g = this.ctx, W = this.mm.width, R = W / 2;
+    const scale = R / RANGE;
+    const yaw = player.yaw;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, W, W);
+    g.save();
+    g.beginPath(); g.arc(R, R, R - 1, 0, Math.PI * 2); g.clip();
+    g.fillStyle = 'rgba(10, 10, 18, 0.6)';
+    g.fillRect(0, 0, W, W);
+
+    g.translate(R, R);
+    g.rotate(yaw);
+    g.scale(scale, scale);
+    g.translate(-player.pos.x, -player.pos.z);
+    g.globalAlpha = 0.9;
+    g.drawImage(this.map, -HALF, -HALF, HALF * 2, HALF * 2);
+    g.globalAlpha = 1;
+
+    // pickups and projectiles
+    for (const p of enemies.pickups) {
+      g.fillStyle = p.kind === 'ammo' ? '#56d8ff' : '#ff4a4a';
+      g.fillRect(p.pos.x - 0.6, p.pos.z - 0.6, 1.2, 1.2);
+    }
+    for (const p of enemies.projectiles) {
+      g.fillStyle = '#ffffff';
+      g.beginPath(); g.arc(p.pos.x, p.pos.z, 0.45, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+
+    // enemies (drawn in screen space so dot size stays constant)
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    const t = performance.now() / 1000;
+    for (const e of enemies.list) {
+      const dx = e.pos.x - player.pos.x, dz = e.pos.z - player.pos.z;
+      let sx = (dx * cos - dz * sin) * scale, sy = (dx * sin + dz * cos) * scale;
+      const d = Math.hypot(sx, sy);
+      const color = ENEMY_LOOK[e.type].dot;
+      if (d > R - 10) {
+        // off-map: arrow on the rim
+        const a = Math.atan2(sy, sx);
+        g.save();
+        g.translate(R + Math.cos(a) * (R - 9), R + Math.sin(a) * (R - 9));
+        g.rotate(a);
+        g.fillStyle = color;
+        g.globalAlpha = 0.75;
+        g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, -4.5); g.lineTo(-4, 4.5); g.closePath(); g.fill();
+        g.restore();
+        continue;
+      }
+      const size = e.T.boss ? 7 : e.T.big ? 5 : 3.6;
+      g.fillStyle = color;
+      g.shadowColor = color; g.shadowBlur = 8;
+      g.beginPath(); g.arc(R + sx, R + sy, size + (e.act ? Math.sin(t * 30) * 1.2 : 0), 0, Math.PI * 2); g.fill();
+      g.shadowBlur = 0;
+    }
+
+    // compass letters on the rim (north = -Z)
+    const dirs = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['O', -1, 0]];
+    g.font = '700 13px Rajdhani, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const [label, x, z] of dirs) {
+      const sx = x * cos - z * sin, sy = x * sin + z * cos;
+      g.fillStyle = label === 'N' ? '#e8b45a' : 'rgba(243, 230, 204, 0.75)';
+      g.fillText(label, R + sx * (R - 12), R + sy * (R - 12));
+    }
+
+    // view cone + player arrow
+    g.fillStyle = 'rgba(255, 240, 200, 0.08)';
+    g.beginPath(); g.moveTo(R, R); g.arc(R, R, R * 0.7, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6); g.closePath(); g.fill();
+    g.fillStyle = '#fff';
+    g.beginPath(); g.moveTo(R, R - 8); g.lineTo(R - 5.5, R + 6); g.lineTo(R, R + 3); g.lineTo(R + 5.5, R + 6); g.closePath(); g.fill();
+  }
+
+  set(id, value) {
+    const el = $(id);
+    if (el.textContent !== String(value)) el.textContent = value;
+  }
+
+  update(dt, s) {
+    this.set('wave-num', s.wave);
+    this.set('timer', fmtTime(s.time));
+    this.set('enemies-left', s.enemiesLeft);
+
+    const hp = Math.ceil(s.health);
+    this.set('health-num', hp);
+    const fill = $('health-fill');
+    fill.style.transform = `scaleX(${s.health / 100})`;
+    fill.classList.toggle('low', s.health < 35);
+    $('health-ghost').style.transform = `scaleX(${s.health / 100})`;
+    $('vignette').style.opacity = Math.max(0, (1 - s.health / 100) * 1.1 - 0.15 + this.hurtFlash);
+    this.hurtFlash = Math.max(0, (this.hurtFlash || 0) - dt * 2);
+
+    const w = s.weapon;
+    this.set('weapon-name', w.def.name);
+    const melee = !!w.def.melee;
+    this.set('ammo-mag', melee ? '—' : w.mag);
+    this.set('ammo-res', melee ? (s.ads > 0.5 ? ' PARADE' : '') : w.reserve === Infinity ? '∞' : w.reserve);
+    $('ammo-mag').classList.toggle('empty', !melee && w.mag === 0);
+    $('ammo-sep').style.display = melee ? 'none' : '';
+    $('reload-hint').classList.toggle('hidden', melee || !(w.mag <= Math.ceil(w.def.mag * 0.25) && !s.reloading && w.reserve > 0));
+    document.querySelectorAll('.slot').forEach((el, i) => {
+      el.classList.toggle('active', i === s.weaponIndex);
+      el.classList.toggle('locked', !s.unlocked[i]);
+    });
+
+    // crosshair: gap grows with spread, fades when aiming
+    const gap = 6 + s.spread * 260;
+    const ch = $('crosshair');
+    ch.style.opacity = s.reloading ? 0.3 : melee ? 0.5 : 1 - s.ads;
+    ch.querySelector('.t').style.top = `${-gap - 9}px`;
+    ch.querySelector('.b').style.top = `${gap}px`;
+    ch.querySelector('.l').style.left = `${-gap - 9}px`;
+    ch.querySelector('.r').style.left = `${gap}px`;
+    this.parryFlash = Math.max(0, (this.parryFlash || 0) - dt * 2.5);
+    $('parry-flash').style.opacity = this.parryFlash;
+    $('ads-vignette').style.opacity = s.ads * 0.9;
+
+    this.hitTimer -= dt;
+    $('hitmarker').style.opacity = Math.max(0, this.hitTimer / 0.15);
+
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) $('banner').classList.add('hidden');
+    }
+    this.pickupTimer -= dt;
+    $('pickup-msg').style.opacity = this.pickupTimer > 0 ? 1 : 0;
+
+    const boss = s.boss;
+    this.bossBar.style.display = boss ? 'block' : 'none';
+    if (boss) this.bossBar.querySelector('.boss-fill').style.transform = `scaleX(${Math.max(0, boss.hp / boss.maxHp)})`;
+  }
+
+  hit(head) {
+    this.hitTimer = 0.15;
+    $('hitmarker').classList.toggle('head', head);
+  }
+
+  hurt(angle) {
+    this.hurtFlash = 0.35;
+    const el = document.createElement('div');
+    el.className = 'dmg-dir';
+    el.style.transform = `rotate(${angle}rad)`;
+    $('damage-dirs').appendChild(el);
+    requestAnimationFrame(() => (el.style.opacity = 0));
+    setTimeout(() => el.remove(), 1000);
+  }
+
+  perfectParry() { this.parryFlash = 1; }
+
+  banner(title, sub, duration = 2.5) {
+    $('banner-title').textContent = title;
+    $('banner-sub').textContent = sub;
+    const b = $('banner');
+    b.classList.remove('hidden');
+    b.style.animation = 'none';
+    void b.offsetWidth;
+    b.style.animation = '';
+    this.bannerTimer = duration;
+  }
+
+  pickup(text) {
+    this.set('pickup-msg', text);
+    this.pickupTimer = 1.4;
+  }
+}
+
+export function fmtTime(t) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}

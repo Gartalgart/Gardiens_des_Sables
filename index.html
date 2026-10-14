@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gardiens des Sables</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M8 1 15 15H1z%22 fill=%22%23e8b45a%22/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="minimap-wrap">
+      <canvas id="minimap" width="200" height="200"></canvas>
+    </div>
+
+    <div id="top-center">
+      <div id="wave-label">VAGUE <span id="wave-num">1</span><span class="dim">/5</span></div>
+      <div id="timer">00:00</div>
+    </div>
+
+    <div id="top-right">
+      <div class="label">ENNEMIS RESTANTS</div>
+      <div id="enemies-left">0</div>
+    </div>
+
+    <div id="crosshair">
+      <i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i>
+    </div>
+    <div id="hitmarker"></div>
+    <div id="damage-dirs"></div>
+
+    <div id="bottom-left">
+      <div class="label">SANTÉ</div>
+      <div id="health-bar"><div id="health-fill"></div><div id="health-ghost"></div></div>
+      <div id="health-num">100</div>
+    </div>
+
+    <div id="bottom-right">
+      <div id="weapon-name">PISTOLET</div>
+      <div id="ammo"><span id="ammo-mag">12</span><span class="dim" id="ammo-sep"> / </span><span id="ammo-res">∞</span></div>
+      <div id="reload-hint" class="hidden">[R] RECHARGER</div>
+      <div id="slots">
+        <div class="slot" data-slot="0"><b>1</b> Khépesh</div>
+        <div class="slot" data-slot="1"><b>2</b> Pistolet</div>
+        <div class="slot" data-slot="2"><b>3</b> Fusil d'assaut</div>
+        <div class="slot" data-slot="3"><b>4</b> Fusil à pompe</div>
+      </div>
+    </div>
+
+    <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
+    <div id="pickup-msg"></div>
+  </div>
+
+  <div id="parry-flash"></div>
+  <div id="vignette"></div>
+  <div id="ads-vignette"></div>
+
+  <div id="menu" class="screen">
+    <div class="panel">
+      <h1>Gardiens<br /><span>des Sables</span></h1>
+      <p class="lede">La cité-temple s'est réveillée. Ses gardiens de pierre se lèvent à la tombée de la nuit.<br />Tiens bon pendant <b>cinq vagues</b>.</p>
+      <div id="difficulty">
+        <button data-diff="easy">Facile</button>
+        <button data-diff="normal">Normal</button>
+        <button data-diff="hard">Difficile</button>
+      </div>
+      <button id="btn-play" disabled>Chargement…</button>
+      <button class="secondary btn-options">Options</button>
+      <div class="help" id="help-main"></div>
+    </div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="panel">
+      <h2>Pause</h2>
+      <button id="btn-resume">Reprendre</button>
+      <button class="secondary btn-options">Options</button>
+      <button id="btn-restart" class="secondary">Recommencer</button>
+      <div class="help" id="help-pause"></div>
+    </div>
+  </div>
+
+  <div id="options" class="screen hidden">
+    <div class="panel">
+      <h2>Options</h2>
+      <div class="opts">
+        <label for="o-sens">Sensibilité de la souris</label>
+        <div class="opt-row"><input type="range" id="o-sens" min="0.2" max="3" step="0.05" /><output id="v-sens"></output></div>
+        <label for="o-invert">Inverser l'axe vertical</label>
+        <div class="opt-row"><input type="checkbox" id="o-invert" /></div>
+        <label for="o-fov">Champ de vision</label>
+        <div class="opt-row"><input type="range" id="o-fov" min="60" max="100" step="1" /><output id="v-fov"></output></div>
+        <label for="o-master">Volume général</label>
+        <div class="opt-row"><input type="range" id="o-master" min="0" max="1" step="0.05" /><output id="v-master"></output></div>
+        <label for="o-sfx">Volume des effets</label>
+        <div class="opt-row"><input type="range" id="o-sfx" min="0" max="1" step="0.05" /><output id="v-sfx"></output></div>
+        <label for="o-music">Volume de la musique</label>
+        <div class="opt-row"><input type="range" id="o-music" min="0" max="1" step="0.05" /><output id="v-music"></output></div>
+        <label>Qualité graphique</label>
+        <div class="opt-row seg" id="o-quality">
+          <button data-q="low">Basse</button><button data-q="medium">Moyenne</button><button data-q="high">Haute</button>
+        </div>
+        <label for="o-shake">Secousses de caméra</label>
+        <div class="opt-row"><input type="checkbox" id="o-shake" /></div>
+        <label for="o-fps">Afficher les FPS</label>
+        <div class="opt-row"><input type="checkbox" id="o-fps" /></div>
+      </div>
+      <button id="btn-options-back">Retour</button>
+      <button id="btn-options-reset" class="secondary">Valeurs par défaut</button>
+    </div>
+  </div>
+
+  <div id="fps" class="hidden"></div>
+
+  <div id="end" class="screen hidden">
+    <div class="panel">
+      <h2 id="end-title">Victoire</h2>
+      <p id="end-sub" class="lede"></p>
+      <div id="stats"></div>
+      <button id="btn-again">Rejouer</button>
+    </div>
+  </div>
+
+  <template id="help-tpl">
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / flèches</div><div>Se déplacer (ZQSD sur clavier AZERTY)</div>
+      <div><kbd>Shift</kbd></div><div>Sprinter</div>
+      <div><kbd>Espace</kbd></div><div>Sauter</div>
+      <div><kbd>Clic gauche</kbd></div><div>Tirer / frapper</div>
+      <div><kbd>Clic droit</kbd></div><div>Viser / parer (khépesh)</div>
+      <div><kbd>R</kbd></div><div>Recharger</div>
+      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> / molette</div><div>Changer d'arme</div>
+      <div><kbd>Échap</kbd></div><div>Pause / aide</div>
+    </div>
+    <p class="tips">Les tirs à la tête infligent double dégâts. Le khépesh tranche tout ce qui est devant vous, et sa parade renvoie les orbes ennemis. Seuls les ennemis tués au corps à corps lâchent de la santé. De nouvelles armes se débloquent au fil des vagues. La santé se régénère après quelques secondes sans blessure.</p>
+  </template>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
