@@ -244,13 +244,16 @@ function renderLobby(room) {
   const host = net.isHost;
   document.querySelectorAll('#lobby-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === room.mode));
   document.querySelectorAll('#lobby-diff button').forEach((b) => b.classList.toggle('active', b.dataset.diff === room.difficulty));
-  $('lobby-mode').classList.toggle('locked', !host);
-  $('lobby-diff').classList.toggle('locked', !host);
+  document.querySelectorAll('#lobby-score button').forEach((b) => b.classList.toggle('active', Number(b.dataset.score) === room.arena?.scoreLimit));
+  document.querySelectorAll('#lobby-time button').forEach((b) => b.classList.toggle('active', Number(b.dataset.time) === room.arena?.timeLimit));
+  $('lobby-arena').classList.toggle('hidden', room.mode !== 'arena');
+  $('lobby-mode-help').textContent = MODE_HELP[room.mode] ?? '';
+  for (const id of ['lobby-mode', 'lobby-diff', 'lobby-score', 'lobby-time']) $(id).classList.toggle('locked', !host);
   $('btn-lobby-start').classList.toggle('hidden', !host);
   $('lobby-sub').textContent = room.playing ? 'Une partie est en cours dans ce salon.'
-    : host ? `Donne ce code à tes coéquipiers (${room.players.length}/4).` : 'En attente du lancement par l\'hôte…';
+    : host ? `Donne ce code aux autres joueurs (${room.players.length}/4).` : 'En attente du lancement par l\'hôte…';
 }
-const MODE_NAMES = { waves: 'Vagues', survival: 'Survie' };
+const MODE_NAMES = { waves: 'Vagues', survival: 'Survie', arena: 'Arène' };
 const DIFF_NAMES = { easy: 'facile', normal: 'normal', hard: 'difficile' };
 function renderOpenRooms(list) {
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -282,8 +285,16 @@ $('btn-coop-join').addEventListener('click', async () => {
   if (!/^[A-Z]{4}$/.test(code)) return coopStatus('coop-status', 'Le code d\'un salon a 4 lettres.');
   if (await connectCoop()) net.join(code);
 });
-document.querySelectorAll('#lobby-mode button').forEach((b) => b.addEventListener('click', () => net.configure(b.dataset.mode, net.room.difficulty)));
-document.querySelectorAll('#lobby-diff button').forEach((b) => b.addEventListener('click', () => net.configure(net.room.mode, b.dataset.diff)));
+const MODE_HELP = {
+  waves: 'Cinq vagues de gardiens à repousser ensemble.',
+  survival: 'Des vagues sans fin, le pharaon toutes les cinq vagues.',
+  arena: 'Chacun pour soi, avec quelques gardiens qui rôdent. La difficulté règle les gardiens.',
+};
+const configure = (change) => { const r = net.room; net.configure(change.mode ?? r.mode, change.difficulty ?? r.difficulty, { ...r.arena, ...change.arena }); };
+document.querySelectorAll('#lobby-mode button').forEach((b) => b.addEventListener('click', () => configure({ mode: b.dataset.mode })));
+document.querySelectorAll('#lobby-diff button').forEach((b) => b.addEventListener('click', () => configure({ difficulty: b.dataset.diff })));
+document.querySelectorAll('#lobby-score button').forEach((b) => b.addEventListener('click', () => configure({ arena: { scoreLimit: Number(b.dataset.score) } })));
+document.querySelectorAll('#lobby-time button').forEach((b) => b.addEventListener('click', () => configure({ arena: { timeLimit: Number(b.dataset.time) } })));
 $('btn-lobby-start').addEventListener('click', () => net.start());
 $('btn-lobby-leave').addEventListener('click', () => { net.leave(); coopScreen = 'coop'; refreshScreens(); });
 net.on.error = (msg) => coopStatus(coopScreen === 'lobby' ? 'lobby-status' : 'coop-status', msg);
@@ -348,6 +359,9 @@ function resetViews() {
   hud.team([]);
   hud.prompt(null);
   hud.downed(null);
+  hud.clearKillfeed();
+  hud.scoreboard(null);
+  lastShots.clear();
   weaponView.reset();
   worldView.setWeather('clear');
   input.resetLook();
@@ -406,9 +420,10 @@ function refreshScreens() {
   hud.show(game.state === 'playing' || game.state === 'paused');
 }
 
-function endGame(victory) {
+function endGame(victory, winner) {
   const sim = game.sim, p = game.player;
   game.state = 'over';
+  if (sim.mode.pvp) return endArena(winner);
   const survival = sim.mode.id === 'survival';
   $('end-title').textContent = survival ? 'Fin de la survie' : victory ? 'Victoire' : 'Défaite';
   $('end-sub').textContent = survival
@@ -435,6 +450,41 @@ function endGame(victory) {
   document.exitPointerLock();
   refreshScreens();
 }
+
+// the arena's end: the match ranking instead of the local leaderboard
+function endArena(winnerId) {
+  const sim = game.sim, p = game.player;
+  const ranked = arenaRanking();
+  const best = sim.players.get(winnerId) ?? ranked[0];
+  const won = winnerId === game.localId;
+  $('end-title').textContent = won ? 'Victoire' : 'Défaite';
+  $('end-sub').textContent = won ? 'Tu règnes sur l\'arène.'
+    : `${best?.name ?? 'Un adversaire'} remporte l'arène avec ${best?.stats.frags ?? 0} éliminations.`;
+  $('btn-again').textContent = 'Retour au salon';
+  $('end-score').innerHTML = `${p.stats.frags} élimination${p.stats.frags > 1 ? 's' : ''}<small>${ranked.indexOf(p) + 1}${ranked.indexOf(p) === 0 ? 'er' : 'e'} sur ${ranked.length}</small>`;
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">CLASSEMENT DE LA PARTIE</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">Gardiens</th></tr>${
+    ranked.map((o, i) => `<tr class="${o === p ? 'me' : ''}"><td>${i + 1}</td><td>${esc(o.name)}</td><td class="num">${o.stats.frags}</td><td class="num">${o.stats.deaths}</td><td class="num">${o.stats.kills}</td></tr>`).join('')}</table>`;
+  const rows = [
+    ['Temps', fmtTime(sim.mode.timeLimit - sim.mode.timeLeft)],
+    ['Mode', `Arène · ${sim.mode.scoreLimit} éliminations`],
+    ['Éliminations', p.stats.frags],
+    ['Morts', p.stats.deaths],
+    ['Gardiens abattus', p.stats.kills],
+    ['Précision', `${p.accuracy} %`],
+  ];
+  $('stats').innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
+  document.exitPointerLock();
+  refreshScreens();
+}
+
+// best first: more kills, then fewer deaths (as the server's ArenaMode.ranking)
+function arenaRanking() {
+  return [...game.sim.players.values()].sort((a, b) => b.stats.frags - a.stats.frags || a.stats.deaths - b.stats.deaths);
+}
+
+// the arena's minimap shows an opponent for 2 s after each shot
+const lastShots = new Map(); // player id -> seconds since their last shot
 
 // ---------- simulation events -> sound, effects, HUD ----------
 const primes = new Map(); // priming mummies: id -> time since the last beep
@@ -468,6 +518,7 @@ function parrySparks(count) {
 }
 
 const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35 };
+const PLAYER_HIT_COLOR = new THREE.Color(0.75, 0.15, 0.1);
 const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? 'Un allié').toUpperCase();
 
 function handleEvents() {
@@ -478,7 +529,17 @@ function handleEvents() {
     switch (ev.type) {
       case 'playerShot':
         if (mine) { sound.shot(ev.weapon); weaponView.onShot(ev, camera); addShake(SHOT_SHAKE[ev.weapon] ?? 0); }
-        else { playerView.onEvent(ev); sound.shot(ev.weapon, pan(ev.origin), 0.6 * Math.max(0.1, vol(ev.origin, 90))); }
+        else { playerView.onEvent(ev); sound.shot(ev.weapon, pan(ev.origin), 0.6 * Math.max(0.1, vol(ev.origin, 90))); lastShots.set(ev.pid, 0); }
+        break;
+      case 'impactPlayer': effects.impactEnemy(ev.point, ev.normal, PLAYER_HIT_COLOR); break;
+      case 'frag': {
+        const killer = ev.by ? sim.players.get(ev.by)?.name ?? '?' : null;
+        hud.frag(killer, sim.players.get(ev.pid)?.name ?? '?', ev.weapon, ev.head, mine || ev.by === game.localId);
+        if (ev.by === game.localId) { hud.pickup(`${nameOf(ev.pid)} ÉLIMINÉ${ev.head ? ' — TÊTE' : ''}`); sound.horn(true); }
+        break;
+      }
+      case 'respawn':
+        if (mine) { input.setLook(ev.yaw, 0); hud.pickup('DE RETOUR DANS L\'ARÈNE'); sound.pickup(); }
         break;
       case 'impactWall': effects.impactWall(ev.point, ev.normal); break;
       case 'impactEnemy': effects.impactEnemy(ev.point, ev.normal, ENEMY_LOOK[ev.enemyType].color); break;
@@ -561,13 +622,13 @@ function handleEvents() {
         else if (ev.state === 'failed' && ev.text) hud.pickup('OBJECTIF MANQUÉ');
         break;
       case 'playerDown':
-        if (!mine && game.net) { hud.pickup(`${nameOf(ev.pid)} EST À TERRE !`); sound.horn(false); }
+        if (!mine && game.net && !sim.mode.pvp) { hud.pickup(`${nameOf(ev.pid)} EST À TERRE !`); sound.horn(false); }
         break;
       case 'playerRevived':
         if (mine) { hud.pickup('RELEVÉ !'); sound.pickup(); }
         else if (ev.by === game.localId) { hud.pickup(`${nameOf(ev.pid)} RELEVÉ  +200`); sound.pickup(); }
         break;
-      case 'gameOver': endGame(ev.victory); break;
+      case 'gameOver': endGame(ev.victory, ev.winner); break;
     }
   }
   if (hit) { hud.hit(hit.head); sound.hit(hit.head); }
@@ -631,6 +692,7 @@ function tick(dt, now = (tickClock += dt)) {
     const viewDt = dt * sim.timeScale;
     enemyView.sync(sim.enemies, viewDt, sim.time);
     if (game.net) coopHud(p, dt);
+    const ranked = sim.mode.pvp ? arenaRanking() : null;
 
     // priming mummies beep faster and faster until they blow up
     for (const [id, t] of primes) {
@@ -661,10 +723,21 @@ function tick(dt, now = (tickClock += dt)) {
       spread: THREE.MathUtils.lerp(def.spread, def.adsSpread, lo.adsT) + (p.moving ? 0.012 : 0),
       ads: lo.adsT,
       boss: sim.enemies.boss,
+      arena: ranked && {
+        frags: p.stats.frags, deaths: p.stats.deaths, scoreLimit: sim.mode.scoreLimit, timeLeft: sim.mode.timeLeft,
+        rank: ranked.indexOf(p) + 1, players: ranked.length,
+      },
     });
-    hud.drawMinimap(p, sim.enemies, game.net ? [...sim.players.values()].filter((o) => o !== p) : []);
+    if (ranked) {
+      for (const [id, t] of lastShots) lastShots.set(id, t + dt);
+      const foes = [...lastShots].filter(([id, t]) => t < 2 && sim.players.get(id) && !sim.players.get(id).dead)
+        .map(([id, t]) => ({ pos: sim.players.get(id).pos, fade: (2 - t) * 2 }));
+      hud.drawMinimap(p, sim.enemies, [], foes);
+      hud.scoreboard(game.state === 'playing' && input.down('Tab') ? ranked.map((o) => ({ name: o.name, frags: o.stats.frags, deaths: o.stats.deaths, kills: o.stats.kills, me: o === p })) : null,
+        `Premier à ${sim.mode.scoreLimit} · ${fmtTime(Math.ceil(sim.mode.timeLeft))} restantes`);
+    } else hud.drawMinimap(p, sim.enemies, game.net ? [...sim.players.values()].filter((o) => o !== p) : []);
     // the music follows the fight: calm between waves, louder in combat, fiercer against the pharaoh
-    sound.setMusicIntensity(sim.over ? 0 : sim.enemies.boss ? 2 : sim.mode.waveActive && sim.enemies.alive ? 1 : 0);
+    sound.setMusicIntensity(sim.over ? 0 : ranked ? 1 : sim.enemies.boss ? 2 : sim.mode.waveActive && sim.enemies.alive ? 1 : 0);
   } else if (game.state === 'menu') {
     sound.setMusicIntensity(0);
     if (Math.abs(camera.fov - settings.fov) > 0.01) { camera.fov = settings.fov; camera.updateProjectionMatrix(); }
@@ -685,7 +758,14 @@ game.tick = tick;
 // co-op HUD: teammates, the use prompt next to a downed teammate, and the downed screen
 function coopHud(p, dt) {
   const sim = game.sim;
-  playerView.sync(sim.players, game.localId, dt);
+  playerView.sync(sim.players, game.localId, dt, !!sim.mode.pvp);
+  if (sim.mode.pvp) {
+    // the arena: no teammates, and a countdown instead of the downed screen
+    hud.team([]);
+    hud.prompt(null);
+    hud.eliminated(p.dead ? { by: p.killedBy ? sim.players.get(p.killedBy)?.name ?? null : null, respawn: p.respawn, total: 4 } : null);
+    return;
+  }
   const mates = [...sim.players.values()].filter((o) => o !== p);
   hud.team(mates);
   let near = null, nd = 2.2;

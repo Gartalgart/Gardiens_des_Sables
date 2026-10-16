@@ -40,9 +40,20 @@ html, body {
 
 #top-center { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); text-align: center; }
 #wave-label { font-family: "Cinzel", serif; font-weight: 800; font-size: 26px; letter-spacing: 0.18em; color: var(--gold); }
+#timer.low { color: var(--blood); }
 #timer { font-size: 20px; font-weight: 700; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
 
 #top-right { position: absolute; top: 18px; right: 24px; text-align: right; }
+#killfeed { position: absolute; top: 150px; right: 24px; text-align: right; font-size: 15px; letter-spacing: 0.06em; }
+#killfeed div { margin-bottom: 4px; padding: 3px 10px; background: rgba(0,0,0,0.45); border-right: 2px solid var(--line); transition: opacity 0.6s; }
+#killfeed div.me { border-right-color: var(--gold); }
+#killfeed .w { color: var(--gold-dim); margin: 0 8px; font-size: 12px; letter-spacing: 0.12em; }
+#killfeed .head { color: var(--gold); }
+#scoreboard { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); min-width: 420px; padding: 16px 22px; background: rgba(8,8,14,0.82); border: 1px solid var(--line); }
+#scoreboard h3 { margin: 0 0 10px; font-family: "Cinzel", serif; letter-spacing: 0.18em; color: var(--gold); text-align: center; }
+#scoreboard .meta { text-align: center; color: var(--ink-dim); font-size: 14px; margin-bottom: 8px; letter-spacing: 0.1em; }
+#lobby-arena .seg-row { margin-bottom: 8px; }
+.lede.small { font-size: 14px; margin: 0 0 10px; }
 #enemies-left { font-family: "Cinzel", serif; font-size: 42px; font-weight: 800; line-height: 1; color: var(--ink); }
 
 #bottom-left { position: absolute; left: 24px; bottom: 22px; width: 300px; }
@@ -97,6 +108,7 @@ html, body {
 /* ---------- Screens ---------- */
 .screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
   background: radial-gradient(ellipse at 50% 30%, rgba(30, 24, 40, 0.55), rgba(3, 3, 6, 0.9)); }
+.panel { scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
 .panel { width: min(560px, 100%); max-height: 100%; overflow: auto; padding: 32px 36px; background: var(--panel); border: 1px solid var(--line); text-align: center; backdrop-filter: blur(4px); }
 h1 { font-family: "Cinzel", serif; font-weight: 800; font-size: 54px; line-height: 1; margin: 0 0 14px; letter-spacing: 0.08em; color: var(--gold); }
 h1 span { font-size: 34px; color: var(--ink); }

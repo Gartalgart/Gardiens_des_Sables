@@ -61,7 +61,8 @@ export class PlayerView {
   }
 
   // players: every player of the game; localId: the one seen in first person (not drawn)
-  sync(players, localId, dt) {
+  // pvp: in the arena, names do not show through walls, and a player just back glows gold
+  sync(players, localId, dt, pvp = false) {
     const seen = new Set();
     for (const p of players.values()) {
       if (p.id === localId) continue;
@@ -72,7 +73,8 @@ export class PlayerView {
       v.mesh.rotation.y = p.yaw + Math.PI;
       v.blob.position.set(p.pos.x, p.pos.y + 0.03, p.pos.z);
       v.tag.position.set(p.pos.x, p.pos.y + (p.dead ? 0.9 : 2.25), p.pos.z);
-      v.tag.material.color.set(p.dead ? 0xff5040 : 0xffffff);
+      v.tag.material.color.set(p.dead ? 0xff5040 : p.protect > 0 ? 0xffc84a : 0xffffff);
+      v.tag.material.depthTest = pvp;
       const sword = p.weaponIndex === 0;
       for (const o of v.gun) o.visible = !sword && !p.dead;
       for (const o of v.sword) o.visible = sword && !p.dead;

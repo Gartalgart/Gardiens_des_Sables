@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 import { makeDifficulty } from './difficulty.js';
 import { PlayerSim, emptyCommand } from './player.js';
-import { Enemies } from './enemies.js';
+import { Enemies, rayCylinder } from './enemies.js';
+import { PLAYER_RADIUS, PLAYER_HEIGHT } from './constants.js';
 import { WaveMode } from './modes/waves.js';
 import { SandboxMode } from './modes/sandbox.js';
 import { SurvivalMode } from './modes/survival.js';
+import { ArenaMode } from './modes/arena.js';
 import { applyUpgrade, KILL_POINTS, DIFFICULTY_SCORE, BONUS } from './progression.js';
 
-const MODES = { waves: WaveMode, survival: SurvivalMode, sandbox: SandboxMode };
+const MODES = { waves: WaveMode, survival: SurvivalMode, sandbox: SandboxMode, arena: ArenaMode };
+// weapon damage against players (arena), as a share of the damage against guardians:
+// two khépesh strikes, two point-blank shotgun blasts, four pistol shots to the body
+const PVP_DMG = { sword: 0.6, pistol: 0.8, rifle: 0.7, shotgun: 0.6 };
 const REVIVE_RANGE = 2.2;
 const REVIVE_TIME = 3;
 
@@ -15,7 +20,7 @@ const REVIVE_TIME = 3;
 // (solo) and in a Node server (multiplayer). Input: one command per player per step.
 // Output: state that clients read, plus a list of events (sounds, effects, HUD messages).
 export class Sim {
-  constructor(level, { difficulty = 'normal', mode = 'waves' } = {}) {
+  constructor(level, { difficulty = 'normal', mode = 'waves', arena = {} } = {}) {
     this.level = level;
     this.difficulty = makeDifficulty(difficulty);
     this.players = new Map();
@@ -33,7 +38,7 @@ export class Sim {
     // the nav grid belongs to the shared Level: forget the previous game's targets
     level.nav.lastCell = null;
     level.nav.timer = 0;
-    this.mode = new MODES[mode](this);
+    this.mode = new MODES[mode](this, arena);
   }
 
   nextId() { return ++this.lastId; }
@@ -49,6 +54,8 @@ export class Sim {
 
   removePlayer(id) { this.players.delete(id); this.lastCommands.delete(id); }
   alivePlayers() { return [...this.players.values()].filter((p) => !p.dead); }
+  // arena: players' weapons hurt each other
+  get pvp() { return !!this.mode.pvp; }
 
   start() { this.mode.start(); }
 
@@ -91,7 +98,7 @@ export class Sim {
 
   // ---------- co-op: a downed player is picked up by a teammate holding the use key for 3 s ----------
   #revive(p, cmd, dt) {
-    if (!cmd.use) return;
+    if (!cmd.use || this.pvp) return;
     let best = null, bd = REVIVE_RANGE;
     for (const o of this.players.values()) {
       if (!o.dead || o === p) continue;
@@ -147,16 +154,19 @@ export class Sim {
     this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1) + (cause === 'melee' ? BONUS.meleeKill : 0));
   }
 
-  end(victory) {
+  // winner: the arena's best player (each client tells victory from defeat itself)
+  end(victory, winner = null) {
     if (this.over) return;
     this.over = true;
     this.victory = victory;
-    this.emit('gameOver', { victory });
+    this.winner = winner;
+    this.emit('gameOver', { victory, winner });
     this.emit('horn', { victory });
   }
 
   // ---------- player attacks ----------
   fireWeapon(player, def, spread) {
+    player.protect = 0; // shooting ends the respawn protection
     const origin = player.eye;
     const q = player.aimQuaternion();
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
@@ -168,7 +178,7 @@ export class Sim {
       const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * spread;
       const dir = fwd.clone().addScaledVector(right, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r).normalize();
       const res = this.#shoot(player, origin, dir, def);
-      if (res.enemy) hitAny = true;
+      if (res.enemy || res.player) hitAny = true;
       points.push(res.point);
     }
     if (hitAny) player.stats.shotsHit++;
@@ -179,6 +189,15 @@ export class Sim {
     const wh = this.level.raycast(origin, dir, 250);
     const maxD = wh ? wh.dist : 250;
     const eh = this.enemies.raycast(origin, dir, maxD);
+    const ph = this.pvp ? this.#raycastPlayers(origin, dir, eh ? eh.dist : maxD, player) : null;
+    if (ph) {
+      const falloff = def.id === 'shotgun' ? THREE.MathUtils.clamp(1 - (ph.dist - 7) / 25, 0.25, 1) : ph.dist > 45 ? 0.75 : 1;
+      const dmg = def.dmg * (PVP_DMG[def.id] ?? 1) * (ph.head ? 2 : 1) * falloff;
+      this.emit('impactPlayer', { point: ph.point, normal: dir.clone().negate() });
+      const res = this.hitPlayer(ph.player, dmg, origin, 'bullet', null, { by: player, weapon: def.id, head: ph.head });
+      if (res === 'hit') this.emit('hitConfirm', { pid: player.id, head: ph.head });
+      return { point: ph.point, player: ph.player };
+    }
     if (eh) {
       this.#hitEnemy(player, eh, dir, def, 1);
       // "Balles perforantes": the bullet goes on into one more enemy, a little weaker
@@ -193,6 +212,19 @@ export class Sim {
       return { point: wh.point };
     }
     return { point: origin.clone().addScaledVector(dir, 250) };
+  }
+
+  // the other players, as standing cylinders with the head on top
+  #raycastPlayers(origin, dir, maxDist, shooter) {
+    let best = null;
+    for (const p of this.players.values()) {
+      if (p === shooter || p.dead) continue;
+      const t = rayCylinder(origin, dir, p.pos, PLAYER_RADIUS, p.pos.y, p.pos.y + PLAYER_HEIGHT);
+      if (t === null || t >= maxDist || (best && t >= best.dist)) continue;
+      const point = origin.clone().addScaledVector(dir, t);
+      best = { player: p, dist: t, point, head: point.y > p.headBase };
+    }
+    return best;
   }
 
   #hitEnemy(player, eh, dir, def, power) {
@@ -212,7 +244,7 @@ export class Sim {
       const d = p.center.distanceTo(pos);
       if (d > cfg.radius) continue;
       const k = 1 - (d / cfg.radius) * 0.5;
-      this.hitPlayer(p, cfg.dmg * k * this.enemies.dmgMul, pos, 'explosion');
+      this.hitPlayer(p, cfg.dmg * k * this.enemies.dmgMul, pos, 'explosion', null, killer ? { by: killer, weapon: 'explosion' } : null);
       p.impulse(p.pos.clone().sub(pos).setY(0).normalize().multiplyScalar(9 * k).add(new THREE.Vector3(0, 4 * k, 0)));
     }
     for (const e of [...this.enemies.list]) {
@@ -272,7 +304,9 @@ export class Sim {
     const m = player.mods;
     const range = def.range * m.swordReach;
     const arc = 0.3 - (m.swordReach - 1) * 0.6; // "Grand arc" also widens the swing
+    player.protect = 0;
     let hits = 0;
+    if (this.pvp) hits += this.#meleePlayers(player, def, fwd, eye, range, arc);
     for (const e of [...this.enemies.list]) {
       if (e.rise > 0.5) continue;
       const to = new THREE.Vector3(e.pos.x - player.pos.x, 0, e.pos.z - player.pos.z);
@@ -299,14 +333,36 @@ export class Sim {
     return hits;
   }
 
+  // the arena: the blade also strikes the other players in the arc
+  #meleePlayers(player, def, fwd, eye, range, arc) {
+    let hits = 0;
+    for (const o of this.players.values()) {
+      if (o === player || o.dead) continue;
+      const to = new THREE.Vector3(o.pos.x - player.pos.x, 0, o.pos.z - player.pos.z);
+      const reach = to.length() - PLAYER_RADIUS;
+      if (reach > range || eye.y < o.pos.y - 0.8 || eye.y > o.pos.y + PLAYER_HEIGHT + 1.2) continue;
+      to.normalize();
+      if (fwd.dot(to) < arc && reach > 0.5) continue;
+      const res = this.hitPlayer(o, def.dmg * player.mods.swordDmg * PVP_DMG.sword, player.pos, 'melee', null, { by: player, weapon: 'sword' });
+      if (res !== 'hit') continue;
+      this.emit('impactPlayer', { point: o.center, normal: to.clone().negate() });
+      o.impulse(to.clone().multiplyScalar(5));
+      hits++;
+    }
+    return hits;
+  }
+
   // Enemy attacks land here; a raised khépesh parries what comes from the front.
   // A parry raised at the last moment (Loadout.perfectParry) is perfect: no damage at all, the attacker
   // is staggered and the world slows down for an instant.
-  // Returns 'hit', 'blocked', 'reflect' or 'perfect' (the last two: projectiles bounced back).
-  hitPlayer(player, dmg, from, kind, attacker = null) {
+  // Returns 'hit', 'blocked', 'reflect' or 'perfect' (the last two: projectiles bounced back),
+  // or 'immune' for a player just back in the arena.
+  // src: the player behind the blow in the arena, { by, weapon, head }, to credit the kill.
+  hitPlayer(player, dmg, from, kind, attacker = null, src = null) {
     if (player.dead) return 'hit';
-    // explosions and orb rain cannot be parried
-    if (player.loadout.blocking && kind !== 'explosion') {
+    if (player.protect > 0) return 'immune';
+    // explosions, orb rain and bullets cannot be parried
+    if (player.loadout.blocking && kind !== 'explosion' && kind !== 'bullet') {
       const to = new THREE.Vector3(from.x - player.pos.x, 0, from.z - player.pos.z).normalize();
       if (player.flatForward().dot(to) > 0.3) {
         const perfect = player.loadout.perfectParry;
@@ -315,6 +371,8 @@ export class Sim {
           player.waveStats.perfectParries++;
           this.addScore(player, BONUS.perfectParry);
           this.slowMo = 0.45;
+          // a player's blade parried at the last moment throws its owner back
+          if (src?.by) src.by.impulse(to.clone().multiplyScalar(-9));
           if (attacker) {
             attacker.stun = attacker.T.boss ? 0.6 : 1.4;
             attacker.act = null;
@@ -324,21 +382,23 @@ export class Sim {
         }
         if (kind === 'projectile') return 'reflect';
         this.emit('blocked', { pid: player.id });
-        if (player.mods.blockFactor > 0) this.#hurt(player, dmg * player.mods.blockFactor, from);
+        if (player.mods.blockFactor > 0) this.#hurt(player, dmg * player.mods.blockFactor, from, src);
         return 'blocked';
       }
     }
-    this.#hurt(player, dmg, from);
+    this.#hurt(player, dmg, from, src);
     return 'hit';
   }
 
-  #hurt(player, dmg, from) {
+  #hurt(player, dmg, from, src = null) {
     if (player.dead) return;
     player.damage(dmg);
     player.stats.damageTaken += dmg;
     player.waveStats.damageTaken += dmg;
     this.emit('playerHurt', { pid: player.id, amount: dmg, from: from.clone() });
-    if (player.dead) this.emit('playerDown', { pid: player.id });
+    if (!player.dead) return;
+    this.emit('playerDown', { pid: player.id });
+    this.mode.onKill?.(player, src?.by ?? null, src?.weapon ?? 'guardian', src?.head);
   }
 
   // returns false when the player cannot use it (full health, ammo maxed): the pickup stays

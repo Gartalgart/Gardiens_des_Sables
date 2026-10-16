@@ -52,6 +52,7 @@ export class Input {
   wasPressed(code) { return this.pressed.has(code); }
 
   resetLook() { this.yaw = 0; this.pitch = 0; }
+  setLook(yaw, pitch = 0) { this.yaw = yaw; this.pitch = pitch; }
 
   // part of the weapon recoil is permanent: the simulation reports it and the view keeps it
   addPitch(p) { this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch + p)); }

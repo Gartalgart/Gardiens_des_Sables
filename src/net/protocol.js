@@ -5,15 +5,15 @@ import * as THREE from 'three';
 // client -> server
 //   { t: 'hello', name }                       first message, the player's name
 //   { t: 'create' } / { t: 'join', code }      open a room / join one by its code
-//   { t: 'config', mode, difficulty }          host only, before the game starts
+//   { t: 'config', mode, difficulty, arena }   host only, before the game starts (arena: { scoreLimit, timeLimit })
 //   { t: 'start' }                             host only
 //   { t: 'cmd', s, d, c }                      one input command: sequence number, dt, command
 //   { t: 'leave' }
 // server -> client
 //   { t: 'welcome', id }
 //   { t: 'rooms', rooms: [{ code, host, players, mode, difficulty }] }   open rooms, to players in none
-//   { t: 'room', code, host, players: [{ id, name }], mode, difficulty, playing }
-//   { t: 'start', players: [{ id, name }], mode, difficulty }
+//   { t: 'room', code, host, players: [{ id, name }], mode, difficulty, arena, playing }
+//   { t: 'start', players: [{ id, name }], mode, difficulty, arena }
 //   { t: 'snap', ack, s }                      ack: last command of this client the server ran
 //   { t: 'error', msg }
 export const PORT = 8787;
@@ -32,7 +32,7 @@ export function writePlayer(p) {
     yaw: r3(p.yaw), pitch: r3(p.pitch), eyeY: r3(p.eyeY), stepDist: r3(p.stepDist),
     onGround: p.onGround, moving: p.moving, sprinting: p.sprinting,
     health: r3(p.health), maxHealth: p.maxHealth, lastHit: r3(p.lastHit),
-    dead: p.dead, revive: r3(p.revive),
+    dead: p.dead, revive: r3(p.revive), respawn: r3(p.respawn), protect: r3(p.protect), killedBy: p.killedBy,
     score: p.score, stats: p.stats, mods: p.mods, upgrades: p.upgrades, cardOffer: p.cardOffer, waveStats: p.waveStats,
     lo: {
       index: lo.index, cooldown: r3(lo.cooldown), reloading: r3(lo.reloading), reloadTotal: r3(lo.reloadTotal ?? 0),
@@ -52,7 +52,7 @@ export function readPlayer(p, s) {
   p.yaw = s.yaw; p.pitch = s.pitch; p.eyeY = s.eyeY; p.stepDist = s.stepDist;
   p.onGround = s.onGround; p.moving = s.moving; p.sprinting = s.sprinting;
   p.health = s.health; p.maxHealth = s.maxHealth; p.lastHit = s.lastHit;
-  p.dead = s.dead; p.revive = s.revive;
+  p.dead = s.dead; p.revive = s.revive; p.respawn = s.respawn; p.protect = s.protect; p.killedBy = s.killedBy;
   p.score = s.score; p.stats = s.stats; p.mods = s.mods; p.upgrades = s.upgrades; p.cardOffer = s.cardOffer; p.waveStats = s.waveStats;
   const lo = p.loadout, l = s.lo;
   if (!lo) return;
@@ -80,7 +80,7 @@ function actId(a) {
 export function writeWorld(sim, events) {
   const m = sim.mode;
   return {
-    time: r3(sim.time), weather: sim.weather, over: sim.over, victory: sim.victory,
+    time: r3(sim.time), weather: sim.weather, over: sim.over, victory: sim.victory, winner: sim.winner ?? null,
     players: [...sim.players.values()].map(writePlayer),
     enemies: sim.enemies.list.map((e) => ({
       i: e.id, ty: e.type, el: e.elite ? 1 : 0, p: vec(e.pos), f: r3(e.facing), l: r3(e.lift), r: r3(e.rise),
@@ -92,6 +92,7 @@ export function writeWorld(sim, events) {
     mode: {
       id: m.id, wave: m.wave, totalWaves: Number.isFinite(m.totalWaves) ? m.totalWaves : null,
       waveActive: m.waveActive, enemiesLeft: m.enemiesLeft, objective: m.objective,
+      ...(m.pvp ? { pvp: true, scoreLimit: m.scoreLimit, timeLimit: m.timeLimit, timeLeft: r3(m.timeLeft) } : {}),
     },
     events,
   };

@@ -12,7 +12,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
 ];
 let level;
 
@@ -303,7 +303,12 @@ describe('phase 5 enemies', () => {
     sim.enemies.damage(boss, 500, null, player);
     expect(boss.hp).toBe(hp); // immune while changing
     const types = new Set();
-    run(sim, 12, () => { for (const ev of sim.drainEvents()) types.add(ev.type); return emptyCommand(); });
+    run(sim, 12, () => {
+      for (const ev of sim.drainEvents()) types.add(ev.type);
+      // stay on top of him: a cornered pharaoh always teleports (otherwise it is left to chance)
+      if (!boss.hidden) player.pos.set(boss.pos.x, boss.pos.y, boss.pos.z + 3);
+      return emptyCommand();
+    });
     for (const t of ['bossPhase2', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn']) expect(types).toContain(t);
     expect(player.stats.damageTaken).toBeGreaterThan(0);
   });
@@ -498,5 +503,104 @@ describe('waves mode', () => {
     // every event the client must react to is there, and no data field replaced an event type
     for (const t of ['enemySpawn', 'enemyHit', 'enemyKill', 'banner', 'horn', 'unlock', 'gameOver']) expect(types).toContain(t);
     for (const t of types) expect(KNOWN_EVENTS).toContain(t);
+  });
+});
+
+describe('arena mode', () => {
+  // two players face to face on the open sand south of the city, no guardian in the way
+  function arenaGame(opts = {}) {
+    const sim = new Sim(level, { mode: 'arena', arena: opts });
+    const a = sim.addPlayer('a'), b = sim.addPlayer('b');
+    sim.start();
+    sim.mode.guardTimer = 1e9;
+    a.pos.set(0, 0, 38); b.pos.set(0, 0, 30);
+    a.eyeY = b.eyeY = 1.65;
+    sim.drainEvents();
+    return { sim, a, b };
+  }
+  const idle = () => emptyCommand();
+
+  it('starts everyone at a different gate with all four weapons', () => {
+    const sim = new Sim(level, { mode: 'arena' });
+    const a = sim.addPlayer('a'), b = sim.addPlayer('b');
+    sim.start();
+    expect(a.pos.distanceTo(b.pos)).toBeGreaterThan(10);
+    for (const p of [a, b]) expect(p.loadout.items.every((it) => it.unlocked)).toBe(true);
+    expect(sim.mode.scoreLimit).toBe(15);
+    expect(sim.mode.timeLimit).toBe(480);
+  });
+
+  it('bullets hurt the other players, more in the head', () => {
+    const { sim, a, b } = arenaGame();
+    const fire = (target) => (p) => (p === a ? aimAt(a, target, { fire: true }) : idle());
+    run(sim, DT, fire(b.center));
+    expect(b.health).toBeCloseTo(100 - 34 * 0.8, 1);
+    const events = sim.drainEvents();
+    expect(events.some((e) => e.type === 'hitConfirm' && e.pid === 'a' && !e.head)).toBe(true);
+    b.health = 100;
+    run(sim, 0.3, idle);
+    run(sim, DT, fire(new THREE.Vector3(b.pos.x, b.pos.y + 1.7, b.pos.z)));
+    expect(b.health).toBeLessThan(100 - 34 * 0.8 * 1.9);
+  });
+
+  it('a kill scores a point, the victim comes back 4 s later elsewhere, protected for a moment', () => {
+    const { sim, a, b } = arenaGame();
+    sim.hitPlayer(b, 500, a.pos, 'bullet', null, { by: a, weapon: 'rifle' });
+    expect(b.dead).toBe(true);
+    expect(a.stats.frags).toBe(1);
+    expect(a.score).toBe(1);
+    expect(b.stats.deaths).toBe(1);
+    expect(sim.drainEvents().some((e) => e.type === 'frag' && e.pid === 'b' && e.by === 'a' && e.weapon === 'rifle')).toBe(true);
+    const where = b.pos.clone();
+    run(sim, 3.5, idle);
+    expect(b.dead).toBe(true);
+    run(sim, 0.6, idle);
+    expect(b.dead).toBe(false);
+    expect(b.health).toBe(100);
+    expect(b.pos.distanceTo(where)).toBeGreaterThan(5);
+    expect(b.pos.distanceTo(a.pos)).toBeGreaterThan(15);
+    expect(sim.hitPlayer(b, 50, a.pos, 'bullet', null, { by: a, weapon: 'rifle' })).toBe('immune');
+    run(sim, 2.1, idle);
+    expect(sim.hitPlayer(b, 50, a.pos, 'bullet', null, { by: a, weapon: 'rifle' })).toBe('hit');
+    // dying to a guardian costs no one a point
+    sim.hitPlayer(a, 500, b.pos, 'melee');
+    expect(b.stats.frags).toBe(0);
+  });
+
+  it('the khépesh strikes players and parries their blade, but not bullets', () => {
+    const { sim, a, b } = arenaGame();
+    b.pos.set(0, 0, 36.5);
+    const sword = (p) => ({ ...aimAt(p, (p === a ? b : a).center), slot: 0 });
+    run(sim, 0.5, sword);
+    // a swings at b, who does nothing: two strikes take most of a full life
+    run(sim, 0.2, (p) => (p === a ? { ...sword(p), fire: true } : sword(p)));
+    expect(b.health).toBeCloseTo(100 - 85 * 0.6, 0);
+    run(sim, 0.6, sword);
+    b.health = 100;
+    // b raises the blade: the strike is blocked
+    run(sim, 0.4, (p) => ({ ...sword(p), aim: p === b }));
+    run(sim, 0.2, (p) => ({ ...sword(p), aim: p === b, fire: p === a }));
+    expect(b.health).toBeGreaterThan(100 - 85 * 0.6 * 0.3);
+    expect(sim.hitPlayer(b, 20, a.pos, 'bullet', null, { by: a, weapon: 'pistol' })).toBe('hit');
+  });
+
+  it('ends at the score limit, or with the best player when the time runs out', () => {
+    const { sim, a, b } = arenaGame({ scoreLimit: 10 });
+    for (let i = 0; i < 10; i++) {
+      sim.raise(b, 1);
+      b.protect = 0;
+      sim.hitPlayer(b, 500, a.pos, 'bullet', null, { by: a, weapon: 'pistol' });
+    }
+    expect(sim.over).toBe(true);
+    expect(sim.winner).toBe('a');
+    expect(sim.drainEvents().some((e) => e.type === 'gameOver' && e.winner === 'a')).toBe(true);
+
+    const t = arenaGame({ timeLimit: 300 });
+    expect(t.sim.mode.timeLimit).toBe(300);
+    t.sim.hitPlayer(t.a, 500, t.b.pos, 'bullet', null, { by: t.b, weapon: 'pistol' });
+    t.sim.mode.timeLeft = 0.01;
+    run(t.sim, 0.1, idle);
+    expect(t.sim.over).toBe(true);
+    expect(t.sim.winner).toBe('b');
   });
 });

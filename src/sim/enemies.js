@@ -190,9 +190,10 @@ export class Enemies {
     if (!e.T.boss && cause !== 'self') {
       // health only rewards blade kills; ammo can drop either way; elites always drop something
       const luck = killer?.mods.drops ?? 1; // the "Pillard" card
-      const healthDrop = cause === 'melee' && (e.elite || Math.random() < (e.T.big ? 1 : 0.5) * luck);
+      const always = !!this.sim.mode.alwaysDrop; // the arena: every guardian leaves something
+      const healthDrop = cause === 'melee' ? (e.elite || always || Math.random() < (e.T.big ? 1 : 0.5) * luck) : always && Math.random() < 0.5;
       if (healthDrop) this.#dropPickup(e.pos, 'health');
-      else if (e.elite || Math.random() < (e.T.big ? 0.9 : 0.3) * luck) this.#dropPickup(e.pos, 'ammo');
+      else if (e.elite || always || Math.random() < (e.T.big ? 0.9 : 0.3) * luck) this.#dropPickup(e.pos, 'ammo');
     }
   }
 
@@ -632,7 +633,7 @@ export class Enemies {
 }
 
 // Ray against a vertical cylinder; returns distance or null.
-function rayCylinder(o, d, c, r, y0, y1) {
+export function rayCylinder(o, d, c, r, y0, y1) {
   const ox = o.x - c.x, oz = o.z - c.z;
   const a = d.x * d.x + d.z * d.z;
   if (a < 1e-9) return null;

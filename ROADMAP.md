@@ -111,8 +111,31 @@ Choix validés :
 - [x] 35 tests automatisés, dont deux qui lancent le vrai serveur avec plusieurs clients.
 - **Validation :** une partie à deux en local (deux onglets, ou deux PC sur le même réseau avec l'adresse IP du serveur). Validée le 16/10/2026.
 - **Corrigé après validation :** il fallait recopier le code du salon à la main. L'écran Coopération liste maintenant les salons ouverts, chacun avec un bouton Rejoindre ; la saisie du code reste possible. Deux joueurs au même pseudo sont numérotés (« Joueur 2 »).
-- **PvP :** préparé par l'architecture, sans mode construit (phase 9 éventuelle).
+- **PvP :** préparé par l'architecture, construit en phase 9.
 - **Limites connues du prototype :** pas de compensation de latence pour les tirs (sans effet en réseau local), on ne peut pas rejoindre une partie déjà lancée.
+
+## Phase 9 — Arène joueur contre joueur `[x]`
+Choix validés : chacun pour soi, quelques gardiens dans l'arène, victoire au score ou au chrono, les quatre armes dès le départ.
+- [x] **Mode Arène** (`src/sim/modes/arena.js`), choisi par l'hôte dans le salon (2 à 4 joueurs) :
+  - chacun pour soi ; une élimination rapporte 1 point ;
+  - le premier à 15 éliminations gagne, sinon le meilleur score au bout de 8 minutes ; l'hôte règle les deux (10, 15 ou 25 ; 5, 8 ou 12 min) ;
+  - les quatre armes dès le départ, munitions pleines ; pas de cartes ni d'objectifs.
+- [x] **Combats entre joueurs :**
+  - les balles et le khépesh touchent les autres joueurs, avec tirs à la tête ;
+  - dégâts ajustés contre les joueurs (deux coups de khépesh, deux tirs du fusil à pompe à bout portant) ;
+  - le khépesh pare les coups d'épée venus de face ; une parade parfaite repousse l'attaquant ; les balles ne se parent pas ;
+  - les explosions de momie blessent tout le monde.
+- [x] **Mort et réapparition :** pas de joueur à terre. Réapparition au bout de 4 s, loin des autres joueurs et hors de leur vue, avec 2 s d'invulnérabilité (perdue dès qu'on tire).
+- [x] **Gardiens :** quelques chacals et prêtres rôdent (davantage avec plus de joueurs) et attaquent tout le monde. En abattre un lâche toujours un soin ou des munitions, mais ne rapporte pas de point.
+- [x] **Interface :**
+  - HUD : éliminations du joueur, temps restant, rang, et annonces des éliminations en haut à droite ;
+  - tableau des scores en maintenant **Tab** ;
+  - écran « Éliminé par … » avec le compte à rebours ;
+  - minicarte : un adversaire apparaît 2 s quand il tire ;
+  - écran de fin : classement de la partie, victoire pour le premier.
+- [x] 40 tests automatisés, dont 5 pour l'arène : départ, dégâts entre joueurs, réapparition protégée, khépesh et parade, fin au score et au chrono.
+- **Validation :** une partie à deux en local. Validée le 16/10/2026.
+- **Corrigé après validation :** le bouton « Coopération » devient « Multijoueur », car l'arène s'y trouvait sans que rien ne l'indique.
 
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.

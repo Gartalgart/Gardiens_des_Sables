@@ -53,8 +53,56 @@ export class Hud {
   downed(progress, alone) {
     $('downed').classList.toggle('hidden', progress === null);
     if (progress === null) return;
+    this.set('downed-title', 'À terre');
     $('downed-fill').style.width = `${Math.round(progress * 100)}%`;
     this.set('downed-sub', alone ? 'Tous tes coéquipiers sont tombés…' : progress > 0 ? 'Un coéquipier te relève !' : 'Un coéquipier peut te relever (E)');
+  }
+
+  // ---------- arena ----------
+  // killed: null when alive, else { by: killer's name or null, respawn: seconds left, total }
+  eliminated(killed) {
+    $('downed').classList.toggle('hidden', !killed);
+    if (!killed) return;
+    this.set('downed-title', 'Éliminé');
+    $('downed-fill').style.width = `${Math.round((1 - killed.respawn / killed.total) * 100)}%`;
+    const back = `réapparition dans ${Math.max(1, Math.ceil(killed.respawn))} s`;
+    this.set('downed-sub', killed.by ? `par ${killed.by} — ${back}` : back);
+  }
+
+  // a line in the kill feed, top right; mine: the local player is in it
+  frag(killer, victim, weapon, head, mine) {
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const el = document.createElement('div');
+    el.className = mine ? 'me' : '';
+    el.innerHTML = killer
+      ? `${esc(killer)}<span class="w${head ? ' head' : ''}">${WEAPON_LABEL[weapon] ?? weapon}${head ? ' · TÊTE' : ''}</span>${esc(victim)}`
+      : `${esc(victim)}<span class="w">${weapon === 'guardian' ? 'GARDIENS' : 'CHUTE'}</span>`;
+    el.dataset.life = 5;
+    const feed = $('killfeed');
+    feed.prepend(el);
+    while (feed.children.length > 5) feed.lastChild.remove();
+  }
+
+  #fadeKillfeed(dt) {
+    for (const el of [...$('killfeed').children]) {
+      const life = Number(el.dataset.life) - dt;
+      el.dataset.life = life;
+      if (life < 0.6) el.style.opacity = Math.max(0, life / 0.6);
+      if (life <= 0) el.remove();
+    }
+  }
+
+  clearKillfeed() { $('killfeed').innerHTML = ''; }
+
+  // held Tab: every player of the arena, best first
+  scoreboard(rows, meta) {
+    const el = $('scoreboard');
+    el.classList.toggle('hidden', !rows);
+    if (!rows) return;
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const html = `<h3>Arène</h3><div class="meta">${meta}</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">Gardiens</th></tr>${
+      rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td class="num">${r.frags}</td><td class="num">${r.deaths}</td><td class="num">${r.kills}</td></tr>`).join('')}</table>`;
+    if (this.boardHtml !== html) { el.innerHTML = html; this.boardHtml = html; }
   }
 
   #renderMap(level) {
@@ -78,8 +126,8 @@ export class Hud {
     return c;
   }
 
-  // mates: the other players (co-op), drawn as blue arrows
-  drawMinimap(player, enemies, mates = []) {
+  // mates: the other players (co-op), drawn as blue arrows; foes: arena players who just fired, in red
+  drawMinimap(player, enemies, mates = [], foes = []) {
     const g = this.ctx, W = this.mm.width, R = W / 2;
     const scale = R / RANGE;
     const yaw = player.yaw;
@@ -148,6 +196,18 @@ export class Hud {
       g.beginPath(); g.moveTo(0, -7); g.lineTo(-5, 5); g.lineTo(0, 2.5); g.lineTo(5, 5); g.closePath(); g.fill();
       g.restore();
     }
+    for (const f of foes) {
+      const dx = f.pos.x - player.pos.x, dz = f.pos.z - player.pos.z;
+      let sx = (dx * cos - dz * sin) * scale, sy = (dx * sin + dz * cos) * scale;
+      const d = Math.hypot(sx, sy);
+      if (d > R - 10) { sx *= (R - 10) / d; sy *= (R - 10) / d; }
+      g.globalAlpha = Math.min(1, f.fade);
+      g.fillStyle = '#ff4a3a';
+      g.shadowColor = '#ff4a3a'; g.shadowBlur = 10;
+      g.beginPath(); g.arc(R + sx, R + sy, 5, 0, Math.PI * 2); g.fill();
+      g.shadowBlur = 0;
+      g.globalAlpha = 1;
+    }
 
     // compass letters on the rim (north = -Z)
     const dirs = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['O', -1, 0]];
@@ -172,13 +232,19 @@ export class Hud {
   }
 
   update(dt, s) {
-    this.set('wave-num', s.wave);
-    this.set('wave-total', Number.isFinite(s.totalWaves) ? `/${s.totalWaves}` : '');
-    this.set('score', s.score.toLocaleString('fr-FR'));
+    const arena = s.arena;
+    this.set('wave-word', arena ? 'ÉLIMINATIONS' : 'VAGUE');
+    this.set('wave-num', arena ? arena.frags : s.wave);
+    this.set('wave-total', arena ? `/${arena.scoreLimit}` : Number.isFinite(s.totalWaves) ? `/${s.totalWaves}` : '');
+    this.set('left-label', arena ? 'RANG' : 'ENNEMIS RESTANTS');
+    this.set('score-label', arena ? 'MORTS' : 'SCORE');
+    this.set('score', arena ? arena.deaths : s.score.toLocaleString('fr-FR'));
     this.#objective(s.objective, s.waveStats, s.waveActive);
     this.#cards(s.cardOffer, s.upgrades);
-    this.set('timer', fmtTime(s.time));
-    this.set('enemies-left', s.enemiesLeft);
+    this.set('timer', fmtTime(arena ? Math.ceil(arena.timeLeft) : s.time));
+    $('timer').classList.toggle('low', !!arena && arena.timeLeft < 30);
+    this.set('enemies-left', arena ? `${arena.rank}${arena.rank === 1 ? 'er' : 'e'} / ${arena.players}` : s.enemiesLeft);
+    this.#fadeKillfeed(dt);
 
     const hp = Math.ceil(s.health);
     this.set('health-num', hp);
@@ -293,6 +359,8 @@ export class Hud {
     this.pickupTimer = 1.4;
   }
 }
+
+const WEAPON_LABEL = { sword: 'KHÉPESH', pistol: 'PISTOLET', rifle: 'FUSIL', shotgun: 'POMPE', explosion: 'MOMIE' };
 
 export function fmtTime(t) {
   const m = Math.floor(t / 60), s = Math.floor(t % 60);

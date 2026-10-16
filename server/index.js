@@ -7,10 +7,11 @@ import { Level } from '../src/sim/level.js';
 import { Sim } from '../src/sim/sim.js';
 import { DIFFICULTIES } from '../src/sim/difficulty.js';
 import { PORT, TICK, writeWorld, roomCode } from '../src/net/protocol.js';
+import { ARENA_DEFAULTS, ARENA_SCORES, ARENA_TIMES } from '../src/sim/modes/arena.js';
 
 const LEVEL_DATA = JSON.parse(readFileSync(new URL('../public/models/level.json', import.meta.url), 'utf8'));
 const MAX_PLAYERS = 4;
-const MODES = ['waves', 'survival'];
+const MODES = ['waves', 'survival', 'arena'];
 
 const rooms = new Map();
 const clients = new Set();
@@ -32,6 +33,7 @@ class Room {
     this.clients = []; // in joining order: the first one is the host
     this.mode = 'waves';
     this.difficulty = 'normal';
+    this.arena = { ...ARENA_DEFAULTS };
     this.sim = null;
     this.timer = null;
     // each room has its own level: the navigation grid keeps state about its players
@@ -48,7 +50,7 @@ class Room {
 
   broadcastRoom() {
     this.send({
-      t: 'room', code: this.code, host: this.host?.id, mode: this.mode, difficulty: this.difficulty, playing: this.playing,
+      t: 'room', code: this.code, host: this.host?.id, mode: this.mode, difficulty: this.difficulty, arena: this.arena, playing: this.playing,
       players: this.clients.map((c) => ({ id: c.id, name: c.name })),
     });
     broadcastRooms();
@@ -81,7 +83,7 @@ class Room {
 
   start() {
     if (this.playing) return;
-    this.sim = new Sim(this.level, { mode: this.mode, difficulty: this.difficulty });
+    this.sim = new Sim(this.level, { mode: this.mode, difficulty: this.difficulty, arena: this.arena });
     this.clients.forEach((c, i) => {
       const p = this.sim.addPlayer(c.id);
       p.name = c.name;
@@ -91,7 +93,7 @@ class Room {
     });
     this.sim.start();
     broadcastRooms();
-    this.send({ t: 'start', mode: this.mode, difficulty: this.difficulty, players: this.clients.map((c) => ({ id: c.id, name: c.name })) });
+    this.send({ t: 'start', mode: this.mode, difficulty: this.difficulty, arena: this.arena, players: this.clients.map((c) => ({ id: c.id, name: c.name })) });
     this.last = performance.now();
     clearInterval(this.timer);
     this.timer = setInterval(() => this.tick(), TICK * 1000);
@@ -159,6 +161,8 @@ wss.on('connection', (ws) => {
         if (!room || room.host !== client || room.playing) return;
         if (MODES.includes(m.mode)) room.mode = m.mode;
         if (DIFFICULTIES[m.difficulty]) room.difficulty = m.difficulty;
+        if (ARENA_SCORES.includes(m.arena?.scoreLimit)) room.arena.scoreLimit = m.arena.scoreLimit;
+        if (ARENA_TIMES.includes(m.arena?.timeLimit)) room.arena.timeLimit = m.arena.timeLimit;
         room.broadcastRoom();
         break;
       case 'start':

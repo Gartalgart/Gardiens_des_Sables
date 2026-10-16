@@ -34,8 +34,11 @@ export class PlayerSim {
     this.dead = false; // alone: game over; in co-op: down, until a teammate picks them up
     this.revive = 0; // 0..1, how far a teammate got picking this player up
     this.reviveBy = null; // id of the teammate doing it this step
+    this.respawn = 0; // arena: seconds before a dead player comes back
+    this.protect = 0; // arena: seconds of invulnerability after coming back
+    this.killedBy = null; // arena: id of the player who scored the last kill on this one
     this.name = id;
-    this.stats = { kills: 0, headshots: 0, damageTaken: 0, shotsFired: 0, shotsHit: 0 };
+    this.stats = { kills: 0, headshots: 0, damageTaken: 0, shotsFired: 0, shotsHit: 0, frags: 0, deaths: 0 };
     this.score = 0;
     this.mods = baseMods(); // what the upgrade cards changed (see progression.js)
     this.upgrades = {}; // card id -> times taken
@@ -47,6 +50,8 @@ export class PlayerSim {
   get eye() { return new THREE.Vector3(this.pos.x, this.eyeY, this.pos.z); }
   // bounds used by enemy projectiles / melee
   get center() { return new THREE.Vector3(this.pos.x, this.pos.y + 1.0, this.pos.z); }
+  // the head, for shots from other players in the arena
+  get headBase() { return this.pos.y + PLAYER_HEIGHT - 0.32; }
   get accuracy() { return this.stats.shotsFired ? Math.round((this.stats.shotsHit / this.stats.shotsFired) * 100) : 0; }
 
   // view orientation including the recoil currently applied

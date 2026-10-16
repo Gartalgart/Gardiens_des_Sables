@@ -18,17 +18,19 @@
     </div>
 
     <div id="top-center">
-      <div id="wave-label">VAGUE <span id="wave-num">1</span><span class="dim" id="wave-total">/5</span></div>
+      <div id="wave-label"><span id="wave-word">VAGUE</span> <span id="wave-num">1</span><span class="dim" id="wave-total">/5</span></div>
       <div id="timer">00:00</div>
       <div id="objective"></div>
     </div>
 
     <div id="top-right">
-      <div class="label">ENNEMIS RESTANTS</div>
+      <div class="label" id="left-label">ENNEMIS RESTANTS</div>
       <div id="enemies-left">0</div>
-      <div class="label">SCORE</div>
+      <div class="label" id="score-label">SCORE</div>
       <div id="score">0</div>
     </div>
+    <div id="killfeed"></div>
+    <div id="scoreboard" class="hidden"></div>
 
     <div id="crosshair">
       <i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i>
@@ -56,7 +58,7 @@
 
     <div id="team"></div>
     <div id="prompt" class="hidden"></div>
-    <div id="downed" class="hidden"><div class="downed-title">À terre</div><div id="downed-sub">Un coéquipier peut te relever</div><div class="revive-bar"><div id="downed-fill"></div></div></div>
+    <div id="downed" class="hidden"><div class="downed-title" id="downed-title">À terre</div><div id="downed-sub">Un coéquipier peut te relever</div><div class="revive-bar"><div id="downed-fill"></div></div></div>
 
     <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
     <div id="pickup-msg"></div>
@@ -86,7 +88,7 @@
         <button data-diff="hard">Difficile</button>
       </div>
       <button id="btn-play" disabled>Chargement…</button>
-      <button class="secondary" id="btn-coop">Coopération</button>
+      <button class="secondary" id="btn-coop">Multijoueur</button>
       <button class="secondary btn-options">Options</button>
       <button class="secondary" id="btn-board">Classement</button>
       <div class="help" id="help-main"></div>
@@ -151,8 +153,8 @@
 
   <div id="coop" class="screen hidden">
     <div class="panel">
-      <h2>Coopération</h2>
-      <p class="lede">Jusqu'à 4 joueurs contre les gardiens. Lance le serveur avec <code>npm run server</code>, puis crée un salon : tes coéquipiers le verront ci-dessous.</p>
+      <h2>Multijoueur</h2>
+      <p class="lede">Jusqu'à 4 joueurs, ensemble contre les gardiens (Vagues, Survie) ou chacun pour soi (Arène). Lance le serveur avec <code>npm run server</code>, puis crée un salon et choisis le mode : les autres joueurs le verront ci-dessous.</p>
       <h3 class="rooms-title">Salons ouverts</h3>
       <ul id="coop-rooms"><li class="empty">Aucun salon ouvert pour l'instant.</li></ul>
       <div class="opts">
@@ -176,7 +178,21 @@
       <div id="lobby-mode" class="seg-row">
         <button data-mode="waves">Vagues</button>
         <button data-mode="survival">Survie</button>
+        <button data-mode="arena">Arène</button>
       </div>
+      <div id="lobby-arena" class="hidden">
+        <div id="lobby-score" class="seg-row">
+          <button data-score="10">10 élim.</button>
+          <button data-score="15">15 élim.</button>
+          <button data-score="25">25 élim.</button>
+        </div>
+        <div id="lobby-time" class="seg-row">
+          <button data-time="300">5 min</button>
+          <button data-time="480">8 min</button>
+          <button data-time="720">12 min</button>
+        </div>
+      </div>
+      <p class="lede small" id="lobby-mode-help"></p>
       <div id="lobby-diff" class="seg-row">
         <button data-diff="easy">Facile</button>
         <button data-diff="normal">Normal</button>
@@ -214,6 +230,7 @@
       <div><kbd>Clic droit</kbd></div><div>Viser / parer (khépesh)</div>
       <div><kbd>R</kbd></div><div>Recharger</div>
       <div><kbd>E</kbd> (maintenir)</div><div>Relever un coéquipier à terre (coopération)</div>
+      <div><kbd>Tab</kbd> (maintenir)</div><div>Tableau des scores (arène)</div>
       <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> / molette</div><div>Changer d'arme (choisir une carte entre les vagues)</div>
       <div><kbd>Échap</kbd></div><div>Pause / aide</div>
     </div>

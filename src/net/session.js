@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PlayerSim } from '../sim/player.js';
-import { Enemies, TYPES } from '../sim/enemies.js';
+import { Enemies, TYPES, rayCylinder } from '../sim/enemies.js';
+import { PLAYER_RADIUS, PLAYER_HEIGHT } from '../sim/constants.js';
 import { makeDifficulty } from '../sim/difficulty.js';
 import { readPlayer, reviveVectors, PORT } from './protocol.js';
 
@@ -59,7 +60,7 @@ export class NetSession {
 
   create() { this.#send({ t: 'create' }); }
   join(code) { this.#send({ t: 'join', code }); }
-  configure(mode, difficulty) { this.#send({ t: 'config', mode, difficulty }); }
+  configure(mode, difficulty, arena) { this.#send({ t: 'config', mode, difficulty, arena }); }
   start() { this.#send({ t: 'start' }); }
   leave() { this.#send({ t: 'leave' }); this.room = null; }
   close() {
@@ -80,7 +81,9 @@ export class NetSession {
     this.events = [];
     this.players = new Map();
     this.names = new Map(m.players.map((p) => [p.id, p.name]));
+    this.winner = null;
     this.mode = { id: m.mode, wave: 0, totalWaves: m.mode === 'waves' ? 5 : Infinity, waveActive: false, enemiesLeft: 0, objective: null };
+    if (m.mode === 'arena') Object.assign(this.mode, { pvp: true, scoreLimit: m.arena.scoreLimit, timeLimit: m.arena.timeLimit, timeLeft: m.arena.timeLimit });
     this.enemies = { list: [], projectiles: [], pickups: [], get boss() { return this.list.find((e) => e.T.boss) || null; }, get alive() { return this.list.length; } };
     this.byId = new Map(); // enemy mirrors by id, kept between snapshots
     this.snaps = [];
@@ -118,8 +121,19 @@ export class NetSession {
       const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * spread;
       const dir = fwd.clone().addScaledVector(right, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r).normalize();
       const wh = this.level.raycast(origin, dir, 250);
-      const eh = Enemies.prototype.raycast.call(this.enemies, origin, dir, wh ? wh.dist : 250);
-      points.push(eh ? eh.point : wh ? wh.point : origin.clone().addScaledVector(dir, 250));
+      let maxD = wh ? wh.dist : 250;
+      const eh = Enemies.prototype.raycast.call(this.enemies, origin, dir, maxD);
+      if (eh) maxD = eh.dist;
+      // the arena: the tracer stops on the other players too
+      let ph = null;
+      if (this.mode.pvp) {
+        for (const o of this.players.values()) {
+          if (o === player || o.dead) continue;
+          const t = rayCylinder(origin, dir, o.pos, PLAYER_RADIUS, o.pos.y, o.pos.y + PLAYER_HEIGHT);
+          if (t !== null && t < maxD) { maxD = t; ph = origin.clone().addScaledVector(dir, t); }
+        }
+      }
+      points.push(ph ?? (eh ? eh.point : wh ? wh.point : origin.clone().addScaledVector(dir, 250)));
     }
     this.events.push({ type: 'playerShot', pid: player.id, weapon: def.id, origin, points });
   }
@@ -228,7 +242,7 @@ export class NetSession {
       if (ev.pid === this.id && PREDICTED.has(ev.type)) continue;
       this.events.push(ev);
     }
-    if (s.over && !this.over) { this.over = true; this.victory = s.victory; }
+    if (s.over && !this.over) { this.over = true; this.victory = s.victory; this.winner = s.winner; }
   }
 
   #interpolate(dt) {
@@ -260,6 +274,8 @@ export class NetSession {
       if (!o.remote) continue;
       const pa = a.pl.get(o.id), pb = b.pl.get(o.id);
       if (!pa || !pb) continue;
+      // back in the arena somewhere else: no sliding across the map
+      if (Math.hypot(pb.pos[0] - pa.pos[0], pb.pos[2] - pa.pos[2]) > 4) { o.pos.set(...pb.pos); o.yaw = pb.yaw; o.pitch = pb.pitch; continue; }
       o.pos.set(pa.pos[0] + (pb.pos[0] - pa.pos[0]) * k, pa.pos[1] + (pb.pos[1] - pa.pos[1]) * k, pa.pos[2] + (pb.pos[2] - pa.pos[2]) * k);
       o.yaw = lerpAngle(pa.yaw, pb.yaw, k);
       o.pitch = pa.pitch + (pb.pitch - pa.pitch) * k;
