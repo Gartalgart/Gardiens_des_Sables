@@ -178,6 +178,14 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 0 2px; f
 .status { min-height: 1.4em; margin: 4px 0 10px; color: var(--blood); font-size: 15px; }
 .status.ok { color: var(--ink-dim); }
 #c-code { text-transform: uppercase; letter-spacing: 0.3em; }
+#c-code::placeholder { text-transform: none; letter-spacing: normal; color: var(--ink-dim); opacity: 0.6; }
+#coop .rooms-title { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold-dim); text-align: left; }
+#coop-rooms { list-style: none; margin: 0 0 14px; padding: 0; text-align: left; max-height: 180px; overflow-y: auto; }
+#coop-rooms li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 16px; }
+#coop-rooms li.empty { color: var(--ink-dim); font-size: 15px; }
+#coop-rooms li .code { color: var(--gold); letter-spacing: 0.2em; min-width: 4.5em; }
+#coop-rooms li .info { flex: 1; color: var(--ink-dim); font-size: 14px; }
+#coop-rooms li button { width: auto; margin: 0; padding: 6px 14px; font-size: 13px; }
 #lobby-code { color: var(--gold); letter-spacing: 0.25em; }
 #lobby-players { list-style: none; margin: 0 0 14px; padding: 0; text-align: left; }
 #lobby-players li { padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 17px; }

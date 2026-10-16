@@ -152,12 +152,14 @@
   <div id="coop" class="screen hidden">
     <div class="panel">
       <h2>Coopération</h2>
-      <p class="lede">Jusqu'à 4 joueurs contre les gardiens. Lance le serveur avec <code>npm run server</code>, puis crée un salon et donne son code à tes coéquipiers.</p>
+      <p class="lede">Jusqu'à 4 joueurs contre les gardiens. Lance le serveur avec <code>npm run server</code>, puis crée un salon : tes coéquipiers le verront ci-dessous.</p>
+      <h3 class="rooms-title">Salons ouverts</h3>
+      <ul id="coop-rooms"><li class="empty">Aucun salon ouvert pour l'instant.</li></ul>
       <div class="opts">
         <label for="c-server">Serveur</label>
         <div class="opt-row"><input type="text" id="c-server" spellcheck="false" /></div>
-        <label for="c-code">Code du salon</label>
-        <div class="opt-row"><input type="text" id="c-code" maxlength="4" spellcheck="false" placeholder="ABCD" /></div>
+        <label for="c-code">Ou par code</label>
+        <div class="opt-row"><input type="text" id="c-code" maxlength="4" spellcheck="false" placeholder="code à 4 lettres" /></div>
       </div>
       <div id="coop-status" class="status"></div>
       <button id="btn-coop-create">Créer un salon</button>

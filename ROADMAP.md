@@ -94,7 +94,7 @@ Choix validés :
 - [x] Tempête de sable : déjà faite en phase 5 (phase 2 du pharaon).
 - [x] Musique dynamique générée (`src/music.js`) : bourdon, percussions maqsum et mélodie en mode Hijaz, à 3 intensités (calme, combat, pharaon).
 
-## Phase 8 — Prototype multijoueur coopératif `[~]` (terminée, à valider en jeu)
+## Phase 8 — Prototype multijoueur coopératif `[x]`
 - [x] **Serveur** `server/index.js` (`npm run server`, port 8787) : Node + WebSocket (`ws`), salons de 4 joueurs maximum rejoints par un code de 4 lettres, simulation partagée à 30 mises à jour par seconde. L'hôte choisit le mode et la difficulté.
 - [x] **Protocole** `src/net/protocol.js` : commandes numérotées vers le serveur, états du monde vers les clients (JSON).
 - [x] **Client** `src/net/session.js` :
@@ -108,8 +108,9 @@ Choix validés :
   - la partie est perdue quand tous les joueurs sont à terre ;
   - ennemis ×1,6 par joueur en plus (deux joueurs : 13 chacals à la vague 1 au lieu de 8), limite de présence et vie du pharaon augmentées d'autant.
 - [x] **Interface :** bouton Coopération, écran de salon (code, joueurs, hôte), coéquipiers sur la minicarte et dans le HUD, nom au-dessus de la tête, écran « À terre », pause qui ne fige pas la partie.
-- [x] 34 tests automatisés, dont un qui lance le vrai serveur avec deux clients.
-- **Validation :** une partie à deux en local (deux onglets, ou deux PC sur le même réseau avec l'adresse IP du serveur).
+- [x] 35 tests automatisés, dont deux qui lancent le vrai serveur avec plusieurs clients.
+- **Validation :** une partie à deux en local (deux onglets, ou deux PC sur le même réseau avec l'adresse IP du serveur). Validée le 16/10/2026.
+- **Corrigé après validation :** il fallait recopier le code du salon à la main. L'écran Coopération liste maintenant les salons ouverts, chacun avec un bouton Rejoindre ; la saisie du code reste possible. Deux joueurs au même pseudo sont numérotés (« Joueur 2 »).
 - **PvP :** préparé par l'architecture, sans mode construit (phase 9 éventuelle).
 - **Limites connues du prototype :** pas de compensation de latence pour les tirs (sans effet en réseau local), on ne peut pas rejoindre une partie déjà lancée.
 

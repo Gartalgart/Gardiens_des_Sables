@@ -119,4 +119,18 @@ describe('server', () => {
     expect(err.msg).toMatch(/Aucun salon/);
     c.ws.close();
   });
+
+  it('players outside a room see the open rooms, and same names get a number', async () => {
+    const d = client('Joueur'), e = client('Joueur');
+    await Promise.all([d.open, e.open]);
+    d.send({ t: 'create' });
+    const room = await d.wait((m) => m.t === 'room');
+    const list = await e.wait((m) => m.t === 'rooms' && m.rooms.some((r) => r.code === room.code));
+    expect(list.rooms.find((r) => r.code === room.code)).toMatchObject({ host: 'Joueur', players: 1, mode: 'waves' });
+    e.send({ t: 'join', code: room.code });
+    const full = await e.wait((m) => m.t === 'room' && m.players.length === 2);
+    expect(full.players.map((p) => p.name)).toEqual(['Joueur', 'Joueur 2']);
+    d.ws.close();
+    e.ws.close();
+  });
 });

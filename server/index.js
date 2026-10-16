@@ -13,7 +13,18 @@ const MAX_PLAYERS = 4;
 const MODES = ['waves', 'survival'];
 
 const rooms = new Map();
+const clients = new Set();
 let lastClientId = 0;
+
+// the rooms a player could join, sent to everyone who is not in a room yet
+function openRooms() {
+  return [...rooms.values()].filter((r) => !r.playing && r.clients.length < MAX_PLAYERS)
+    .map((r) => ({ code: r.code, host: r.host?.name, players: r.clients.length, mode: r.mode, difficulty: r.difficulty }));
+}
+function broadcastRooms() {
+  const s = JSON.stringify({ t: 'rooms', rooms: openRooms() });
+  for (const c of clients) if (!c.room) c.ws.send(s);
+}
 
 class Room {
   constructor(code) {
@@ -40,9 +51,13 @@ class Room {
       t: 'room', code: this.code, host: this.host?.id, mode: this.mode, difficulty: this.difficulty, playing: this.playing,
       players: this.clients.map((c) => ({ id: c.id, name: c.name })),
     });
+    broadcastRooms();
   }
 
   add(client) {
+    // two "Joueur" in one room would be indistinguishable in the HUD
+    const base = client.name;
+    for (let n = 2; this.clients.some((c) => c.name === client.name); n++) client.name = `${base.slice(0, 13)} ${n}`;
     client.room = this;
     this.clients.push(client);
     this.broadcastRoom();
@@ -52,6 +67,7 @@ class Room {
     this.clients = this.clients.filter((c) => c !== client);
     client.room = null;
     this.sim?.removePlayer(client.id);
+    broadcastRooms();
     if (!this.clients.length) return this.close();
     if (this.sim && !this.sim.alivePlayers().length) this.sim.end(false);
     this.broadcastRoom();
@@ -60,6 +76,7 @@ class Room {
   close() {
     clearInterval(this.timer);
     rooms.delete(this.code);
+    broadcastRooms();
   }
 
   start() {
@@ -73,6 +90,7 @@ class Room {
       c.ack = 0;
     });
     this.sim.start();
+    broadcastRooms();
     this.send({ t: 'start', mode: this.mode, difficulty: this.difficulty, players: this.clients.map((c) => ({ id: c.id, name: c.name })) });
     this.last = performance.now();
     clearInterval(this.timer);
@@ -107,7 +125,9 @@ const wss = new WebSocketServer({ port: Number(process.env.PORT) || PORT });
 wss.on('connection', (ws) => {
   const client = { id: `p${++lastClientId}`, name: 'Joueur', ws, room: null, cmds: [], ack: 0 };
   const error = (msg) => ws.send(JSON.stringify({ t: 'error', msg }));
+  clients.add(client);
   ws.send(JSON.stringify({ t: 'welcome', id: client.id }));
+  ws.send(JSON.stringify({ t: 'rooms', rooms: openRooms() }));
 
   ws.on('message', (raw) => {
     let m;
@@ -152,7 +172,7 @@ wss.on('connection', (ws) => {
         break;
     }
   });
-  ws.on('close', () => client.room?.remove(client));
+  ws.on('close', () => { clients.delete(client); client.room?.remove(client); });
 });
 
 console.log(`Serveur coop des Gardiens des Sables : ws://localhost:${wss.options.port}`);

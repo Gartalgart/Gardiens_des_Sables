@@ -27,7 +27,8 @@ export class NetSession {
     this.ws = null;
     this.id = null;
     this.room = null;
-    this.on = {}; // callbacks: room, start, snapshot, error, close
+    this.openRooms = [];
+    this.on = {}; // callbacks: rooms, room, start, snapshot, error, close
   }
 
   // ---------- connection and lobby ----------
@@ -44,6 +45,7 @@ export class NetSession {
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data);
         if (m.t === 'welcome') { this.id = m.id; resolve(); }
+        else if (m.t === 'rooms') { this.openRooms = m.rooms; this.on.rooms?.(m.rooms); }
         else if (m.t === 'room') { this.room = m; this.on.room?.(m); }
         else if (m.t === 'error') this.on.error?.(m.msg);
         else if (m.t === 'start') this.#startGame(m);

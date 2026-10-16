@@ -11,6 +11,7 @@ import * as THREE from 'three';
 //   { t: 'leave' }
 // server -> client
 //   { t: 'welcome', id }
+//   { t: 'rooms', rooms: [{ code, host, players, mode, difficulty }] }   open rooms, to players in none
 //   { t: 'room', code, host, players: [{ id, name }], mode, difficulty, playing }
 //   { t: 'start', players: [{ id, name }], mode, difficulty }
 //   { t: 'snap', ack, s }                      ack: last command of this client the server ran

@@ -250,7 +250,27 @@ function renderLobby(room) {
   $('lobby-sub').textContent = room.playing ? 'Une partie est en cours dans ce salon.'
     : host ? `Donne ce code à tes coéquipiers (${room.players.length}/4).` : 'En attente du lancement par l\'hôte…';
 }
-$('btn-coop').addEventListener('click', () => { sound.init(); coopScreen = net.room ? 'lobby' : 'coop'; refreshScreens(); });
+const MODE_NAMES = { waves: 'Vagues', survival: 'Survie' };
+const DIFF_NAMES = { easy: 'facile', normal: 'normal', hard: 'difficile' };
+function renderOpenRooms(list) {
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  $('coop-rooms').innerHTML = list.length
+    ? list.map((r) => `<li><span class="code">${r.code}</span><span class="info">${esc(r.host ?? '')} · ${r.players}/4 · ${MODE_NAMES[r.mode] ?? r.mode}, ${DIFF_NAMES[r.difficulty] ?? r.difficulty}</span><button class="secondary" data-code="${r.code}">Rejoindre</button></li>`).join('')
+    : `<li class="empty">${net.connected ? "Aucun salon ouvert pour l'instant." : 'Pas encore connecté au serveur.'}</li>`;
+}
+$('coop-rooms').addEventListener('click', async (e) => {
+  const code = e.target.closest('button[data-code]')?.dataset.code;
+  if (code && (await connectCoop())) net.join(code);
+});
+net.on.rooms = renderOpenRooms;
+// opening the co-op screen connects at once, so the open rooms show up without a click
+$('btn-coop').addEventListener('click', async () => {
+  sound.init();
+  coopScreen = net.room ? 'lobby' : 'coop';
+  refreshScreens();
+  if (coopScreen === 'coop') { renderOpenRooms(net.openRooms); await connectCoop(); }
+});
+$('c-server').addEventListener('change', async () => { net.close(); renderOpenRooms([]); await connectCoop(); });
 $('btn-coop-back').addEventListener('click', () => { coopScreen = null; net.close(); refreshScreens(); });
 $('btn-coop-create').addEventListener('click', async () => {
   if (!(await connectCoop())) return;
@@ -286,6 +306,8 @@ net.on.start = () => {
 };
 net.on.close = () => {
   const inGame = !!game.net;
+  net.openRooms = [];
+  renderOpenRooms([]);
   quitCoopGame();
   coopScreen = 'coop';
   refreshScreens();
