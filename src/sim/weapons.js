@@ -41,9 +41,11 @@ export class Loadout {
   }
 
   get current() { return this.items[this.index]; }
+  // magazine size, enlarged by the "Chargeurs étendus" card
+  magSize(it) { return Math.round(it.def.mag * this.player.mods.mag); }
   get blocking() { return !!this.current.def.melee && this.adsT > 0.5; }
   // the parry was raised less than a quarter of a second ago (it takes ~0.05 s to come up)
-  get perfectParry() { return this.blocking && this.sim.time - this.aimPressedAt <= 0.25; }
+  get perfectParry() { return this.blocking && this.sim.time - this.aimPressedAt <= this.player.mods.parryWindow; }
 
   switchTo(i) {
     if (i === this.index || i < 0 || i >= this.items.length || !this.items[i].unlocked) return;
@@ -61,7 +63,7 @@ export class Loadout {
     const it = this.items[i];
     if (!it || it.unlocked) return null;
     it.unlocked = true;
-    it.mag = it.def.mag;
+    it.mag = this.magSize(it);
     it.reserve = it.def.reserve;
     this.switchTo(i);
     return { def: it.def, slot: i + 1 };
@@ -69,9 +71,10 @@ export class Loadout {
 
   startReload() {
     const it = this.current;
-    if (it.def.melee || this.reloading > 0 || it.mag >= it.def.mag || it.reserve <= 0) return;
-    this.reloading = it.def.reload;
-    this.sim.emit('reload', { pid: this.player.id, duration: it.def.reload });
+    if (it.def.melee || this.reloading > 0 || it.mag >= this.magSize(it) || it.reserve <= 0) return;
+    this.reloading = it.def.reload * this.player.mods.reload;
+    this.reloadTotal = this.reloading;
+    this.sim.emit('reload', { pid: this.player.id, duration: this.reloading });
   }
 
   addAmmo(fraction) {
@@ -108,7 +111,7 @@ export class Loadout {
       this.reloading -= dt;
       if (this.reloading <= 0) {
         const cur = this.current;
-        const take = Math.min(cur.def.mag - cur.mag, cur.reserve);
+        const take = Math.min(this.magSize(cur) - cur.mag, cur.reserve);
         cur.mag += take;
         if (cur.reserve !== Infinity) cur.reserve -= take;
         this.reloading = 0;

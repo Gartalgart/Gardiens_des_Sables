@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Level } from '../src/sim/level.js';
 import { Sim } from '../src/sim/sim.js';
 import { emptyCommand } from '../src/sim/player.js';
+import { applyUpgrade, drawCards, UPGRADES } from '../src/sim/progression.js';
 
 const DT = 1 / 60;
 // every event type handled by the client (src/main.js, handleEvents)
@@ -11,7 +12,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
 ];
 let level;
 
@@ -52,9 +53,9 @@ function pacify(e) {
 
 describe('level', () => {
   it('loads the collision data exported from Blender', () => {
-    expect(level.boxes.length).toBe(251);
+    expect(level.boxes.length).toBe(313);
     expect(level.spawns.length).toBe(5);
-    expect(level.braziers.length).toBe(14);
+    expect(level.braziers.length).toBe(17); // 14 in the streets, one in each house you can enter
     expect(level.playerStart.toArray()).toEqual([0, 0, 38]);
   });
 
@@ -81,7 +82,7 @@ describe('player', () => {
     player.lastHit = 0;
     run(sim, 2);
     expect(player.health).toBe(40);
-    run(sim, 3);
+    run(sim, 3.1);
     expect(player.health).toBe(100);
   });
 });
@@ -113,6 +114,44 @@ describe('navigation', () => {
     run(sim, 6);
     expect(e.target).toBe(p2);
     expect(e.pos.distanceTo(p2.pos)).toBeLessThan(4);
+  });
+});
+
+describe('houses', () => {
+  // H1: a house you can walk into, door on its east side; T1: a house with stairs up to a roof terrace
+  const H1 = { x: -18.55, z: 7.89, w: 6.1, d: 6.6 };
+  const inH1 = (p) => Math.abs(p.x - H1.x) < H1.w / 2 && Math.abs(p.z - H1.z) < H1.d / 2;
+
+  it('a jackal walks round the house and in through the door', () => {
+    const { sim, player } = newGame();
+    player.pos.set(H1.x + 1, 0, H1.z);
+    player.health = player.maxHealth = 1e9;
+    const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(H1.x - 6, 0, H1.z + 9)));
+    let maxY = 0;
+    run(sim, 15, () => { if (inH1(e.pos)) maxY = Math.max(maxY, e.pos.y); return emptyCommand(); });
+    expect(e.pos.distanceTo(player.pos)).toBeLessThan(2);
+    expect(maxY).toBeLessThan(0.5); // on the floor, not on the roof
+  });
+
+  it('a jackal climbs the outside stairs to a player on the roof terrace', () => {
+    const { sim, player } = newGame();
+    player.pos.set(20.5, 4.99, 8.7);
+    player.health = player.maxHealth = 1e9;
+    const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(28, 0, 16)));
+    run(sim, 15);
+    expect(e.pos.y).toBeGreaterThan(4.5);
+    expect(e.pos.distanceTo(player.pos)).toBeLessThan(2.5);
+  });
+
+  it('scarabs do not climb onto a roof to reach a player inside', () => {
+    const { sim, player } = newGame();
+    player.pos.set(H1.x + 1, 0, H1.z);
+    player.health = player.maxHealth = 1e9;
+    const sc = pacify(sim.enemies.spawn('scarab', new THREE.Vector3(H1.x - 1, 0, H1.z - 6)));
+    let maxY = 0;
+    run(sim, 15, () => { if (inH1(sc.pos)) maxY = Math.max(maxY, sc.pos.y); return emptyCommand(); });
+    expect(maxY).toBeLessThan(0.5);
+    expect(sc.pos.distanceTo(player.pos)).toBeLessThan(2);
   });
 });
 
@@ -253,6 +292,7 @@ describe('phase 5 enemies', () => {
   it('the pharaoh changes at half health: immune while rising, then storm, orb rain and teleports', () => {
     const { sim, player } = newGame();
     player.health = player.maxHealth = 1e6;
+    player.pos.set(0, 0, 24); // close enough that the cornered pharaoh teleports away
     const boss = sim.enemies.spawn('boss', new THREE.Vector3(0, 0, 20));
     boss.rise = 0;
     sim.enemies.damage(boss, boss.maxHp * 0.55, null, player);
@@ -269,6 +309,166 @@ describe('phase 5 enemies', () => {
   });
 });
 
+describe('progression', () => {
+  it('upgrade cards change the rules: bigger magazines, faster reload, stronger blade', () => {
+    const { sim, player } = newGame();
+    applyUpgrade(player, 'bigMags');
+    applyUpgrade(player, 'quickHands');
+    const lo = player.loadout;
+    const pistol = lo.items[1];
+    pistol.mag = 0;
+    lo.startReload();
+    expect(lo.reloading).toBeCloseTo(1.25 * 0.7, 5);
+    run(sim, 1);
+    expect(pistol.mag).toBe(18); // 12 * 1.5
+    applyUpgrade(player, 'vitality');
+    expect(player.maxHealth).toBe(125);
+    expect(player.health).toBe(125);
+  });
+
+  it('a card at its maximum is never drawn again', () => {
+    const { player } = newGame();
+    applyUpgrade(player, 'piercing');
+    expect(applyUpgrade(player, 'piercing')).toBe(false);
+    for (let i = 0; i < 50; i++) expect(drawCards(player, 4)).not.toContain('piercing');
+    for (const u of UPGRADES) while (applyUpgrade(player, u.id));
+    expect(drawCards(player, 3)).toEqual([]);
+  });
+
+  it('piercing bullets go through the first enemy into the next one', () => {
+    const { sim, player } = newGame();
+    applyUpgrade(player, 'piercing');
+    const a = pacify(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 30)));
+    const b = pacify(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 24)));
+    a.T = b.T = { ...a.T, speed: 0 };
+    run(sim, 0.05, (p) => aimAt(p, new THREE.Vector3(0, 1.3, 20), { fire: true }));
+    expect(a.hp).toBeLessThan(a.maxHp);
+    expect(b.hp).toBeLessThan(b.maxHp);
+  });
+
+  it('clearing a wave offers cards (four after a completed objective) and scores the wave', () => {
+    const { sim, player } = newGame({ mode: 'waves' });
+    sim.start();
+    run(sim, 3); // wave 1 begins
+    sim.mode.objective = { id: 'blade', text: 'test', target: 1, stat: 'meleeKills' };
+    player.waveStats.meleeKills = 1;
+    sim.mode.queue = [];
+    for (const e of [...sim.enemies.list]) sim.enemies.damage(e, 1e6, null, null);
+    run(sim, 0.1);
+    expect(player.cardOffer.length).toBe(4);
+    expect(player.score).toBe(500 + 1000);
+    const wave = sim.mode.wave;
+    run(sim, 10);
+    expect(sim.mode.wave).toBe(wave); // the break waits for the card
+    sim.step(DT, new Map([['p1', { ...emptyCommand(), pickCard: 2 }]]));
+    expect(player.cardOffer).toBe(null);
+    expect(Object.keys(player.upgrades).length).toBe(1);
+    run(sim, 8);
+    expect(sim.mode.wave).toBe(wave + 1);
+  });
+
+  it('kills are scored by type, doubled for elites and scaled by difficulty', () => {
+    const { sim, player } = newGame({ difficulty: 'hard' });
+    sim.enemies.damage(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 0)), 1e6, null, player);
+    expect(player.score).toBe(600); // 400 x 1.5
+    sim.enemies.damage(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 0), { elite: true }), 1e6, null, player);
+    expect(player.score).toBe(900);
+  });
+});
+
+describe('co-op', () => {
+  function coopGame(mode = 'sandbox') {
+    const sim = new Sim(level, { mode });
+    const a = sim.addPlayer('a'), b = sim.addPlayer('b');
+    b.pos.x += 1.5;
+    return { sim, a, b };
+  }
+  const use = (id) => (p) => ({ ...emptyCommand(), use: p.id === id });
+
+  it('a downed player is picked up by a teammate holding the use key for 3 s', () => {
+    const { sim, a, b } = coopGame();
+    sim.hitPlayer(b, 500, b.pos.clone().add(new THREE.Vector3(0, 0, -1)), 'melee');
+    expect(b.dead).toBe(true);
+    expect(sim.over).toBe(false); // a teammate still stands
+    run(sim, 2, use('a'));
+    expect(b.dead).toBe(true);
+    expect(b.revive).toBeGreaterThan(0.6);
+    run(sim, 1.2, use('a'));
+    expect(b.dead).toBe(false);
+    expect(b.health).toBeCloseTo(b.maxHealth * 0.4, 0);
+    expect(a.score).toBeGreaterThan(0);
+    expect(sim.drainEvents().some((e) => e.type === 'playerRevived' && e.pid === 'b' && e.by === 'a')).toBe(true);
+  });
+
+  it('too far away nobody gets picked up, and the progress fades when the key is let go', () => {
+    const { sim, a, b } = coopGame();
+    sim.hitPlayer(b, 500, b.pos.clone(), 'explosion');
+    run(sim, 1.5, use('a'));
+    const half = b.revive;
+    run(sim, 1, () => emptyCommand());
+    expect(b.revive).toBeLessThan(half);
+    a.pos.x += 6;
+    run(sim, 4, use('a'));
+    expect(b.dead).toBe(true);
+  });
+
+  it('the game is lost when every player is down', () => {
+    const { sim, a, b } = coopGame('waves');
+    sim.start();
+    sim.hitPlayer(a, 500, a.pos.clone(), 'explosion');
+    run(sim, 0.5);
+    expect(sim.over).toBe(false);
+    sim.hitPlayer(b, 500, b.pos.clone(), 'explosion');
+    run(sim, 0.5);
+    expect(sim.over).toBe(true);
+    expect(sim.victory).toBe(false);
+  });
+
+  it('more players bring more enemies, and the end of a wave picks the downed up', () => {
+    const { sim, a, b } = coopGame('waves');
+    a.health = a.maxHealth = b.health = b.maxHealth = 1e9;
+    sim.start();
+    run(sim, 3); // the first break, then wave 1 begins
+    expect(sim.mode.wave).toBe(1);
+    expect(sim.mode.enemiesLeft).toBe(Math.round(8 * 1.6)); // 8 jackals alone
+    b.health = 1; sim.hitPlayer(b, 10, b.pos.clone(), 'explosion');
+    expect(b.dead).toBe(true);
+    // a clears the wave
+    for (let i = 0; i < 4000 && sim.mode.wave === 1 && sim.mode.waveActive; i++) {
+      for (const e of sim.enemies.list) if (e.rise <= 0) sim.enemies.damage(e, 1e6, null, a);
+      run(sim, DT);
+    }
+    expect(sim.mode.waveActive).toBe(false);
+    expect(b.dead).toBe(false);
+  });
+});
+
+describe('survival mode', () => {
+  it('goes on past wave 5, with the pharaoh every fifth wave', () => {
+    const { sim, player } = newGame({ mode: 'survival' });
+    sim.start();
+    const bosses = [];
+    const cardWaves = [];
+    for (let i = 0; i < 60000 && sim.mode.wave < 11; i++) {
+      if (player.cardOffer && !cardWaves.includes(sim.mode.wave)) cardWaves.push(sim.mode.wave);
+      sim.mode.breakTimer = Math.min(sim.mode.breakTimer, 0.1);
+      sim.mode.spawnTimer = Math.min(sim.mode.spawnTimer, 0.05);
+      player.health = player.maxHealth;
+      if (player.cardOffer) sim.pickCard(player, 0);
+      for (const e of [...sim.enemies.list]) if (e.rise === 0) {
+        if (e.T.boss && !bosses.includes(sim.mode.wave)) bosses.push(sim.mode.wave);
+        sim.enemies.damage(e, e.T.boss ? 900 : 1e6, null, player);
+      }
+      sim.step(DT, new Map([['p1', emptyCommand()]]));
+    }
+    expect(sim.over).toBe(false);
+    expect(sim.mode.wave).toBe(11);
+    expect(bosses).toEqual([5, 10]);
+    expect(cardWaves).toEqual([5, 10]); // cards only after every fifth wave
+    expect(sim.mode.totalWaves).toBe(Infinity);
+  });
+});
+
 describe('waves mode', () => {
   it('runs the five waves to victory and unlocks the rifle then the shotgun', () => {
     const { sim, player } = newGame({ mode: 'waves', difficulty: 'normal' });
@@ -280,6 +480,7 @@ describe('waves mode', () => {
       sim.mode.breakTimer = Math.min(sim.mode.breakTimer, 0.1);
       sim.mode.spawnTimer = Math.min(sim.mode.spawnTimer, 0.05);
       player.health = 100;
+      if (player.cardOffer) sim.pickCard(player, 0);
       // the boss loses health in chunks so he goes through both summon thresholds
       for (const e of [...sim.enemies.list]) if (e.rise === 0) sim.enemies.damage(e, e.T.boss ? 600 : 1e6, null, player);
       sim.step(DT, new Map([['p1', emptyCommand()]]));

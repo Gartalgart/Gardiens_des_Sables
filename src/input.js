@@ -56,8 +56,8 @@ export class Input {
   // part of the weapon recoil is permanent: the simulation reports it and the view keeps it
   addPitch(p) { this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch + p)); }
 
-  // sensitivityScale: lower while aiming down sights
-  buildCommand(sensitivityScale) {
+  // sensitivityScale: lower while aiming down sights; cardMode: digit keys pick an upgrade card
+  buildCommand(sensitivityScale, cardMode = false) {
     const sens = 0.0022 * sensitivityScale * settings.sensitivity;
     this.yaw -= this.mouse.dx * sens;
     this.pitch -= this.mouse.dy * sens * (settings.invertY ? -1 : 1);
@@ -72,13 +72,18 @@ export class Input {
     let slot = null;
     ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((code, i) => { if (this.wasPressed(code)) slot = i; });
 
+    const pickCard = cardMode ? slot : null;
+    if (cardMode) slot = null;
+
     return {
       moveX, moveZ,
+      pickCard,
       sprint: this.down('ShiftLeft', 'ShiftRight'),
       jump: this.wasPressed('Space'),
       fire: this.mouse.left,
       aim: this.mouse.right,
       reload: this.wasPressed('KeyR'),
+      use: this.down('KeyE'),
       slot,
       cycle: Math.sign(this.mouse.wheel),
       yaw: this.yaw,

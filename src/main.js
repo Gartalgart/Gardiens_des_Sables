@@ -8,6 +8,10 @@ import { loadAssets } from './assets.js';
 import { Level } from './sim/level.js';
 import { Sim } from './sim/sim.js';
 import { DIFFICULTIES } from './sim/difficulty.js';
+import { PropsView } from './view/propsView.js';
+import { PlayerView } from './view/playerView.js';
+import { NetSession, defaultServer } from './net/session.js';
+import { emptyCommand } from './sim/player.js';
 import { WorldView } from './view/worldView.js';
 import { EnemyView, ENEMY_LOOK } from './view/enemyView.js';
 import { WeaponView } from './view/weaponView.js';
@@ -16,8 +20,10 @@ import { Effects } from './effects.js';
 import { Hud, fmtTime } from './hud.js';
 import { Sound } from './audio.js';
 import { settings, updateSettings, onSettingsChange, DEFAULTS, QUALITY } from './settings.js';
+import { topScores, recordScore } from './leaderboard.js';
+import { upgradeInfo } from './sim/progression.js';
 
-const LOCAL_ID = 'local';
+const SOLO_ID = 'local';
 
 const $ = (id) => document.getElementById(id);
 for (const id of ['help-main', 'help-pause']) $(id).appendChild($('help-tpl').content.cloneNode(true));
@@ -82,7 +88,10 @@ const game = {
   sim: null,
   bob: 0,
   difficulty: 'normal',
-  get player() { return this.sim?.players.get(LOCAL_ID) ?? null; },
+  mode: 'waves',
+  localId: SOLO_ID, // the server's id for this client in co-op
+  net: null, // the NetSession while a co-op game runs
+  get player() { return this.sim?.players.get(this.localId) ?? null; },
   get enemies() { return this.sim?.enemies ?? null; },
 };
 window.__game = game; // handy for debugging from the console
@@ -94,11 +103,13 @@ const [assets, levelData] = await Promise.all([
 ]);
 const level = new Level(levelData);
 const worldView = new WorldView(scene, assets.level, level);
+const propsView = new PropsView(scene, assets.props, level);
 const effects = new Effects(scene);
 const weaponView = new WeaponView(assets, vmScene, effects, worldFlash);
 const enemyView = new EnemyView(scene, assets, effects);
+const playerView = new PlayerView(scene, assets, effects);
 const hud = new Hud(level);
-Object.assign(game, { level, assets, worldView, weaponView, enemyView, camera, input, renderer, composer, effects });
+Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects });
 
 // ---------- settings ----------
 let appliedQuality = null;
@@ -140,6 +151,7 @@ function syncOptionsForm() {
   $('o-invert').checked = settings.invertY;
   $('o-fps').checked = settings.showFps;
   $('o-shake').checked = settings.cameraShake;
+  $('o-name').value = settings.playerName;
   document.querySelectorAll('#o-quality button').forEach((b) => b.classList.toggle('active', b.dataset.q === settings.quality));
 }
 for (const [key, o] of Object.entries(optionInputs)) {
@@ -148,6 +160,7 @@ for (const [key, o] of Object.entries(optionInputs)) {
 $('o-invert').addEventListener('change', (e) => updateSettings({ invertY: e.target.checked }));
 $('o-fps').addEventListener('change', (e) => updateSettings({ showFps: e.target.checked }));
 $('o-shake').addEventListener('change', (e) => updateSettings({ cameraShake: e.target.checked }));
+$('o-name').addEventListener('input', (e) => updateSettings({ playerName: e.target.value.trim().slice(0, 16) || 'Joueur' }));
 document.querySelectorAll('#o-quality button').forEach((b) => b.addEventListener('click', () => { updateSettings({ quality: b.dataset.q }); syncOptionsForm(); }));
 $('btn-options-reset').addEventListener('click', () => { updateSettings({ ...DEFAULTS }); syncOptionsForm(); });
 let optionsOpen = false;
@@ -166,6 +179,130 @@ let savedDiff = 'normal';
 try { savedDiff = localStorage.getItem('gds-difficulty') || 'normal'; } catch {}
 pickDifficulty(DIFFICULTIES[savedDiff] ? savedDiff : 'normal');
 
+// game mode picker: the five waves, or endless survival
+const modeButtons = document.querySelectorAll('#mode button');
+function pickMode(key) {
+  game.mode = key;
+  modeButtons.forEach((b) => b.classList.toggle('active', b.dataset.mode === key));
+  try { localStorage.setItem('gds-mode', key); } catch {}
+}
+modeButtons.forEach((b) => b.addEventListener('click', () => pickMode(b.dataset.mode)));
+let savedMode = 'waves';
+try { savedMode = localStorage.getItem('gds-mode') || 'waves'; } catch {}
+pickMode(savedMode === 'survival' ? 'survival' : 'waves');
+
+// ---------- leaderboard ----------
+const MODE_LABEL = { waves: 'Vagues', survival: 'Survie' };
+function boardTable(mode, difficulty, highlight = -1) {
+  const rows = topScores(mode, difficulty);
+  if (!rows.length) return '<table class="board"><tr><td class="empty">Aucun score pour l\'instant.</td></tr></table>';
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return `<table class="board"><tr><th>#</th><th>Pseudo</th><th class="num">Score</th><th class="num">Vague</th><th class="num">Temps</th></tr>${
+    rows.map((r, i) => `<tr class="${i === highlight ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td class="num">${r.score.toLocaleString('fr-FR')}</td><td class="num">${r.wave}</td><td class="num">${fmtTime(r.time)}</td></tr>`).join('')
+  }</table>`;
+}
+const board = { mode: 'waves', difficulty: 'normal' };
+function refreshBoard() {
+  document.querySelectorAll('#board-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === board.mode));
+  document.querySelectorAll('#board-diff button').forEach((b) => b.classList.toggle('active', b.dataset.diff === board.difficulty));
+  $('board-table').innerHTML = boardTable(board.mode, board.difficulty);
+}
+document.querySelectorAll('#board-mode button').forEach((b) => b.addEventListener('click', () => { board.mode = b.dataset.mode; refreshBoard(); }));
+document.querySelectorAll('#board-diff button').forEach((b) => b.addEventListener('click', () => { board.difficulty = b.dataset.diff; refreshBoard(); }));
+let boardOpen = false;
+$('btn-board').addEventListener('click', () => { boardOpen = true; board.mode = game.mode; board.difficulty = game.difficulty; refreshBoard(); refreshScreens(); });
+$('btn-board-back').addEventListener('click', () => { boardOpen = false; refreshScreens(); });
+
+// ---------- co-op: connection, rooms and lobby ----------
+const net = new NetSession(level);
+let coopScreen = null; // null, 'coop' (connect / join) or 'lobby'
+let configureOnJoin = false;
+try { $('c-server').value = localStorage.getItem('gds-server') || defaultServer(); } catch { $('c-server').value = defaultServer(); }
+function coopStatus(id, text, ok = false) {
+  $(id).textContent = text;
+  $(id).classList.toggle('ok', ok);
+}
+async function connectCoop() {
+  if (net.connected) return true;
+  const address = $('c-server').value.trim() || defaultServer();
+  try { localStorage.setItem('gds-server', address); } catch {}
+  coopStatus('coop-status', 'Connexion…', true);
+  try {
+    await net.connect(address, settings.playerName);
+    coopStatus('coop-status', '');
+    return true;
+  } catch (e) {
+    coopStatus('coop-status', `${e.message}. Le serveur est-il lancé (npm run server) ?`);
+    return false;
+  }
+}
+function renderLobby(room) {
+  $('lobby-code').textContent = room.code;
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  $('lobby-players').innerHTML = room.players.map((p) =>
+    `<li class="${p.id === net.id ? 'me' : ''}">${esc(p.name)}${p.id === room.host ? '<span class="tag">HÔTE</span>' : ''}</li>`).join('');
+  const host = net.isHost;
+  document.querySelectorAll('#lobby-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === room.mode));
+  document.querySelectorAll('#lobby-diff button').forEach((b) => b.classList.toggle('active', b.dataset.diff === room.difficulty));
+  $('lobby-mode').classList.toggle('locked', !host);
+  $('lobby-diff').classList.toggle('locked', !host);
+  $('btn-lobby-start').classList.toggle('hidden', !host);
+  $('lobby-sub').textContent = room.playing ? 'Une partie est en cours dans ce salon.'
+    : host ? `Donne ce code à tes coéquipiers (${room.players.length}/4).` : 'En attente du lancement par l\'hôte…';
+}
+$('btn-coop').addEventListener('click', () => { sound.init(); coopScreen = net.room ? 'lobby' : 'coop'; refreshScreens(); });
+$('btn-coop-back').addEventListener('click', () => { coopScreen = null; net.close(); refreshScreens(); });
+$('btn-coop-create').addEventListener('click', async () => {
+  if (!(await connectCoop())) return;
+  configureOnJoin = true;
+  net.create();
+});
+$('btn-coop-join').addEventListener('click', async () => {
+  const code = $('c-code').value.trim().toUpperCase();
+  if (!/^[A-Z]{4}$/.test(code)) return coopStatus('coop-status', 'Le code d\'un salon a 4 lettres.');
+  if (await connectCoop()) net.join(code);
+});
+document.querySelectorAll('#lobby-mode button').forEach((b) => b.addEventListener('click', () => net.configure(b.dataset.mode, net.room.difficulty)));
+document.querySelectorAll('#lobby-diff button').forEach((b) => b.addEventListener('click', () => net.configure(net.room.mode, b.dataset.diff)));
+$('btn-lobby-start').addEventListener('click', () => net.start());
+$('btn-lobby-leave').addEventListener('click', () => { net.leave(); coopScreen = 'coop'; refreshScreens(); });
+net.on.error = (msg) => coopStatus(coopScreen === 'lobby' ? 'lobby-status' : 'coop-status', msg);
+net.on.room = (room) => {
+  // the host's room starts with the mode and difficulty picked on the title screen
+  if (configureOnJoin && net.isHost) { configureOnJoin = false; net.configure(game.mode, game.difficulty); }
+  renderLobby(room);
+  if (game.state === 'menu' && coopScreen) { coopScreen = 'lobby'; coopStatus('lobby-status', ''); refreshScreens(); }
+};
+net.on.start = () => {
+  game.net = net;
+  game.sim = net;
+  game.localId = net.id;
+  coopScreen = null;
+  resetViews();
+  // the pointer lock needs a click: the pause screen asks for one if this one is refused
+  game.state = 'paused';
+  input.lock();
+  refreshScreens();
+};
+net.on.close = () => {
+  const inGame = !!game.net;
+  quitCoopGame();
+  coopScreen = 'coop';
+  refreshScreens();
+  coopStatus('coop-status', inGame ? 'Connexion au serveur perdue.' : 'Déconnecté du serveur.');
+};
+// back to the title screen from a co-op game (the room is left)
+function quitCoopGame() {
+  if (net.room) net.leave();
+  if (game.net) { game.net = null; game.sim = null; resetViews(); }
+  game.localId = SOLO_ID;
+  if (game.state !== 'menu') { game.state = 'menu'; if (document.pointerLockElement) document.exitPointerLock(); }
+}
+function leaveCoop() {
+  if (net.room) net.leave();
+  game.net = null;
+}
+
 btnPlay.disabled = false;
 btnPlay.textContent = 'Jouer';
 game.state = 'menu';
@@ -173,17 +310,27 @@ game.state = 'menu';
 // ---------- game flow ----------
 // A new simulation per game; the local player is one of its players (alone, for now).
 function startGame() {
-  game.sim = new Sim(level, { difficulty: game.difficulty, mode: 'waves' });
-  game.sim.addPlayer(LOCAL_ID);
-  enemyView.clear();
-  weaponView.reset();
-  worldView.setWeather('clear');
-  input.resetLook();
-  game.bob = 0;
+  leaveCoop();
+  game.localId = SOLO_ID;
+  game.sim = new Sim(level, { difficulty: game.difficulty, mode: game.mode });
+  game.sim.addPlayer(SOLO_ID);
+  resetViews();
   game.sim.start();
   handleEvents();
 }
 game.start = () => startGame();
+
+function resetViews() {
+  enemyView.clear();
+  playerView.clear();
+  hud.team([]);
+  hud.prompt(null);
+  hud.downed(null);
+  weaponView.reset();
+  worldView.setWeather('clear');
+  input.resetLook();
+  game.bob = 0;
+}
 
 btnPlay.addEventListener('click', () => {
   sound.init();
@@ -191,8 +338,22 @@ btnPlay.addEventListener('click', () => {
   input.lock();
 });
 $('btn-resume').addEventListener('click', () => input.lock());
-$('btn-restart').addEventListener('click', () => { startGame(); input.lock(); });
-$('btn-again').addEventListener('click', () => { startGame(); input.lock(); });
+$('btn-restart').addEventListener('click', () => {
+  if (game.net) { quitCoopGame(); coopScreen = null; refreshScreens(); return; } // "Quitter la partie"
+  startGame(); input.lock();
+});
+$('btn-again').addEventListener('click', () => {
+  if (game.net) {
+    // "Retour au salon": the host can start another game
+    game.net = null; game.sim = null; resetViews();
+    game.state = 'menu'; coopScreen = 'lobby';
+    if (net.room) renderLobby(net.room);
+    refreshScreens();
+    return;
+  }
+  startGame(); input.lock();
+});
+$('btn-menu').addEventListener('click', () => { if (game.net) quitCoopGame(); coopScreen = null; game.state = 'menu'; refreshScreens(); });
 
 // Every button that starts or resumes play requests the pointer lock; the lock is what un-pauses.
 input.onLockChange = (locked) => {
@@ -201,16 +362,24 @@ input.onLockChange = (locked) => {
     sound.resume();
   } else if (game.state === 'playing') {
     game.state = 'paused';
-    sound.suspend();
+    if (!game.net) sound.suspend(); // co-op: the game goes on, and so does its sound
   }
   refreshScreens();
 };
 
 function refreshScreens() {
   if (game.state === 'playing') optionsOpen = false;
+  if (game.state !== 'menu') boardOpen = false;
   $('options').classList.toggle('hidden', !optionsOpen);
-  $('menu').classList.toggle('hidden', game.state !== 'menu' || optionsOpen);
+  $('board').classList.toggle('hidden', !boardOpen);
+  $('menu').classList.toggle('hidden', game.state !== 'menu' || optionsOpen || boardOpen || !!coopScreen);
+  $('coop').classList.toggle('hidden', game.state !== 'menu' || optionsOpen || coopScreen !== 'coop');
+  $('lobby').classList.toggle('hidden', game.state !== 'menu' || optionsOpen || coopScreen !== 'lobby');
   $('pause').classList.toggle('hidden', game.state !== 'paused' || optionsOpen);
+  // co-op: the world goes on during the pause, and a game cannot be restarted alone
+  $('pause').querySelector('h2').textContent = game.net ? 'Partie en cours' : 'Pause';
+  $('btn-resume').textContent = game.net ? 'Jouer' : 'Reprendre';
+  $('btn-restart').textContent = game.net ? 'Quitter la partie' : 'Recommencer';
   $('end').classList.toggle('hidden', game.state !== 'over');
   hud.show(game.state === 'playing' || game.state === 'paused');
 }
@@ -218,14 +387,23 @@ function refreshScreens() {
 function endGame(victory) {
   const sim = game.sim, p = game.player;
   game.state = 'over';
-  $('end-title').textContent = victory ? 'Victoire' : 'Défaite';
-  $('end-sub').textContent = victory
-    ? 'La cité-temple retrouve son silence. Les gardiens sont retournés au sable.'
-    : `Tombé pendant la vague ${sim.mode.wave}.`;
+  const survival = sim.mode.id === 'survival';
+  $('end-title').textContent = survival ? 'Fin de la survie' : victory ? 'Victoire' : 'Défaite';
+  $('end-sub').textContent = survival
+    ? `Tu as tenu jusqu'à la vague ${sim.mode.wave}.`
+    : victory ? 'La cité-temple retrouve son silence. Les gardiens sont retournés au sable.'
+      : `Tombé pendant la vague ${sim.mode.wave}.`;
+  // score and local leaderboard
+  const rank = recordScore(sim.mode.id, sim.difficulty.key, { name: settings.playerName + (game.net ? ' (coop)' : ''), score: p.score, wave: sim.mode.wave, time: sim.time });
+  $('btn-again').textContent = game.net ? 'Retour au salon' : 'Rejouer';
+  $('end-score').innerHTML = `${p.score.toLocaleString('fr-FR')} pts${rank === 0 ? '<small>NOUVEAU RECORD !</small>' : rank > 0 ? `<small>${rank + 1}e du classement</small>` : ''}`;
+  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">CLASSEMENT — ${MODE_LABEL[sim.mode.id]} · ${sim.difficulty.label}</div>${boardTable(sim.mode.id, sim.difficulty.key, rank)}`;
+  const cards = Object.entries(p.upgrades).map(([id, n]) => upgradeInfo(id).name + (n > 1 ? ' ×2' : '')).join(', ') || '—';
   const rows = [
     ['Temps', fmtTime(sim.time)],
-    ['Difficulté', sim.difficulty.label],
-    ['Vague atteinte', `${sim.mode.wave} / ${sim.mode.totalWaves}`],
+    ['Mode', `${MODE_LABEL[sim.mode.id]} · ${sim.difficulty.label}`],
+    ['Vague atteinte', Number.isFinite(sim.mode.totalWaves) ? `${sim.mode.wave} / ${sim.mode.totalWaves}` : sim.mode.wave],
+    ['Améliorations', cards],
     ['Ennemis abattus', p.stats.kills],
     ['Tirs à la tête', p.stats.headshots],
     ['Précision', `${p.accuracy} %`],
@@ -268,15 +446,17 @@ function parrySparks(count) {
 }
 
 const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35 };
+const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? 'Un allié').toUpperCase();
 
 function handleEvents() {
   const sim = game.sim;
   let hit = null;
   for (const ev of sim.drainEvents()) {
-    const mine = ev.pid === LOCAL_ID;
+    const mine = ev.pid === game.localId;
     switch (ev.type) {
       case 'playerShot':
         if (mine) { sound.shot(ev.weapon); weaponView.onShot(ev, camera); addShake(SHOT_SHAKE[ev.weapon] ?? 0); }
+        else { playerView.onEvent(ev); sound.shot(ev.weapon, pan(ev.origin), 0.6 * Math.max(0.1, vol(ev.origin, 90))); }
         break;
       case 'impactWall': effects.impactWall(ev.point, ev.normal); break;
       case 'impactEnemy': effects.impactEnemy(ev.point, ev.normal, ENEMY_LOOK[ev.enemyType].color); break;
@@ -288,7 +468,7 @@ function handleEvents() {
         effects.impactEnemy(ev.point, ev.normal, ENEMY_LOOK[ev.enemyType].color);
         effects.burst(ev.point, ev.fwd, { count: 18, color: new THREE.Color(1, 0.8, 0.5), speed: 7, size: 0.07, life: 0.25 });
         break;
-      case 'swing': if (mine) sound.swoosh(); break;
+      case 'swing': if (mine) sound.swoosh(); else playerView.onEvent(ev); break;
       case 'slash': if (mine) { sound.slash(ev.hits); hud.hit(false); weaponView.onSlashHit(); } break;
       case 'reload': if (mine) sound.reload(ev.duration); break;
       case 'dry': if (mine) sound.dry(); break;
@@ -352,6 +532,19 @@ function handleEvents() {
       case 'banner': hud.banner(ev.title, ev.sub, ev.duration); break;
       case 'horn': sound.horn(ev.victory); break;
       case 'unlock': sound.pickup(); break;
+      case 'cardOffer': break; // the HUD reads the offer from the player
+      case 'cardPicked': if (mine) { sound.pickup(); hud.pickup(upgradeInfo(ev.card).name.toUpperCase()); } break;
+      case 'objective':
+        if (ev.state === 'done' && ev.winners.includes(game.localId)) { hud.pickup('OBJECTIF RÉUSSI  +1000'); sound.horn(true); }
+        else if (ev.state === 'failed' && ev.text) hud.pickup('OBJECTIF MANQUÉ');
+        break;
+      case 'playerDown':
+        if (!mine && game.net) { hud.pickup(`${nameOf(ev.pid)} EST À TERRE !`); sound.horn(false); }
+        break;
+      case 'playerRevived':
+        if (mine) { hud.pickup('RELEVÉ !'); sound.pickup(); }
+        else if (ev.by === game.localId) { hud.pickup(`${nameOf(ev.pid)} RELEVÉ  +200`); sound.pickup(); }
+        break;
       case 'gameOver': endGame(ev.victory); break;
     }
   }
@@ -383,19 +576,24 @@ let tickClock = 0;
 function tick(dt, now = (tickClock += dt)) {
   worldView.update(now, dt, camera.position);
   const sim = game.sim;
-  if (game.state === 'playing') {
+  // co-op: the shared world goes on while this player is in the pause menu
+  if (sim && game.player && (game.state === 'playing' || (game.net && game.state === 'paused'))) {
     const p = game.player;
     const lo = p.loadout;
     const aiming = lo.adsT > 0.5;
-    const cmd = input.buildCommand(lo.current.def.melee ? 1 : 1 - lo.adsT * 0.45);
-    sim.step(dt, new Map([[LOCAL_ID, cmd]]));
+    const cmd = game.state === 'playing'
+      ? input.buildCommand(lo.current.def.melee ? 1 : 1 - lo.adsT * 0.45, !!p.cardOffer)
+      : { ...emptyCommand(), yaw: input.yaw, pitch: input.pitch };
+    sim.step(dt, new Map([[game.localId, cmd]]));
 
     // camera: the player's eye with a walking bob, plus the recoil the simulation applied
     const hv = Math.hypot(p.vel.x, p.vel.z);
     if (p.moving) game.bob += hv * dt * 1.6;
     const bobY = p.moving ? Math.sin(game.bob * 2) * 0.035 * (aiming ? 0.15 : 1) : 0;
     camera.position.set(p.pos.x, p.eyeY + bobY, p.pos.z);
+    if (sim.viewOffset) camera.position.add(sim.viewOffset); // eases out the server's corrections
     camera.rotation.set(p.pitch + p.recoil.pitch, p.yaw + p.recoil.yaw, 0, 'YXZ');
+    if (p.dead) { camera.position.y = p.pos.y + 0.45; camera.rotation.z = 0.35; } // down on the sand
     applyShake(dt, now);
     camera.updateMatrixWorld();
 
@@ -410,6 +608,7 @@ function tick(dt, now = (tickClock += dt)) {
     // debris and poses slow down with the sword hit-stop and the parry slow motion, like the enemies
     const viewDt = dt * sim.timeScale;
     enemyView.sync(sim.enemies, viewDt, sim.time);
+    if (game.net) coopHud(p, dt);
 
     // priming mummies beep faster and faster until they blow up
     for (const [id, t] of primes) {
@@ -423,6 +622,13 @@ function tick(dt, now = (tickClock += dt)) {
 
     hud.update(dt, {
       wave: Math.max(1, sim.mode.wave),
+      totalWaves: sim.mode.totalWaves,
+      score: p.score,
+      objective: sim.mode.objective,
+      waveStats: p.waveStats,
+      waveActive: sim.mode.waveActive,
+      cardOffer: p.cardOffer,
+      upgrades: p.upgrades,
       time: sim.time,
       enemiesLeft: sim.mode.enemiesLeft,
       health: p.health,
@@ -434,8 +640,11 @@ function tick(dt, now = (tickClock += dt)) {
       ads: lo.adsT,
       boss: sim.enemies.boss,
     });
-    hud.drawMinimap(p, sim.enemies);
+    hud.drawMinimap(p, sim.enemies, game.net ? [...sim.players.values()].filter((o) => o !== p) : []);
+    // the music follows the fight: calm between waves, louder in combat, fiercer against the pharaoh
+    sound.setMusicIntensity(sim.over ? 0 : sim.enemies.boss ? 2 : sim.mode.waveActive && sim.enemies.alive ? 1 : 0);
   } else if (game.state === 'menu') {
+    sound.setMusicIntensity(0);
     if (Math.abs(camera.fov - settings.fov) > 0.01) { camera.fov = settings.fov; camera.updateProjectionMatrix(); }
     // slow fly-around of the temple city behind the title screen
     menuAngle += dt * 0.05;
@@ -443,13 +652,30 @@ function tick(dt, now = (tickClock += dt)) {
     camera.lookAt(0, 3, 12);
   }
 
-  effects.update(game.state === 'paused' ? 0 : dt);
-  vmScene.visible = game.state === 'playing' || game.state === 'paused';
+  effects.update(game.state === 'paused' && !game.net ? 0 : dt);
+  vmScene.visible = (game.state === 'playing' || game.state === 'paused') && !game.player?.dead;
   vmFlash.intensity = worldFlash.intensity * 0.15;
   composer.render();
   input.endFrame();
 }
 game.tick = tick;
+
+// co-op HUD: teammates, the use prompt next to a downed teammate, and the downed screen
+function coopHud(p, dt) {
+  const sim = game.sim;
+  playerView.sync(sim.players, game.localId, dt);
+  const mates = [...sim.players.values()].filter((o) => o !== p);
+  hud.team(mates);
+  let near = null, nd = 2.2;
+  if (!p.dead) {
+    for (const o of mates) {
+      const d = Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+      if (o.dead && d < nd) { nd = d; near = o; }
+    }
+  }
+  hud.prompt(near ? `Maintiens [E] pour relever ${near.name} — ${Math.round(near.revive * 100)} %` : null);
+  hud.downed(p.dead ? p.revive : null, mates.every((o) => o.dead));
+}
 
 refreshScreens();
 frame();

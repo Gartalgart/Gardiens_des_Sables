@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { STEP, EYE, PLAYER_RADIUS, PLAYER_HEIGHT, GRAVITY } from './constants.js';
 import { Loadout } from './weapons.js';
+import { baseMods, freshWaveStats } from './progression.js';
 
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 
 // An empty command: what a player does when no input arrives.
 export function emptyCommand() {
-  return { moveX: 0, moveZ: 0, sprint: false, jump: false, fire: false, aim: false, reload: false, slot: null, cycle: 0, yaw: 0, pitch: 0 };
+  return { moveX: 0, moveZ: 0, sprint: false, jump: false, fire: false, aim: false, reload: false, use: false, slot: null, cycle: 0, pickCard: null, yaw: 0, pitch: 0 };
 }
 
 // One player in the simulation. Commands drive it; the client only reads it.
@@ -30,8 +31,16 @@ export class PlayerSim {
     this.stepDist = 0;
     this.sprinting = false;
     this.moving = false;
-    this.dead = false;
+    this.dead = false; // alone: game over; in co-op: down, until a teammate picks them up
+    this.revive = 0; // 0..1, how far a teammate got picking this player up
+    this.reviveBy = null; // id of the teammate doing it this step
+    this.name = id;
     this.stats = { kills: 0, headshots: 0, damageTaken: 0, shotsFired: 0, shotsHit: 0 };
+    this.score = 0;
+    this.mods = baseMods(); // what the upgrade cards changed (see progression.js)
+    this.upgrades = {}; // card id -> times taken
+    this.cardOffer = null; // card ids to choose from between waves
+    this.waveStats = freshWaveStats(); // for the wave's secondary objective
     this.loadout = new Loadout(this, sim);
   }
 
@@ -59,7 +68,7 @@ export class PlayerSim {
     if (len > 1) { fx /= len; fz /= len; }
 
     this.sprinting = cmd.sprint && fz < 0 && !aiming && this.onGround;
-    const speed = aiming ? 3.2 : this.sprinting ? 8.8 : 5.6;
+    const speed = (aiming ? 3.2 : this.sprinting ? 8.8 : 5.6) * this.mods.speed;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wx = (fx * cos + fz * sin) * speed;
     const wz = (-fx * sin + fz * cos) * speed;
@@ -108,8 +117,9 @@ export class PlayerSim {
     this.recoil.yaw -= this.recoil.yaw * rk;
 
     const D = this.sim.difficulty;
-    if (!this.dead && this.sim.time - this.lastHit > D.regenDelay && this.health < this.maxHealth) {
-      this.health = Math.min(this.maxHealth, this.health + D.regenRate * dt);
+    const regenDelay = Math.max(0.5, D.regenDelay - this.mods.regenDelayCut);
+    if (!this.dead && this.sim.time - this.lastHit > regenDelay && this.health < this.maxHealth) {
+      this.health = Math.min(this.maxHealth, this.health + D.regenRate * this.mods.regenMul * dt);
     }
   }
 

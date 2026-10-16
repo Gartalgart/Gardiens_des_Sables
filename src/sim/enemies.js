@@ -70,7 +70,7 @@ export class Enemies {
   spawn(type, position, opts = {}) {
     const T = TYPES[type];
     const elite = !!opts.elite;
-    const hp = T.hp * this.hpMul * (elite ? 2 : 1);
+    const hp = T.hp * this.hpMul * (elite ? 2 : 1) * (T.boss ? this.sim.playerScale : 1);
     const e = {
       id: this.sim.nextId(),
       type, T, elite,
@@ -118,9 +118,10 @@ export class Enemies {
   get boss() { return this.list.find((e) => e.T.boss) || null; }
 
   // ---------- player attacks ----------
-  raycast(origin, dir, maxDist) {
+  raycast(origin, dir, maxDist, skip = null) {
     let best = null;
     for (const e of this.list) {
+      if (e === skip) continue;
       const base = e.pos.y + e.lift - e.rise * e.T.height;
       const t = rayCylinder(origin, dir, e.pos, e.T.radius, base, base + e.T.height);
       if (t !== null && t < maxDist && (!best || t < best.dist)) {
@@ -170,16 +171,28 @@ export class Enemies {
     if (i < 0) return;
     this.list.splice(i, 1);
     this.sim.emit('enemyKill', { id: e.id, enemyType: e.type, pos: e.pos.clone(), dir: dir ? dir.clone() : null, cause, killer: killer?.id ?? null });
-    if (killer) killer.stats.kills++;
+    if (killer) {
+      killer.stats.kills++;
+      this.sim.scoreKill(killer, e, cause);
+      if (cause === 'melee') {
+        killer.waveStats.meleeKills++;
+        if (killer.mods.lifesteal && !killer.dead) killer.health = Math.min(killer.maxHealth, killer.health + killer.mods.lifesteal);
+      }
+    }
+    if (e.T.boss && this.sim.weather !== 'clear' && !this.list.some((o) => o.T.boss)) {
+      this.sim.weather = 'clear';
+      this.sim.emit('weather', { kind: 'clear' });
+    }
     if (e.T.explode && !e.exploded) {
       e.exploded = true;
       this.sim.explode(e.pos.clone().setY(e.pos.y + 1), e.T.explode, killer);
     }
     if (!e.T.boss && cause !== 'self') {
       // health only rewards blade kills; ammo can drop either way; elites always drop something
-      const healthDrop = cause === 'melee' && (e.elite || Math.random() < (e.T.big ? 1 : 0.5));
+      const luck = killer?.mods.drops ?? 1; // the "Pillard" card
+      const healthDrop = cause === 'melee' && (e.elite || Math.random() < (e.T.big ? 1 : 0.5) * luck);
       if (healthDrop) this.#dropPickup(e.pos, 'health');
-      else if (e.elite || Math.random() < (e.T.big ? 0.9 : 0.3)) this.#dropPickup(e.pos, 'ammo');
+      else if (e.elite || Math.random() < (e.T.big ? 0.9 : 0.3) * luck) this.#dropPickup(e.pos, 'ammo');
     }
   }
 
@@ -340,14 +353,24 @@ export class Enemies {
     e.climbing = false;
     if (len > 1e-6) {
       const ahead = nav.floorAt(e.pos.x + (mx / len) * 0.35, e.pos.z + (mz / len) * 0.35);
-      if (ahead > e.pos.y + 0.3) {
+      // a wall ahead: crawl up it, unless a roof is overhead (inside a house)
+      if (ahead > e.pos.y + 0.3 && !nav.coveredAt(e.pos.x, e.pos.z) && nav.climbableAt(e.pos.x + (mx / len) * 0.35, e.pos.z + (mz / len) * 0.35)) {
         e.pos.y = Math.min(ahead, e.pos.y + 3.5 * dt);
         e.climbing = true;
         moved = 3.5;
       } else {
-        e.pos.x = THREE.MathUtils.clamp(e.pos.x + mx, -60, 60);
-        e.pos.z = THREE.MathUtils.clamp(e.pos.z + mz, -60, 60);
-        moved = len / dt;
+        // the walls and roofs of houses are off limits: slide along them instead
+        const here = nav.climbableAt(e.pos.x, e.pos.z);
+        const ok = (dx, dz) => !here || nav.climbableAt(e.pos.x + dx, e.pos.z + dz);
+        let dx = mx, dz = mz;
+        if (!ok(dx, dz)) {
+          if (ok(dx, 0)) dz = 0;
+          else if (ok(0, dz)) dx = 0;
+          else dx = dz = 0;
+        }
+        e.pos.x = THREE.MathUtils.clamp(e.pos.x + dx, -60, 60);
+        e.pos.z = THREE.MathUtils.clamp(e.pos.z + dz, -60, 60);
+        moved = Math.hypot(dx, dz) / dt;
       }
     }
     if (!e.climbing) {

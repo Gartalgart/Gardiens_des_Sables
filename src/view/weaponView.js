@@ -197,7 +197,7 @@ export class WeaponView {
     }
     if (player.sprinting) { rx -= 0.35; ry += 0.5; pos.x -= 0.05; pos.y -= 0.03; }
     if (loadout.reloading > 0) {
-      const k = 1 - loadout.reloading / def.reload;
+      const k = 1 - loadout.reloading / (loadout.reloadTotal || def.reload);
       const dip = Math.sin(Math.min(1, k) * Math.PI);
       rx -= dip * 0.6; rz += dip * 0.5; pos.y -= dip * 0.1;
     }

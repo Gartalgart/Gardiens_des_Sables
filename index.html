@@ -18,13 +18,16 @@
     </div>
 
     <div id="top-center">
-      <div id="wave-label">VAGUE <span id="wave-num">1</span><span class="dim">/5</span></div>
+      <div id="wave-label">VAGUE <span id="wave-num">1</span><span class="dim" id="wave-total">/5</span></div>
       <div id="timer">00:00</div>
+      <div id="objective"></div>
     </div>
 
     <div id="top-right">
       <div class="label">ENNEMIS RESTANTS</div>
       <div id="enemies-left">0</div>
+      <div class="label">SCORE</div>
+      <div id="score">0</div>
     </div>
 
     <div id="crosshair">
@@ -51,8 +54,18 @@
       </div>
     </div>
 
+    <div id="team"></div>
+    <div id="prompt" class="hidden"></div>
+    <div id="downed" class="hidden"><div class="downed-title">À terre</div><div id="downed-sub">Un coéquipier peut te relever</div><div class="revive-bar"><div id="downed-fill"></div></div></div>
+
     <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
     <div id="pickup-msg"></div>
+
+    <div id="cards" class="hidden">
+      <div id="cards-title">Choisis une amélioration</div>
+      <div id="cards-sub"></div>
+      <div id="cards-list"></div>
+    </div>
   </div>
 
   <div id="parry-flash"></div>
@@ -62,14 +75,20 @@
   <div id="menu" class="screen">
     <div class="panel">
       <h1>Gardiens<br /><span>des Sables</span></h1>
-      <p class="lede">La cité-temple s'est réveillée. Ses gardiens de pierre se lèvent à la tombée de la nuit.<br />Tiens bon pendant <b>cinq vagues</b>.</p>
+      <p class="lede">La cité-temple s'est réveillée. Ses gardiens de pierre se lèvent à la tombée de la nuit.<br />Tiens bon pendant <b>cinq vagues</b>… ou aussi longtemps que possible.</p>
+      <div id="mode" class="seg-row">
+        <button data-mode="waves">Vagues</button>
+        <button data-mode="survival">Survie</button>
+      </div>
       <div id="difficulty">
         <button data-diff="easy">Facile</button>
         <button data-diff="normal">Normal</button>
         <button data-diff="hard">Difficile</button>
       </div>
       <button id="btn-play" disabled>Chargement…</button>
+      <button class="secondary" id="btn-coop">Coopération</button>
       <button class="secondary btn-options">Options</button>
+      <button class="secondary" id="btn-board">Classement</button>
       <div class="help" id="help-main"></div>
     </div>
   </div>
@@ -88,6 +107,8 @@
     <div class="panel">
       <h2>Options</h2>
       <div class="opts">
+        <label for="o-name">Pseudo</label>
+        <div class="opt-row"><input type="text" id="o-name" maxlength="16" spellcheck="false" /></div>
         <label for="o-sens">Sensibilité de la souris</label>
         <div class="opt-row"><input type="range" id="o-sens" min="0.2" max="3" step="0.05" /><output id="v-sens"></output></div>
         <label for="o-invert">Inverser l'axe vertical</label>
@@ -120,8 +141,65 @@
     <div class="panel">
       <h2 id="end-title">Victoire</h2>
       <p id="end-sub" class="lede"></p>
+      <div id="end-score"></div>
       <div id="stats"></div>
+      <div id="end-board"></div>
       <button id="btn-again">Rejouer</button>
+      <button class="secondary" id="btn-menu">Menu principal</button>
+    </div>
+  </div>
+
+  <div id="coop" class="screen hidden">
+    <div class="panel">
+      <h2>Coopération</h2>
+      <p class="lede">Jusqu'à 4 joueurs contre les gardiens. Lance le serveur avec <code>npm run server</code>, puis crée un salon et donne son code à tes coéquipiers.</p>
+      <div class="opts">
+        <label for="c-server">Serveur</label>
+        <div class="opt-row"><input type="text" id="c-server" spellcheck="false" /></div>
+        <label for="c-code">Code du salon</label>
+        <div class="opt-row"><input type="text" id="c-code" maxlength="4" spellcheck="false" placeholder="ABCD" /></div>
+      </div>
+      <div id="coop-status" class="status"></div>
+      <button id="btn-coop-create">Créer un salon</button>
+      <button id="btn-coop-join" class="secondary">Rejoindre</button>
+      <button id="btn-coop-back" class="secondary">Retour</button>
+    </div>
+  </div>
+
+  <div id="lobby" class="screen hidden">
+    <div class="panel">
+      <h2>Salon <span id="lobby-code">····</span></h2>
+      <p class="lede" id="lobby-sub">Donne ce code à tes coéquipiers.</p>
+      <ul id="lobby-players"></ul>
+      <div id="lobby-mode" class="seg-row">
+        <button data-mode="waves">Vagues</button>
+        <button data-mode="survival">Survie</button>
+      </div>
+      <div id="lobby-diff" class="seg-row">
+        <button data-diff="easy">Facile</button>
+        <button data-diff="normal">Normal</button>
+        <button data-diff="hard">Difficile</button>
+      </div>
+      <div id="lobby-status" class="status"></div>
+      <button id="btn-lobby-start">Lancer la partie</button>
+      <button id="btn-lobby-leave" class="secondary">Quitter le salon</button>
+    </div>
+  </div>
+
+  <div id="board" class="screen hidden">
+    <div class="panel">
+      <h2>Classement</h2>
+      <div class="seg-row" id="board-mode">
+        <button data-mode="waves">Vagues</button>
+        <button data-mode="survival">Survie</button>
+      </div>
+      <div class="seg-row" id="board-diff">
+        <button data-diff="easy">Facile</button>
+        <button data-diff="normal">Normal</button>
+        <button data-diff="hard">Difficile</button>
+      </div>
+      <div id="board-table"></div>
+      <button id="btn-board-back">Retour</button>
     </div>
   </div>
 
@@ -133,7 +211,8 @@
       <div><kbd>Clic gauche</kbd></div><div>Tirer / frapper</div>
       <div><kbd>Clic droit</kbd></div><div>Viser / parer (khépesh)</div>
       <div><kbd>R</kbd></div><div>Recharger</div>
-      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> / molette</div><div>Changer d'arme</div>
+      <div><kbd>E</kbd> (maintenir)</div><div>Relever un coéquipier à terre (coopération)</div>
+      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> / molette</div><div>Changer d'arme (choisir une carte entre les vagues)</div>
       <div><kbd>Échap</kbd></div><div>Pause / aide</div>
     </div>
     <p class="tips">Les tirs à la tête infligent double dégâts. Le khépesh tranche tout ce qui est devant vous, et sa parade renvoie les orbes ennemis. Seuls les ennemis tués au corps à corps lâchent de la santé. De nouvelles armes se débloquent au fil des vagues. La santé se régénère après quelques secondes sans blessure.</p>

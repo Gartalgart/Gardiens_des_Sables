@@ -1,11 +1,13 @@
 // Procedural WebAudio sound effects: no audio files needed.
+import { Music } from './music.js';
+
 export class Sound {
   constructor() {
     this.ctx = null;
     this.volumes = { master: 0.8, sfx: 1, music: 0.6 };
   }
 
-  // master scales everything; sfx and music are separate buses (music arrives in a later phase)
+  // master scales everything; sfx and music are separate buses
   setVolumes(master, sfx, music) {
     this.volumes = { master, sfx, music };
     if (!this.ctx) return;
@@ -34,7 +36,12 @@ export class Sound {
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.#wind();
+    this.musicPlayer = new Music(this.ctx, this.music, this.noise);
+    this.musicPlayer.start();
   }
+
+  // 0 calm, 1 combat, 2 the pharaoh
+  setMusicIntensity(level) { this.musicPlayer?.setIntensity(level); }
 
   resume() { this.ctx?.resume(); }
   suspend() { this.ctx?.suspend(); }
@@ -78,7 +85,8 @@ export class Sound {
     src.start(); lfo.start();
   }
 
-  shot(kind) {
+  // pan / gain: a teammate's shot is placed in space and quieter
+  shot(kind, pan = 0, gain = 1) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const cfg = {
@@ -86,7 +94,7 @@ export class Sound {
       rifle: { f: 2600, dec: 0.12, thump: 110, vol: 0.6 },
       shotgun: { f: 1300, dec: 0.38, thump: 70, vol: 1.0 },
     }[kind];
-    const out = this.#out(0, cfg.vol);
+    const out = this.#out(pan, cfg.vol * gain);
     const n = this.#noiseSrc();
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass';

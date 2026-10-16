@@ -11,6 +11,7 @@ export const DEFAULTS = {
   quality: 'high', // low | medium | high
   showFps: false,
   cameraShake: true,
+  playerName: 'Joueur',
 };
 
 export const QUALITY = {

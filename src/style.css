@@ -121,6 +121,36 @@ button.secondary { background: transparent; color: var(--ink); border: 1px solid
 .seg button.active { color: #1a1206; background: var(--gold); border-color: var(--gold); }
 #fps { position: fixed; top: 6px; left: 50%; transform: translateX(-50%) translateY(84px); font-size: 13px; color: var(--ink-dim); pointer-events: none; font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) { .opts { grid-template-columns: 1fr; } }
+#objective { margin-top: 4px; font-size: 14px; letter-spacing: 0.06em; color: var(--ink-dim); }
+#objective b { color: var(--gold); font-weight: 700; }
+#objective.done { color: #9be36b; }
+#score { font-family: "Cinzel", serif; font-size: 24px; font-weight: 800; color: var(--gold); line-height: 1.1; }
+
+/* upgrade cards between waves */
+#cards { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: min(980px, 94vw); text-align: center; text-shadow: none; }
+#cards-title { font-family: "Cinzel", serif; font-size: 30px; font-weight: 800; letter-spacing: 0.12em; color: var(--gold); text-shadow: 0 2px 8px #000; }
+#cards-sub { font-size: 15px; letter-spacing: 0.1em; color: #9be36b; min-height: 20px; margin-bottom: 10px; text-shadow: 0 1px 4px #000; }
+#cards-list { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.card { width: 210px; padding: 18px 16px 16px; background: rgba(12, 10, 16, 0.88); border: 1px solid var(--line); border-top: 3px solid var(--gold); text-align: left; }
+.card .key { display: inline-block; font-family: "Cinzel", serif; font-weight: 800; color: #1a1206; background: var(--gold); padding: 1px 9px; margin-bottom: 10px; }
+.card .name { font-family: "Cinzel", serif; font-size: 18px; font-weight: 800; color: var(--ink); margin-bottom: 6px; }
+.card .desc { font-size: 15px; color: var(--ink-dim); line-height: 1.35; }
+.card .count { font-size: 12px; letter-spacing: 0.15em; color: var(--gold-dim); margin-top: 10px; }
+
+.seg-row { display: flex; gap: 8px; margin: 0 0 10px; }
+.seg-row button { flex: 1; margin: 0; padding: 9px 4px; font-size: 14px; background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
+.seg-row button.active { color: #1a1206; background: var(--gold); border-color: var(--gold); }
+.opt-row input[type=text] { flex: 1; padding: 6px 8px; font: inherit; font-size: 16px; color: var(--ink); background: rgba(0,0,0,0.4); border: 1px solid var(--line); }
+
+#end-score { font-family: "Cinzel", serif; font-size: 34px; font-weight: 800; color: var(--gold); margin: -6px 0 14px; }
+#end-score small { display: block; font-family: "Rajdhani", sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 0.1em; color: #9be36b; }
+.board { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.board th { font-weight: 500; font-size: 12px; letter-spacing: 0.12em; color: var(--ink-dim); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.board td { padding: 4px 6px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.board td.num, .board th.num { text-align: right; }
+.board tr.me td { color: var(--gold); font-weight: 700; }
+.board .empty { color: var(--ink-dim); text-align: center; padding: 14px; }
+
 #difficulty { display: flex; gap: 8px; margin: 0 0 12px; }
 #difficulty button { flex: 1; margin: 0; padding: 9px 4px; font-size: 14px; background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
 #difficulty button.active { color: #1a1206; background: var(--gold); border-color: var(--gold); }
@@ -143,3 +173,29 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 0 2px; f
   #slots { display: none; }
   h1 { font-size: 38px; }
 }
+
+/* ---------- co-op ---------- */
+.status { min-height: 1.4em; margin: 4px 0 10px; color: var(--blood); font-size: 15px; }
+.status.ok { color: var(--ink-dim); }
+#c-code { text-transform: uppercase; letter-spacing: 0.3em; }
+#lobby-code { color: var(--gold); letter-spacing: 0.25em; }
+#lobby-players { list-style: none; margin: 0 0 14px; padding: 0; text-align: left; }
+#lobby-players li { padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 17px; }
+#lobby-players li .tag { float: right; color: var(--gold-dim); font-size: 13px; letter-spacing: 0.15em; }
+#lobby-players li.me { color: var(--gold); }
+.seg-row.locked button { pointer-events: none; }
+.seg-row.locked button:not(.active) { opacity: 0.35; }
+
+#team { position: absolute; top: 224px; left: 20px; width: 200px; }
+#team .mate { margin-bottom: 8px; font-size: 14px; letter-spacing: 0.08em; }
+#team .mate .bar { height: 5px; margin-top: 3px; background: rgba(255,255,255,0.12); }
+#team .mate .bar i { display: block; height: 100%; background: var(--ink); transform-origin: left; }
+#team .mate.down { color: var(--blood); }
+#team .mate.down .bar i { background: var(--blood); }
+
+#prompt { position: absolute; left: 50%; top: 60%; transform: translateX(-50%); padding: 6px 14px; font-size: 18px; letter-spacing: 0.12em; color: var(--ink); background: rgba(0,0,0,0.45); border: 1px solid var(--line); }
+#downed { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); text-align: center; }
+#downed .downed-title { font-family: "Cinzel", serif; font-size: 52px; font-weight: 800; letter-spacing: 0.15em; color: var(--blood); }
+#downed-sub { font-size: 18px; letter-spacing: 0.2em; color: var(--ink); }
+.revive-bar { width: 260px; height: 6px; margin: 12px auto 0; background: rgba(255,255,255,0.15); }
+.revive-bar div { height: 100%; width: 0; background: var(--gold); }

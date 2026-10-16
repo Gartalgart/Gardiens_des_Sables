@@ -34,7 +34,9 @@ def gait(rig, name, period, thigh, shin, arm, fore, lean, bob, head=0, extra=Non
         up[k] = (extra or {}).get(k, (0, 0, 0))
     up["Shin_L"] = up["Shin_R"] = (shin * 0.6, 0, 0)
     up["_loc_Hips"] = (0, bob, 0)
-    keys = [(0, a), (period * 0.25, up), (period * 0.5, mirror(a)), (period * 0.75, mirror(up)), (period, a)]
+    # held limbs (extra) stay on their side in the mirrored half of the cycle
+    held = lambda pose: {**mirror(pose), **{k: v for k, v in (extra or {}).items() if k in up}}
+    keys = [(0, a), (period * 0.25, up), (period * 0.5, held(a)), (period * 0.75, held(up)), (period, a)]
     return add_action(rig, name, keys)
 
 

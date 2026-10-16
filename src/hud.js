@@ -1,4 +1,5 @@
 import { ENEMY_LOOK } from './view/enemyView.js';
+import { upgradeInfo } from './sim/progression.js';
 
 const $ = (id) => document.getElementById(id);
 const RANGE = 40; // metres shown from centre to edge of the minimap
@@ -31,6 +32,31 @@ export class Hud {
 
   show(v) { this.el.classList.toggle('hidden', !v); }
 
+  // ---------- co-op ----------
+  // names and health of the other players
+  team(mates) {
+    const html = mates.map((m) => {
+      const esc = String(m.name).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const k = m.dead ? m.revive : m.health / m.maxHealth;
+      return `<div class="mate${m.dead ? ' down' : ''}">${esc}${m.dead ? ' — À TERRE' : ''}<div class="bar"><i style="transform:scaleX(${Math.max(0, Math.min(1, k)).toFixed(3)})"></i></div></div>`;
+    }).join('');
+    if (this.teamHtml !== html) { $('team').innerHTML = html; this.teamHtml = html; }
+  }
+
+  prompt(text) {
+    const el = $('prompt');
+    el.classList.toggle('hidden', !text);
+    if (text && el.textContent !== text) el.textContent = text;
+  }
+
+  // progress: null when standing, else how far a teammate got picking the player up
+  downed(progress, alone) {
+    $('downed').classList.toggle('hidden', progress === null);
+    if (progress === null) return;
+    $('downed-fill').style.width = `${Math.round(progress * 100)}%`;
+    this.set('downed-sub', alone ? 'Tous tes coéquipiers sont tombés…' : progress > 0 ? 'Un coéquipier te relève !' : 'Un coéquipier peut te relever (E)');
+  }
+
   #renderMap(level) {
     const c = document.createElement('canvas');
     c.width = c.height = HALF * 2 * MAP_PX;
@@ -52,7 +78,8 @@ export class Hud {
     return c;
   }
 
-  drawMinimap(player, enemies) {
+  // mates: the other players (co-op), drawn as blue arrows
+  drawMinimap(player, enemies, mates = []) {
     const g = this.ctx, W = this.mm.width, R = W / 2;
     const scale = R / RANGE;
     const yaw = player.yaw;
@@ -109,6 +136,19 @@ export class Hud {
       g.shadowBlur = 0;
     }
 
+    for (const m of mates) {
+      const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
+      let sx = (dx * cos - dz * sin) * scale, sy = (dx * sin + dz * cos) * scale;
+      const d = Math.hypot(sx, sy);
+      if (d > R - 10) { sx *= (R - 10) / d; sy *= (R - 10) / d; }
+      g.save();
+      g.translate(R + sx, R + sy);
+      g.rotate(yaw - m.yaw);
+      g.fillStyle = m.dead ? (Math.sin(t * 8) > 0 ? '#ff4a4a' : '#7a1d14') : '#6fe3ff';
+      g.beginPath(); g.moveTo(0, -7); g.lineTo(-5, 5); g.lineTo(0, 2.5); g.lineTo(5, 5); g.closePath(); g.fill();
+      g.restore();
+    }
+
     // compass letters on the rim (north = -Z)
     const dirs = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['O', -1, 0]];
     g.font = '700 13px Rajdhani, sans-serif';
@@ -133,6 +173,10 @@ export class Hud {
 
   update(dt, s) {
     this.set('wave-num', s.wave);
+    this.set('wave-total', Number.isFinite(s.totalWaves) ? `/${s.totalWaves}` : '');
+    this.set('score', s.score.toLocaleString('fr-FR'));
+    this.#objective(s.objective, s.waveStats, s.waveActive);
+    this.#cards(s.cardOffer, s.upgrades);
     this.set('timer', fmtTime(s.time));
     this.set('enemies-left', s.enemiesLeft);
 
@@ -183,6 +227,37 @@ export class Hud {
     const boss = s.boss;
     this.bossBar.style.display = boss ? 'block' : 'none';
     if (boss) this.bossBar.querySelector('.boss-fill').style.transform = `scaleX(${Math.max(0, boss.hp / boss.maxHp)})`;
+  }
+
+  // secondary objective of the wave and its progress
+  #objective(obj, st, active) {
+    const el = document.getElementById('objective');
+    if (!obj || !active) { if (el.textContent) el.textContent = ''; return; }
+    const v = st[obj.stat];
+    let progress, done = false;
+    if (obj.stat === 'time') progress = `${Math.max(0, Math.ceil(obj.target - v))} s`;
+    else if (obj.under) progress = `${Math.round(v)} / ${obj.target} PV`;
+    else { progress = `${Math.min(v, obj.target)} / ${obj.target}`; done = v >= obj.target; }
+    const html = `Objectif : ${obj.text} — <b>${done ? '✓' : progress}</b>`;
+    if (el.innerHTML !== html) el.innerHTML = html;
+    el.classList.toggle('done', done);
+  }
+
+  // upgrade cards to choose from between waves (keys 1-4)
+  #cards(offer, upgrades) {
+    const box = document.getElementById('cards');
+    const key = offer ? offer.join(',') : '';
+    if (key === this.cardsKey) return;
+    this.cardsKey = key;
+    box.classList.toggle('hidden', !offer);
+    if (!offer) return;
+    document.getElementById('cards-sub').textContent = offer.length > 3 ? 'Objectif réussi : une carte de plus au choix !' : '';
+    document.getElementById('cards-list').innerHTML = offer.map((id, i) => {
+      const u = upgradeInfo(id);
+      const have = upgrades[id] || 0;
+      return `<div class="card"><span class="key">${i + 1}</span><div class="name">${u.name}</div><div class="desc">${u.desc}</div>
+        <div class="count">${u.max > 1 ? `NIVEAU ${have + 1} / ${u.max}` : 'UNIQUE'}</div></div>`;
+    }).join('');
   }
 
   hit(head) {

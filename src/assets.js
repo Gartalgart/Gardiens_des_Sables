@@ -2,6 +2,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const FILES = {
   level: 'models/level.glb',
+  props: 'models/props.glb',
+  player: 'models/player.glb',
   runner: 'models/runner.glb',
   shooter: 'models/shooter.glb',
   tank: 'models/tank.glb',

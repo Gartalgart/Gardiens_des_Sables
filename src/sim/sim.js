@@ -4,8 +4,12 @@ import { PlayerSim, emptyCommand } from './player.js';
 import { Enemies } from './enemies.js';
 import { WaveMode } from './modes/waves.js';
 import { SandboxMode } from './modes/sandbox.js';
+import { SurvivalMode } from './modes/survival.js';
+import { applyUpgrade, KILL_POINTS, DIFFICULTY_SCORE, BONUS } from './progression.js';
 
-const MODES = { waves: WaveMode, sandbox: SandboxMode };
+const MODES = { waves: WaveMode, survival: SurvivalMode, sandbox: SandboxMode };
+const REVIVE_RANGE = 2.2;
+const REVIVE_TIME = 3;
 
 // The whole game rules, with no rendering, audio or DOM: it runs the same in the browser
 // (solo) and in a Node server (multiplayer). Input: one command per player per step.
@@ -51,20 +55,71 @@ export class Sim {
   // commands: Map of player id -> command (see emptyCommand). Missing players repeat their last command.
   step(dt, commands = new Map()) {
     if (this.over) return;
-    this.time += dt;
     for (const p of this.players.values()) {
       const cmd = commands.get(p.id) || this.lastCommands.get(p.id) || emptyCommand();
-      this.lastCommands.set(p.id, { ...cmd, jump: false, reload: false, slot: null, cycle: 0 });
-      if (p.dead) continue;
-      p.move(dt, cmd, p.loadout.adsT > 0.5);
-      p.loadout.update(dt, cmd);
+      this.lastCommands.set(p.id, { ...cmd, jump: false, reload: false, slot: null, cycle: 0, pickCard: null });
+      this.stepPlayer(p, cmd, dt);
     }
+    this.stepWorld(dt);
+  }
+
+  // One command of one player. The server calls it for every command a client sent (each with
+  // its own dt), so the client can replay the same commands to predict its own movement.
+  stepPlayer(p, cmd, dt) {
+    if (this.over || p.dead) return;
+    if (cmd.pickCard != null && p.cardOffer) this.pickCard(p, cmd.pickCard);
+    p.move(dt, cmd, p.loadout.adsT > 0.5);
+    p.loadout.update(dt, cmd);
+    this.#revive(p, cmd, dt);
+  }
+
+  // Everything but the players: enemies, orb rain, the game mode.
+  stepWorld(dt) {
+    if (this.over) return;
+    this.time += dt;
     this.hitStop = Math.max(0, this.hitStop - dt);
     this.slowMo = Math.max(0, this.slowMo - dt);
+    for (const p of this.players.values()) {
+      // a teammate who lets go of the key loses the progress little by little
+      if (p.dead && p.reviveBy === null) p.revive = Math.max(0, p.revive - dt * 0.5);
+      p.reviveBy = null;
+    }
     this.enemies.update(dt * this.timeScale);
     this.#updateStrikes(dt * this.timeScale);
     if (!this.over) this.mode.update(dt);
   }
+
+  // ---------- co-op: a downed player is picked up by a teammate holding the use key for 3 s ----------
+  #revive(p, cmd, dt) {
+    if (!cmd.use) return;
+    let best = null, bd = REVIVE_RANGE;
+    for (const o of this.players.values()) {
+      if (!o.dead || o === p) continue;
+      const d = Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+      if (d < bd && Math.abs(o.pos.y - p.pos.y) < 1.5) { bd = d; best = o; }
+    }
+    if (!best) return;
+    best.reviveBy = p.id;
+    best.revive += dt / REVIVE_TIME;
+    if (best.revive >= 1) {
+      this.raise(best, 0.4);
+      this.addScore(p, BONUS.revive);
+      this.emit('playerRevived', { pid: best.id, by: p.id });
+    }
+  }
+
+  // back on their feet with part of their health
+  raise(p, healthFraction) {
+    if (!p.dead) return;
+    p.dead = false;
+    p.revive = 0;
+    p.health = Math.max(1, p.maxHealth * healthFraction);
+    p.lastHit = this.time;
+    p.vel.set(0, 0, 0);
+  }
+
+  // more players, more enemies (see WaveBase) and a tougher pharaoh
+  get playerScale() { return 1 + 0.6 * (Math.max(1, this.players.size) - 1); }
 
   // Sword hit-stop and perfect-parry slow motion slow the enemies down. Solo only: in multiplayer
   // they would slow the world shared with the other players.
@@ -73,6 +128,23 @@ export class Sim {
     if (this.hitStop > 0) return 0.15;
     if (this.slowMo > 0) return 0.3;
     return 1;
+  }
+
+  // ---------- progression ----------
+  pickCard(player, index) {
+    const id = player.cardOffer?.[index];
+    if (!id) return;
+    applyUpgrade(player, id);
+    player.cardOffer = null;
+    this.emit('cardPicked', { pid: player.id, card: id, count: player.upgrades[id] });
+  }
+
+  addScore(player, points) {
+    player.score += Math.round(points * (DIFFICULTY_SCORE[this.difficulty.key] ?? 1));
+  }
+
+  scoreKill(killer, enemy, cause) {
+    this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1) + (cause === 'melee' ? BONUS.meleeKill : 0));
   }
 
   end(victory) {
@@ -108,12 +180,12 @@ export class Sim {
     const maxD = wh ? wh.dist : 250;
     const eh = this.enemies.raycast(origin, dir, maxD);
     if (eh) {
-      const falloff = def.id === 'shotgun' ? THREE.MathUtils.clamp(1 - (eh.dist - 7) / 25, 0.25, 1) : eh.dist > 45 ? 0.75 : 1;
-      const dmg = def.dmg * (eh.head ? 2 : 1) * falloff;
-      this.emit('impactEnemy', { point: eh.point, normal: dir.clone().negate(), enemyType: eh.enemy.type });
-      this.enemies.damage(eh.enemy, dmg, dir, player);
-      if (eh.enemy.hp <= 0 && eh.head) player.stats.headshots++;
-      this.emit('hitConfirm', { pid: player.id, head: eh.head });
+      this.#hitEnemy(player, eh, dir, def, 1);
+      // "Balles perforantes": the bullet goes on into one more enemy, a little weaker
+      if (player.mods.pierce) {
+        const next = this.enemies.raycast(eh.point, dir, maxD - eh.dist, eh.enemy);
+        if (next) this.#hitEnemy(player, { ...next, dist: eh.dist + next.dist }, dir, def, 0.7);
+      }
       return { point: eh.point, enemy: eh.enemy };
     }
     if (wh) {
@@ -121,6 +193,16 @@ export class Sim {
       return { point: wh.point };
     }
     return { point: origin.clone().addScaledVector(dir, 250) };
+  }
+
+  #hitEnemy(player, eh, dir, def, power) {
+    const falloff = def.id === 'shotgun' ? THREE.MathUtils.clamp(1 - (eh.dist - 7) / 25, 0.25, 1) : eh.dist > 45 ? 0.75 : 1;
+    const dmg = def.dmg * (eh.head ? player.mods.headMul : 1) * falloff * power;
+    this.emit('impactEnemy', { point: eh.point, normal: dir.clone().negate(), enemyType: eh.enemy.type });
+    this.enemies.damage(eh.enemy, dmg, dir, player);
+    if (eh.head) player.waveStats.headshots++;
+    if (eh.enemy.hp <= 0 && eh.head) { player.stats.headshots++; this.addScore(player, BONUS.headshotKill); }
+    this.emit('hitConfirm', { pid: player.id, head: eh.head });
   }
 
   // A mummy blowing up: hurts the players and the other enemies around, with knockback.
@@ -187,18 +269,21 @@ export class Sim {
   meleeAttack(player, def) {
     const fwd = player.flatForward();
     const eye = player.eye;
+    const m = player.mods;
+    const range = def.range * m.swordReach;
+    const arc = 0.3 - (m.swordReach - 1) * 0.6; // "Grand arc" also widens the swing
     let hits = 0;
     for (const e of [...this.enemies.list]) {
       if (e.rise > 0.5) continue;
       const to = new THREE.Vector3(e.pos.x - player.pos.x, 0, e.pos.z - player.pos.z);
       const reach = to.length() - e.T.radius;
-      if (reach > def.range) continue;
+      if (reach > range) continue;
       const base = e.pos.y + e.lift;
       if (eye.y < base - 0.8 || eye.y > base + e.T.height + 1.2) continue;
       to.normalize();
-      if (fwd.dot(to) < 0.3 && reach > 0.5) continue;
+      if (fwd.dot(to) < arc && reach > 0.5) continue;
       this.emit('meleeImpact', { point: e.pos.clone().setY(base + e.T.height * 0.55), normal: to.clone().negate(), fwd: fwd.clone(), enemyType: e.type });
-      this.enemies.meleeHit(e, def.dmg, to, player);
+      this.enemies.meleeHit(e, def.dmg * m.swordDmg, to, player);
       hits++;
     }
     for (const p of this.enemies.projectiles) {
@@ -227,6 +312,8 @@ export class Sim {
         const perfect = player.loadout.perfectParry;
         if (perfect) {
           this.emit('perfectParry', { pid: player.id, pos: from.clone() });
+          player.waveStats.perfectParries++;
+          this.addScore(player, BONUS.perfectParry);
           this.slowMo = 0.45;
           if (attacker) {
             attacker.stun = attacker.T.boss ? 0.6 : 1.4;
@@ -237,7 +324,7 @@ export class Sim {
         }
         if (kind === 'projectile') return 'reflect';
         this.emit('blocked', { pid: player.id });
-        this.#hurt(player, dmg * 0.25, from);
+        if (player.mods.blockFactor > 0) this.#hurt(player, dmg * player.mods.blockFactor, from);
         return 'blocked';
       }
     }
@@ -249,6 +336,7 @@ export class Sim {
     if (player.dead) return;
     player.damage(dmg);
     player.stats.damageTaken += dmg;
+    player.waveStats.damageTaken += dmg;
     this.emit('playerHurt', { pid: player.id, amount: dmg, from: from.clone() });
     if (player.dead) this.emit('playerDown', { pid: player.id });
   }
@@ -256,7 +344,7 @@ export class Sim {
   // returns false when the player cannot use it (full health, ammo maxed): the pickup stays
   pickup(player, kind) {
     if (kind === 'ammo') {
-      if (!player.loadout.addAmmo(0.25)) return false;
+      if (!player.loadout.addAmmo(0.25 * player.mods.ammo)) return false;
     } else {
       if (player.health >= player.maxHealth) return false;
       player.health = Math.min(player.maxHealth, player.health + 35);

@@ -16,6 +16,8 @@ export class NavGrid {
     this.timer = 0;
 
     const open = new Uint8Array(N);
+    // covered: something stands above the floor of the cell (a roof): climbers cannot go through it
+    this.covered = new Uint8Array(N);
     const r = this.size * 0.5 + 0.2;
     for (let iz = 0; iz < this.n; iz++)
       for (let ix = 0; ix < this.n; ix++) {
@@ -29,8 +31,11 @@ export class NavGrid {
           for (const b of boxes) if (b.min.y <= f + STEP && b.max.y > f + 1e-3) { f = b.max.y; changed = true; }
         }
         let ok = f < 9;
-        for (const b of boxes) if (b.min.y > f + STEP && b.min.y < f + 1.9) ok = false;
         const i = iz * this.n + ix;
+        for (const b of boxes) {
+          if (b.min.y > f + STEP && b.min.y < f + 1.9) ok = false;
+          if (b.min.y > f + STEP) this.covered[i] = 1;
+        }
         this.floor[i] = f;
         open[i] = ok ? 1 : 0;
       }
@@ -51,11 +56,48 @@ export class NavGrid {
         openBig[i] = ok ? 1 : 0;
       }
 
+    // climbers keep off the houses you can walk into (walls, roof): from up there the only way on
+    // would be through the roof. A room is a roofed cell with no open sky next to it (unlike the
+    // strip under a roof's overhang); seeds are the raised cells around rooms, and the flood takes
+    // in the rest of the building's top (cells of about the same height).
+    const room = (j) => {
+      if (!this.covered[j] || this.floor[j] > STEP) return false; // houses stand on the ground (not the temple's shrine)
+      for (let dz = -2; dz <= 2; dz++) // 2 cells: a nook under a brazier bowl is no room
+        for (let dx = -2; dx <= 2; dx++) {
+          const k = j + dz * n + dx;
+          if (!this.covered[k] && this.floor[k] <= this.floor[j] + STEP) return false;
+        }
+      return true;
+    };
+    const openClimb = open.slice();
+    const stack = [];
+    for (let iz = 3; iz < n - 3; iz++)
+      for (let ix = 3; ix < n - 3; ix++) {
+        const i = iz * n + ix;
+        if (this.floor[i] <= STEP) continue;
+        for (let dz = -1; dz <= 1 && openClimb[i]; dz++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const j = i + dz * n + dx;
+            if (this.floor[j] < this.floor[i] - STEP && room(j)) { openClimb[i] = 0; stack.push(i); break; }
+          }
+      }
+    while (stack.length) {
+      const i = stack.pop();
+      const ix = i % n, iz = (i / n) | 0;
+      if (ix < 1 || iz < 1 || ix >= n - 1 || iz >= n - 1) continue;
+      for (let dz = -1; dz <= 1; dz++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const j = i + dz * n + dx;
+          if (openClimb[j] && this.floor[j] > STEP && Math.abs(this.floor[j] - this.floor[i]) < 0.35) { openClimb[j] = 0; stack.push(j); }
+        }
+    }
+    this.openClimb = openClimb;
+
     this.layers = {
       small: { open, dist: new Float32Array(N).fill(Infinity), seed: 3 },
       big: { open: openBig, dist: new Float32Array(N).fill(Infinity), seed: 6 },
       // climbers (scarabs) go up and down walls: any height difference is a passage, paid for in metres climbed
-      climb: { open, dist: new Float32Array(N).fill(Infinity), seed: 3, climb: true },
+      climb: { open: openClimb, dist: new Float32Array(N).fill(Infinity), seed: 3, climb: true },
     };
     // kept for callers that only care about the normal layer
     this.open = open;
@@ -111,6 +153,8 @@ export class NavGrid {
           const j = nz * n + nx;
           const rise = Math.abs(floor[j] - floor[i]);
           if (!open[j] || (!climb && rise > STEP)) continue;
+          // no climbing through a roof: down into a covered cell, or up out of one
+          if (climb && rise > STEP && (floor[j] < floor[i] ? this.covered[j] : this.covered[i])) continue;
           if (dx && dz && (!open[z * n + nx] || !open[nz * n + x])) continue; // no corner cutting
           const nd = d + (dx && dz ? D : this.size) + (climb ? rise * 1.2 : 0);
           if (nd < dist[j]) { dist[j] = nd; heap.push(j, nd); }
@@ -131,6 +175,24 @@ export class NavGrid {
     return this.#direction(this.layers.small, pos, out, 2);
   }
 
+  // going from cell a (standing at height y) to cell b would cross a roof: dropping into a roofed
+  // cell from above, or climbing out of one
+  #roofBetween(a, b, y) {
+    const fb = this.floor[b];
+    return (fb < y - STEP && this.covered[b] === 1) || (fb > y + STEP && this.covered[a] === 1);
+  }
+
+  // can a climber stand on this cell? (not on a roofed building)
+  climbableAt(x, z) {
+    const i = this.index(x, z);
+    return i >= 0 && this.openClimb[i] === 1;
+  }
+
+  coveredAt(x, z) {
+    const i = this.index(x, z);
+    return i >= 0 && this.covered[i] === 1;
+  }
+
   floorAt(x, z) {
     const i = this.index(x, z);
     return i < 0 ? 0 : this.floor[i];
@@ -148,6 +210,9 @@ export class NavGrid {
         if (x < 0 || z < 0 || x >= n || z >= n) continue;
         const j = z * n + x;
         if (!open[j] || dist[j] === Infinity || (!climb && Math.abs(floor[j] - pos.y) > STEP)) continue;
+        // climbers: a roofed cell only through a neighbour (never across a wall), and never through the roof
+        if (climb && this.covered[j] !== this.covered[i] && (Math.abs(dx) > 1 || Math.abs(dz) > 1)) continue;
+        if (climb && this.#roofBetween(i, j, pos.y)) continue;
         const score = dist[j] + Math.hypot(dx, dz) * this.size * 2;
         if (score < best) { best = score; start = j; }
       }
@@ -162,7 +227,7 @@ export class NavGrid {
           if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
           const j = nz * n + nx;
           if (dx && dz && (dist[z * n + nx] === Infinity || dist[nz * n + x] === Infinity)) continue; // no corner cutting
-          if (dist[j] < bd && (climb || Math.abs(floor[j] - floor[target]) <= STEP)) { bd = dist[j]; best = j; }
+          if (dist[j] < bd && (climb ? !this.#roofBetween(target, j, floor[target]) : Math.abs(floor[j] - floor[target]) <= STEP)) { bd = dist[j]; best = j; }
         }
       if (best === target) break;
       target = best;
