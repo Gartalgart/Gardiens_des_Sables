@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GRENADES } from '../weapons.js';
 
 // "Arène" mode: every player for themselves. A kill is worth a point; the first to the score
 // limit wins, or the best score when the clock runs out. A few guardians prowl and attack
@@ -49,6 +50,7 @@ export class ArenaMode {
     const lo = p.loadout;
     for (const it of lo.items) { it.unlocked = true; it.mag = lo.magSize(it); it.reserve = it.def.reserve; }
     lo.index = 1;
+    lo.grenades = GRENADES.start;
     lo.reloading = 0;
     lo.swingT = -1;
   }
@@ -81,9 +83,20 @@ export class ArenaMode {
     victim.stats.deaths = (victim.stats.deaths ?? 0) + 1;
     victim.respawn = RESPAWN_TIME;
     victim.killedBy = killer && killer !== victim ? killer.id : null;
+    victim.spree = 0;
+    victim.multi = 0;
     if (killer && killer !== victim) {
       killer.stats.frags = (killer.stats.frags ?? 0) + 1;
       killer.score = killer.stats.frags;
+      // points on screen only: the arena's score is the number of kills
+      sim.emit('points', { pid: killer.id, amount: 100, label: 'ÉLIMINATION' });
+      if (head) {
+        sim.emit('points', { pid: killer.id, amount: 50, label: 'TIR À LA TÊTE' });
+        sim.emit('headshotKill', { pid: killer.id });
+      }
+      if (weapon === 'sword') sim.emit('points', { pid: killer.id, amount: 50, label: 'KHÉPESH' });
+      if (weapon === 'grenade') sim.emit('points', { pid: killer.id, amount: 50, label: 'GRENADE' });
+      sim.registerKill(killer, true);
     }
     sim.emit('frag', { pid: victim.id, by: victim.killedBy, weapon, head: !!head });
     if (killer && killer !== victim && killer.stats.frags >= this.scoreLimit) this.#finish(killer);

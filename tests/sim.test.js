@@ -12,7 +12,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
 ];
 let level;
 
@@ -475,7 +475,7 @@ describe('survival mode', () => {
 });
 
 describe('waves mode', () => {
-  it('runs the five waves to victory and unlocks the rifle then the shotgun', () => {
+  it('runs the five waves to victory and unlocks the rifle, the shotgun, then the precision rifle', () => {
     const { sim, player } = newGame({ mode: 'waves', difficulty: 'normal' });
     sim.start();
     const unlocks = [];
@@ -497,7 +497,7 @@ describe('waves mode', () => {
     }
     expect(sim.over).toBe(true);
     expect(sim.victory).toBe(true);
-    expect(unlocks).toEqual(['rifle', 'shotgun']);
+    expect(unlocks).toEqual(['rifle', 'shotgun', 'sniper']);
     expect(kills).toBe(112); // 104 wave enemies + two summons of 4 jackals
     expect(player.loadout.items.every((it) => it.unlocked)).toBe(true);
     // every event the client must react to is there, and no data field replaced an event type
@@ -539,7 +539,7 @@ describe('arena mode', () => {
     expect(events.some((e) => e.type === 'hitConfirm' && e.pid === 'a' && !e.head)).toBe(true);
     b.health = 100;
     run(sim, 0.3, idle);
-    run(sim, DT, fire(new THREE.Vector3(b.pos.x, b.pos.y + 1.7, b.pos.z)));
+    run(sim, DT, fire(new THREE.Vector3(b.pos.x, b.pos.y + 1.64, b.pos.z)));
     expect(b.health).toBeLessThan(100 - 34 * 0.8 * 1.9);
   });
 
@@ -602,5 +602,101 @@ describe('arena mode', () => {
     run(t.sim, 0.1, idle);
     expect(t.sim.over).toBe(true);
     expect(t.sim.winner).toBe('b');
+  });
+});
+
+describe('phase 10: grenades, points and the announcer', () => {
+  it('a fire pot flies in an arc, bounces, and blows up after 2 s', () => {
+    const { sim, player } = newGame();
+    player.health = player.maxHealth = 1e6;
+    expect(player.loadout.grenades).toBe(2);
+    run(sim, DT, () => ({ ...emptyCommand(), grenade: true }));
+    expect(player.loadout.grenades).toBe(1);
+    expect(sim.grenades.length).toBe(1);
+    const g = sim.grenades[0];
+    const types = [];
+    let landed = null;
+    for (let i = 0; i < 200 && sim.grenades.length; i++) {
+      landed = g.pos.clone();
+      run(sim, DT);
+      for (const ev of sim.drainEvents()) types.push(ev);
+    }
+    expect(sim.grenades.length).toBe(0);
+    expect(types.some((e) => e.type === 'grenadeBounce')).toBe(true);
+    const blast = types.find((e) => e.type === 'explosion' && e.kind === 'grenade');
+    expect(blast).toBeTruthy();
+    // thrown north from the start, it lands well ahead, on the ground
+    expect(player.pos.z - landed.z).toBeGreaterThan(8);
+    expect(landed.y).toBeLessThan(0.5);
+    // the pouch holds four at most; a G press with an empty pouch does nothing
+    player.loadout.grenades = 0;
+    run(sim, DT, () => ({ ...emptyCommand(), grenade: true }));
+    expect(sim.grenades.length).toBe(0);
+    expect(player.loadout.addGrenades(9)).toBe(true);
+    expect(player.loadout.grenades).toBe(4);
+  });
+
+  it('the blast kills guardians in range, hurts its thrower, and walls stop it', () => {
+    const { sim, player } = newGame();
+    const near = pacify(sim.enemies.spawn('runner', new THREE.Vector3(2, 0, 30)));
+    const far = pacify(sim.enemies.spawn('runner', new THREE.Vector3(9, 0, 30)));
+    sim.grenades.push({ id: 99, pos: new THREE.Vector3(0, 0.12, 30), vel: new THREE.Vector3(), fuse: 0.01, owner: player });
+    player.pos.set(0, 0, 33);
+    run(sim, 0.05);
+    expect(sim.enemies.list).not.toContain(near);
+    expect(sim.enemies.list).toContain(far);
+    expect(player.health).toBeLessThan(100);
+    expect(player.stats.kills).toBe(1);
+    const pts = sim.drainEvents().filter((e) => e.type === 'points' && e.pid === player.id).map((e) => e.label);
+    expect(pts).toEqual(['ÉLIMINATION', 'GRENADE']);
+  });
+
+  it('kills less than 4 s apart make a multi-kill; slower ones start over', () => {
+    const { sim, player } = newGame();
+    const kill = () => sim.enemies.damage(pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 10))), 1e6, null, player);
+    kill(); run(sim, 1); kill(); run(sim, 3); kill();
+    const multis = sim.drainEvents().filter((e) => e.type === 'multikill').map((e) => e.count);
+    expect(multis).toEqual([2, 3]);
+    run(sim, 4.5);
+    kill();
+    expect(sim.drainEvents().some((e) => e.type === 'multikill')).toBe(false);
+  });
+
+  it('arena: sprees every 5 kills without dying, reset by a death', () => {
+    const sim = new Sim(level, { mode: 'arena', arena: { scoreLimit: 25 } });
+    const a = sim.addPlayer('a'), b = sim.addPlayer('b');
+    sim.start();
+    sim.mode.guardTimer = 1e9;
+    sim.drainEvents();
+    const fragB = () => { sim.raise(b, 1); b.protect = 0; sim.hitPlayer(b, 500, a.pos, 'bullet', null, { by: a, weapon: 'rifle' }); };
+    for (let i = 0; i < 10; i++) { fragB(); run(sim, 5); }
+    const sprees = sim.drainEvents().filter((e) => e.type === 'spree').map((e) => e.count);
+    expect(sprees).toEqual([5, 10]);
+    sim.hitPlayer(a, 500, b.pos, 'melee');
+    expect(a.spree).toBe(0);
+    // guardian kills do not count in the arena
+    sim.enemies.damage(pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 10))), 1e6, null, b);
+    sim.enemies.damage(pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 10))), 1e6, null, b);
+    expect(sim.drainEvents().some((e) => e.type === 'multikill')).toBe(false);
+  });
+});
+
+describe('precision rifle', () => {
+  it('aimed, its bullet goes through a first jackal into the one behind', () => {
+    const { sim, player } = newGame();
+    const lo = player.loadout;
+    lo.unlock('sniper');
+    expect(lo.current.def.id).toBe('sniper');
+    const front = pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 26)));
+    const back = pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 20)));
+    const target = new THREE.Vector3(0, 1.0, 26);
+    // both stand still in line, one behind the other
+    const hold = (x) => () => { front.pos.set(0, 0, 26); back.pos.set(0, 0, 20); return aimAt(player, target, x); };
+    run(sim, 0.6, hold({ aim: true })); // switch done, scope up
+    expect(lo.adsT).toBeGreaterThan(0.9);
+    run(sim, DT, hold({ aim: true, fire: true }));
+    expect(sim.enemies.list).not.toContain(front); // 150 damage: a jackal in one shot
+    expect(back.hp).toBeLessThan(back.maxHp);
+    expect(lo.current.mag).toBe(4);
   });
 });

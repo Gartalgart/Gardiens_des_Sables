@@ -9,6 +9,7 @@ const VIEW = {
   pistol: { hip: new THREE.Vector3(0.16, -0.15, -0.4), adsZ: -0.3, scale: 0.9, sightY: null },
   rifle: { hip: new THREE.Vector3(0.15, -0.19, -0.3), adsZ: -0.24, scale: 1.0, sightY: null, holo: 'R_HoloGlass' },
   shotgun: { hip: new THREE.Vector3(0.16, -0.19, -0.26), adsZ: -0.2, scale: 1.0, sightY: null },
+  sniper: { hip: new THREE.Vector3(0.17, -0.23, -0.42), adsZ: -0.22, scale: 0.85, sightY: null },
 };
 
 // First-person view model of the local player's loadout.
@@ -146,8 +147,9 @@ export class WeaponView {
     // the view model camera sits at the camera origin, so the muzzle maps straight to world space
     const muzzleWorld = it.muzzle.getWorldPosition(new THREE.Vector3()).applyMatrix4(camera.matrixWorld);
     ev.points.slice(0, 3).forEach((p) => this.effects.tracer(muzzleWorld, p));
-    this.kickBack = ev.weapon === 'shotgun' ? 0.09 : 0.05;
-    this.kickRot = ev.weapon === 'shotgun' ? 0.22 : 0.1;
+    const heavy = ev.weapon === 'shotgun' || ev.weapon === 'sniper';
+    this.kickBack = heavy ? 0.09 : 0.05;
+    this.kickRot = heavy ? 0.22 : 0.1;
     this.flashTime = 0.05;
     it.flash.material.rotation = Math.random() * Math.PI;
   }
@@ -155,11 +157,15 @@ export class WeaponView {
   onSlashHit() { this.kickRot = 0.08; }
   onBlocked() { this.kickRot = 0.15; }
 
+  // the precision rifle seen through its scope: the view model gets out of the way
+  scoped(loadout) { return !!loadout.current.def.scope && loadout.adsT > 0.85 && loadout.reloading <= 0; }
+
   update(dt, loadout, player, input, bob) {
     if (this.shownIndex !== loadout.index) {
       this.items.forEach((w, i) => (w.holder.visible = i === loadout.index));
       this.shownIndex = loadout.index;
     }
+    this.items[loadout.index].holder.visible = !this.scoped(loadout);
     const it = this.items[loadout.index];
     const def = it.def;
     const t = loadout.adsT;

@@ -137,5 +137,28 @@ Choix validés : chacun pour soi, quelques gardiens dans l'arène, victoire au s
 - **Validation :** une partie à deux en local. Validée le 16/10/2026.
 - **Corrigé après validation :** le bouton « Coopération » devient « Multijoueur », car l'arène s'y trouvait sans que rien ne l'indique.
 
+## Phase 10 — Grenades, fusil de précision, points à l'écran et médailles `[x]`
+Choix validés : médailles en anglais comme dans Halo, séries d'éliminations dans l'arène seulement, grenades lancées avec G qui explosent au bout de 2 s.
+- [x] **Grenades** (tous les modes) :
+  - pot de feu en terre cuite avec sa mèche, modélisé dans Blender (`blender/grenade.py`, `grenade.glb`) ;
+  - lancé en cloche avec **G** : il rebondit sur le sol et les murs, puis explose au bout de 2 s ;
+  - explosion de 5 m de rayon, arrêtée par les murs ; elle blesse les gardiens, son lanceur, et les autres joueurs dans l'arène (pas les coéquipiers) ;
+  - 2 au départ, 4 au maximum ; +1 par caisse de munitions et +1 à la fin de chaque vague ;
+  - compteur dans le HUD, à côté des munitions.
+- [x] **Points à l'écran, comme dans Call of Duty :** chaque gain s'affiche à droite du viseur (« +100 ÉLIMINATION », « +50 TIR À LA TÊTE », « +50 KHÉPESH », etc.), et le total grimpe tant que les gains s'enchaînent.
+- [x] **Médailles, comme dans Halo :**
+  - éliminations multiples à moins de 4 s d'intervalle : Double Kill, Triple Kill, Overkill, Killtacular, Killtrocity, Killimanjaro, Killtastrophe, Killpocalypse, Killionaire ;
+  - dans l'arène, les séries sans mourir : Killing Spree (5), Killing Frenzy (10), Running Riot (15), Rampage (20), Untouchable (25), Invincible (30) ;
+  - titre doré à l'écran avec un accord de cuivres. La voix anglaise lue par le navigateur a été essayée puis retirée : elle rendait mal.
+- [x] **Son du tir à la tête mortel, comme dans Call of Duty :** un claquement sec suivi d'un tintement métallique, à la place du son de touche habituel.
+- [x] **Fusil de précision** (touche 5), débloqué pour la dernière vague (la vague 5 en Vagues comme en Survie), disponible dès le départ dans l'arène :
+  - modélisé dans Blender (`blender/sniper.py`, `sniper.glb`) : arme à verrou, lunette à bagues de bronze, crosse en bois, mêmes mains bandées que les autres armes ;
+  - 150 dégâts (un chacal d'une balle), 5 balles par chargeur, 25 en réserve ; très imprécis à la hanche, parfait en visant ;
+  - la balle traverse un premier ennemi ;
+  - vue dans la lunette : zoom à 16°, réticule noir au point rouge, l'arme disparaît, la souris ralentit ;
+  - dans l'arène, 90 dégâts au corps et 180 à la tête.
+- [x] 45 tests automatisés, dont 5 nouveaux : trajectoire et explosion des grenades, points, éliminations multiples, séries, et la balle du fusil de précision qui traverse.
+- **Validation :** une partie solo et une partie dans l'arène. Validée le 16/10/2026.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.

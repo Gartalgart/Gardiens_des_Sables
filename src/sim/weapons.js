@@ -16,9 +16,16 @@ export const WEAPONS = [
     id: 'shotgun', name: 'FUSIL À POMPE', dmg: 14, rpm: 78, auto: false, mag: 6, reserve: 42, pellets: 9,
     spread: 0.085, adsSpread: 0.055, reload: 2.4, recoil: 0.07, adsFov: 62,
   },
+  {
+    // unlocked for the last wave: a bolt-action with a scope; wild from the hip, dead on when aiming,
+    // and its bullet goes on through a first target
+    id: 'sniper', name: 'FUSIL DE PRÉCISION', dmg: 150, rpm: 46, auto: false, mag: 5, reserve: 25, pellets: 1,
+    spread: 0.07, adsSpread: 0, reload: 2.7, recoil: 0.09, adsFov: 16, pierce: true, scope: true,
+  },
 ];
 
 const START_UNLOCKED = ['sword', 'pistol'];
+export const GRENADES = { start: 2, max: 4, cooldown: 0.9, lower: 0.45 };
 
 export class Loadout {
   constructor(player, sim) {
@@ -38,6 +45,15 @@ export class Loadout {
     this.swingHitDone = false;
     this.aimHeld = false;
     this.aimPressedAt = -99;
+    this.grenades = GRENADES.start;
+    this.grenadeCd = 0;
+  }
+
+  // returns true when the pouch took at least one
+  addGrenades(n) {
+    const before = this.grenades;
+    this.grenades = Math.min(GRENADES.max, this.grenades + n);
+    return this.grenades > before;
   }
 
   get current() { return this.items[this.index]; }
@@ -106,6 +122,16 @@ export class Loadout {
     this.aimHeld = cmd.aim;
 
     this.cooldown -= dt;
+    this.grenadeCd -= dt;
+    // G: the weapon goes down for a moment while the other hand throws a fire pot
+    if (cmd.grenade && this.grenades > 0 && this.grenadeCd <= 0 && this.swingT < 0) {
+      this.grenades--;
+      this.grenadeCd = GRENADES.cooldown;
+      this.reloading = 0;
+      this.switching = Math.max(this.switching, GRENADES.lower);
+      this.sim.throwGrenade(player);
+      this.sim.emit('grenadeThrow', { pid: player.id });
+    }
     this.switching = Math.max(0, this.switching - dt);
     if (this.reloading > 0) {
       this.reloading -= dt;

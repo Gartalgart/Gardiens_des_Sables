@@ -38,7 +38,7 @@ export function writePlayer(p) {
       index: lo.index, cooldown: r3(lo.cooldown), reloading: r3(lo.reloading), reloadTotal: r3(lo.reloadTotal ?? 0),
       switching: r3(lo.switching), adsT: r3(lo.adsT), triggerHeld: lo.triggerHeld,
       swingT: r3(lo.swingT), swingDir: lo.swingDir, swingHitDone: lo.swingHitDone,
-      aimHeld: lo.aimHeld, aimPressedAt: r3(lo.aimPressedAt),
+      aimHeld: lo.aimHeld, aimPressedAt: r3(lo.aimPressedAt), grenades: lo.grenades, grenadeCd: r3(lo.grenadeCd),
       // the pistol's endless reserve does not survive JSON: -1 stands for Infinity
       items: lo.items.map((it) => [it.mag, it.reserve === Infinity ? -1 : it.reserve, it.unlocked ? 1 : 0]),
     },
@@ -59,7 +59,7 @@ export function readPlayer(p, s) {
   Object.assign(lo, {
     index: l.index, cooldown: l.cooldown, reloading: l.reloading, reloadTotal: l.reloadTotal, switching: l.switching,
     adsT: l.adsT, triggerHeld: l.triggerHeld, swingT: l.swingT, swingDir: l.swingDir, swingHitDone: l.swingHitDone,
-    aimHeld: l.aimHeld, aimPressedAt: l.aimPressedAt,
+    aimHeld: l.aimHeld, aimPressedAt: l.aimPressedAt, grenades: l.grenades, grenadeCd: l.grenadeCd,
   });
   l.items.forEach(([mag, reserve, unlocked], i) => {
     const it = lo.items[i];
@@ -89,6 +89,7 @@ export function writeWorld(sim, events) {
     })),
     proj: sim.enemies.projectiles.map((p) => ({ i: p.id, ty: p.type, rf: p.reflected ? 1 : 0, p: vec(p.pos) })),
     pick: sim.enemies.pickups.map((p) => ({ i: p.id, k: p.kind, p: vec(p.pos) })),
+    gren: sim.grenades.map((g) => ({ i: g.id, p: vec(g.pos) })),
     mode: {
       id: m.id, wave: m.wave, totalWaves: Number.isFinite(m.totalWaves) ? m.totalWaves : null,
       waveActive: m.waveActive, enemiesLeft: m.enemiesLeft, objective: m.objective,

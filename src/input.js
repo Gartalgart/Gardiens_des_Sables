@@ -71,7 +71,7 @@ export class Input {
     if (this.down('KeyD', 'ArrowRight')) moveX += 1;
 
     let slot = null;
-    ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((code, i) => { if (this.wasPressed(code)) slot = i; });
+    ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].forEach((code, i) => { if (this.wasPressed(code)) slot = i; });
 
     const pickCard = cardMode ? slot : null;
     if (cardMode) slot = null;
@@ -85,6 +85,7 @@ export class Input {
       aim: this.mouse.right,
       reload: this.wasPressed('KeyR'),
       use: this.down('KeyE'),
+      grenade: this.wasPressed('KeyG'),
       slot,
       cycle: Math.sign(this.mouse.wheel),
       yaw: this.yaw,

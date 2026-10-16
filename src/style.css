@@ -69,6 +69,19 @@ html, body {
 #ammo { font-size: 48px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 #ammo-mag.empty { color: var(--blood); }
 #reload-hint { font-size: 14px; letter-spacing: 0.2em; color: var(--blood); animation: pulse 0.6s infinite alternate; }
+#grenades { margin-top: 6px; font-size: 13px; letter-spacing: 0.15em; color: var(--ink-dim); }
+#grenades i { display: inline-block; width: 11px; height: 13px; margin-left: 4px; border-radius: 50% 50% 45% 45%; background: #8a4a22; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.35); vertical-align: -2px; }
+#grenades i.empty { background: transparent; border: 1px dashed var(--line); }
+#points { position: absolute; left: calc(50% + 56px); top: calc(50% - 18px); text-align: left; pointer-events: none; }
+#points-total { font-family: "Cinzel", serif; font-weight: 800; font-size: 26px; color: var(--gold); text-shadow: 0 0 8px rgba(0,0,0,0.8); transition: opacity 0.4s; }
+#points-total.bump { animation: pointsBump 0.18s ease-out; }
+#points-list div { font-size: 14px; letter-spacing: 0.12em; color: var(--ink); text-shadow: 0 0 6px rgba(0,0,0,0.9); transition: opacity 0.4s; }
+#points-list b { color: var(--gold); margin-left: 6px; }
+#medal { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); font-family: "Cinzel", serif; font-weight: 800; font-size: 46px; letter-spacing: 0.12em; color: #ffd36b; text-shadow: 0 0 18px rgba(255,170,60,0.7), 0 2px 0 #5a3410; white-space: nowrap; }
+#medal.show { animation: medalIn 0.35s cubic-bezier(.2,1.6,.4,1); }
+#medal small { display: block; font-size: 15px; letter-spacing: 0.35em; color: var(--ink); text-shadow: none; }
+@keyframes pointsBump { from { transform: scale(1.25); } to { transform: scale(1); } }
+@keyframes medalIn { from { opacity: 0; transform: translateX(-50%) scale(1.6); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 #slots { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 .slot { font-size: 13px; padding: 3px 8px; border: 1px solid rgba(255,255,255,0.12); color: var(--ink-dim); background: rgba(0,0,0,0.35); }
 .slot b { color: var(--gold-dim); margin-right: 4px; }
@@ -102,6 +115,17 @@ html, body {
   background: radial-gradient(ellipse at center, rgba(255, 210, 120, 0.25) 0, transparent 35%, rgba(255, 190, 90, 0.45) 100%); }
 #vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0;
   background: radial-gradient(ellipse at center, transparent 45%, rgba(150, 10, 0, 0.75) 100%); }
+/* the precision rifle's scope: a round view in black, thin crosshair with a gold centre */
+#scope { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at center, transparent 0, transparent 34vmin, rgba(0,0,0,0.6) 34.5vmin, #000 36vmin); }
+#scope .reticle { position: absolute; left: 50%; top: 50%; width: 68vmin; height: 68vmin; transform: translate(-50%, -50%); border-radius: 50%;
+  background:
+    linear-gradient(#000, #000) center / 1px 100% no-repeat,
+    linear-gradient(#000, #000) center / 100% 1px no-repeat,
+    linear-gradient(#000, #000) center top / 5px 40% no-repeat,
+    linear-gradient(#000, #000) center bottom / 5px 40% no-repeat,
+    linear-gradient(#000, #000) left center / 40% 5px no-repeat,
+    linear-gradient(#000, #000) right center / 40% 5px no-repeat; }
+#scope .reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: #ff3b2f; box-shadow: 0 0 6px #ff3b2f; }
 #ads-vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0;
   background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.55) 100%); }
 

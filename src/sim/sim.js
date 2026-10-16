@@ -12,8 +12,13 @@ import { applyUpgrade, KILL_POINTS, DIFFICULTY_SCORE, BONUS } from './progressio
 const MODES = { waves: WaveMode, survival: SurvivalMode, sandbox: SandboxMode, arena: ArenaMode };
 // weapon damage against players (arena), as a share of the damage against guardians:
 // two khépesh strikes, two point-blank shotgun blasts, four pistol shots to the body
-const PVP_DMG = { sword: 0.6, pistol: 0.8, rifle: 0.7, shotgun: 0.6 };
+const PVP_DMG = { sword: 0.6, pistol: 0.8, rifle: 0.7, shotgun: 0.6, sniper: 0.6 };
 const REVIVE_RANGE = 2.2;
+// fire pots: thrown in an arc, they bounce and blow up after a fuse
+const GRAVITY_GRENADE = 18;
+const GRENADE = { speed: 15, lift: 3.5, fuse: 2, radius: 5, dmg: 170, playerDmg: 95, size: 0.12 };
+// Halo: kills less than 4 s apart chain into a multi-kill
+export const MULTI_WINDOW = 4;
 const REVIVE_TIME = 3;
 
 // The whole game rules, with no rendering, audio or DOM: it runs the same in the browser
@@ -35,6 +40,7 @@ export class Sim {
     this.lastCommands = new Map();
     this.weather = 'clear'; // 'sandstorm' once the pharaoh enters his second phase
     this.strikes = []; // orb rain about to land: { id, pos, radius, dmg, t }
+    this.grenades = []; // fire pots in flight: { id, pos, vel, fuse, owner }
     // the nav grid belongs to the shared Level: forget the previous game's targets
     level.nav.lastCell = null;
     level.nav.timer = 0;
@@ -64,7 +70,7 @@ export class Sim {
     if (this.over) return;
     for (const p of this.players.values()) {
       const cmd = commands.get(p.id) || this.lastCommands.get(p.id) || emptyCommand();
-      this.lastCommands.set(p.id, { ...cmd, jump: false, reload: false, slot: null, cycle: 0, pickCard: null });
+      this.lastCommands.set(p.id, { ...cmd, jump: false, reload: false, grenade: false, slot: null, cycle: 0, pickCard: null });
       this.stepPlayer(p, cmd, dt);
     }
     this.stepWorld(dt);
@@ -93,6 +99,7 @@ export class Sim {
     }
     this.enemies.update(dt * this.timeScale);
     this.#updateStrikes(dt * this.timeScale);
+    this.#updateGrenades(dt * this.timeScale);
     if (!this.over) this.mode.update(dt);
   }
 
@@ -110,7 +117,7 @@ export class Sim {
     best.revive += dt / REVIVE_TIME;
     if (best.revive >= 1) {
       this.raise(best, 0.4);
-      this.addScore(p, BONUS.revive);
+      this.addScore(p, BONUS.revive, 'RÉANIMATION');
       this.emit('playerRevived', { pid: best.id, by: p.id });
     }
   }
@@ -146,12 +153,29 @@ export class Sim {
     this.emit('cardPicked', { pid: player.id, card: id, count: player.upgrades[id] });
   }
 
-  addScore(player, points) {
-    player.score += Math.round(points * (DIFFICULTY_SCORE[this.difficulty.key] ?? 1));
+  // label: what the points are for, shown next to the crosshair (Call of Duty style)
+  addScore(player, points, label = null) {
+    const amount = Math.round(points * (DIFFICULTY_SCORE[this.difficulty.key] ?? 1));
+    player.score += amount;
+    if (label) this.emit('points', { pid: player.id, amount, label });
   }
 
   scoreKill(killer, enemy, cause) {
-    this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1) + (cause === 'melee' ? BONUS.meleeKill : 0));
+    this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1), enemy.T.boss ? 'PHARAON ABATTU' : enemy.elite ? 'ÉLITE ABATTU' : 'ÉLIMINATION');
+    if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, 'KHÉPESH');
+    if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, 'GRENADE');
+  }
+
+  // Every kill goes through here for the medals: multi-kills (kills less than MULTI_WINDOW apart)
+  // and, in the arena, sprees (kills without dying). In the arena only kills of players count.
+  registerKill(killer, ofPlayer) {
+    if (this.pvp !== ofPlayer) return;
+    killer.multi = this.time - killer.lastKillAt <= MULTI_WINDOW ? killer.multi + 1 : 1;
+    killer.lastKillAt = this.time;
+    if (killer.multi >= 2) this.emit('multikill', { pid: killer.id, count: killer.multi });
+    if (!this.pvp) return;
+    killer.spree++;
+    if (killer.spree % 5 === 0 && killer.spree <= 30) this.emit('spree', { pid: killer.id, count: killer.spree });
   }
 
   // winner: the arena's best player (each client tells victory from defeat itself)
@@ -201,7 +225,7 @@ export class Sim {
     if (eh) {
       this.#hitEnemy(player, eh, dir, def, 1);
       // "Balles perforantes": the bullet goes on into one more enemy, a little weaker
-      if (player.mods.pierce) {
+      if (player.mods.pierce || def.pierce) {
         const next = this.enemies.raycast(eh.point, dir, maxD - eh.dist, eh.enemy);
         if (next) this.#hitEnemy(player, { ...next, dist: eh.dist + next.dist }, dir, def, 0.7);
       }
@@ -233,7 +257,11 @@ export class Sim {
     this.emit('impactEnemy', { point: eh.point, normal: dir.clone().negate(), enemyType: eh.enemy.type });
     this.enemies.damage(eh.enemy, dmg, dir, player);
     if (eh.head) player.waveStats.headshots++;
-    if (eh.enemy.hp <= 0 && eh.head) { player.stats.headshots++; this.addScore(player, BONUS.headshotKill); }
+    if (eh.enemy.hp <= 0 && eh.head) {
+      player.stats.headshots++;
+      this.addScore(player, BONUS.headshotKill, 'TIR À LA TÊTE');
+      this.emit('headshotKill', { pid: player.id });
+    }
     this.emit('hitConfirm', { pid: player.id, head: eh.head });
   }
 
@@ -253,6 +281,68 @@ export class Sim {
       const k = 1 - (d / cfg.radius) * 0.5;
       e.knock.copy(e.pos).sub(pos).setY(0).normalize().multiplyScalar(e.T.big ? 3 : 10);
       this.enemies.damage(e, cfg.enemyDmg * k, e.pos.clone().sub(pos).normalize(), killer);
+    }
+  }
+
+  // ---------- grenades ----------
+  throwGrenade(player) {
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.aimQuaternion());
+    const pos = player.eye.addScaledVector(dir, 0.45).add(new THREE.Vector3(0, -0.15, 0));
+    const vel = dir.multiplyScalar(GRENADE.speed).add(new THREE.Vector3(0, GRENADE.lift, 0)).addScaledVector(player.vel, 0.5);
+    this.grenades.push({ id: this.nextId(), pos, vel, fuse: GRENADE.fuse, owner: player });
+  }
+
+  // flight with gravity, bounces off the level, then the blast
+  #updateGrenades(dt) {
+    for (let i = this.grenades.length - 1; i >= 0; i--) {
+      const g = this.grenades[i];
+      g.fuse -= dt;
+      if (g.fuse <= 0) {
+        this.grenades.splice(i, 1);
+        this.#grenadeBlast(g);
+        continue;
+      }
+      g.vel.y -= GRAVITY_GRENADE * dt;
+      const step = g.vel.clone().multiplyScalar(dt);
+      const len = step.length();
+      if (len < 1e-6) continue;
+      const dir = step.clone().divideScalar(len);
+      const hit = this.level.raycast(g.pos, dir, len + GRENADE.size);
+      if (!hit) { g.pos.add(step); continue; }
+      // bounce: the part of the speed into the surface comes back weaker, the rest slides with friction
+      g.pos.copy(hit.point).addScaledVector(hit.normal, GRENADE.size);
+      const into = g.vel.dot(hit.normal);
+      const speed = g.vel.length();
+      g.vel.addScaledVector(hit.normal, -into).multiplyScalar(0.7).addScaledVector(hit.normal, -into * 0.4);
+      if (g.vel.length() < 0.6) g.vel.set(0, 0, 0);
+      if (speed > 3) this.emit('grenadeBounce', { pos: g.pos.clone(), speed });
+    }
+  }
+
+  #grenadeBlast(g) {
+    const pos = g.pos.clone();
+    const R = GRENADE.radius;
+    const owner = this.players.has(g.owner.id) ? g.owner : null;
+    this.emit('explosion', { pos: pos.clone(), radius: R, kind: 'grenade' });
+    const from = pos.clone().setY(pos.y + 0.3);
+    const exposed = (p) => this.level.lineOfSight(from, p);
+    for (const e of [...this.enemies.list]) {
+      if (e.rise > 0.5 || e.hidden) continue;
+      const c = e.pos.clone().setY(e.pos.y + e.lift + e.T.height * 0.5);
+      const d = c.distanceTo(pos);
+      if (d > R + e.T.radius || !exposed(c)) continue;
+      const k = 1 - Math.min(1, d / (R + e.T.radius)) * 0.6;
+      e.knock.copy(e.pos).sub(pos).setY(0).normalize().multiplyScalar(e.T.big ? 3 : 10);
+      this.enemies.damage(e, GRENADE.dmg * k, e.pos.clone().sub(pos).normalize(), owner, 'grenade');
+    }
+    // the thrower is hurt by their own pot; other players only in the arena
+    for (const p of this.alivePlayers()) {
+      if (p !== owner && !this.pvp) continue;
+      const d = p.center.distanceTo(pos);
+      if (d > R || !exposed(p.center)) continue;
+      const k = 1 - (d / R) * 0.6;
+      this.hitPlayer(p, GRENADE.playerDmg * k, pos, 'explosion', null, owner ? { by: owner, weapon: 'grenade' } : null);
+      p.impulse(p.pos.clone().sub(pos).setY(0).normalize().multiplyScalar(8 * k).add(new THREE.Vector3(0, 3.5 * k, 0)));
     }
   }
 
@@ -369,7 +459,7 @@ export class Sim {
         if (perfect) {
           this.emit('perfectParry', { pid: player.id, pos: from.clone() });
           player.waveStats.perfectParries++;
-          this.addScore(player, BONUS.perfectParry);
+          this.addScore(player, BONUS.perfectParry, 'PARADE PARFAITE');
           this.slowMo = 0.45;
           // a player's blade parried at the last moment throws its owner back
           if (src?.by) src.by.impulse(to.clone().multiplyScalar(-9));
@@ -404,7 +494,9 @@ export class Sim {
   // returns false when the player cannot use it (full health, ammo maxed): the pickup stays
   pickup(player, kind) {
     if (kind === 'ammo') {
-      if (!player.loadout.addAmmo(0.25 * player.mods.ammo)) return false;
+      const ammo = player.loadout.addAmmo(0.25 * player.mods.ammo);
+      const pot = player.loadout.addGrenades(1); // ammo crates also hold a fire pot
+      if (!ammo && !pot) return false;
     } else {
       if (player.health >= player.maxHealth) return false;
       player.health = Math.min(player.maxHealth, player.health + 35);

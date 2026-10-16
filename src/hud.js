@@ -17,6 +17,7 @@ export class Hud {
     this.bannerTimer = 0;
     this.pickupTimer = 0;
     this.lastHealth = 100;
+    this.medalTimer = 0;
 
     this.bossBar = document.createElement('div');
     this.bossBar.id = 'boss-bar';
@@ -76,7 +77,7 @@ export class Hud {
     el.className = mine ? 'me' : '';
     el.innerHTML = killer
       ? `${esc(killer)}<span class="w${head ? ' head' : ''}">${WEAPON_LABEL[weapon] ?? weapon}${head ? ' · TÊTE' : ''}</span>${esc(victim)}`
-      : `${esc(victim)}<span class="w">${weapon === 'guardian' ? 'GARDIENS' : 'CHUTE'}</span>`;
+      : `${esc(victim)}<span class="w">${weapon === 'guardian' ? 'GARDIENS' : weapon === 'grenade' ? 'SA GRENADE' : 'CHUTE'}</span>`;
     el.dataset.life = 5;
     const feed = $('killfeed');
     feed.prepend(el);
@@ -255,6 +256,11 @@ export class Hud {
     $('vignette').style.opacity = Math.max(0, (1 - s.health / 100) * 1.1 - 0.15 + this.hurtFlash);
     this.hurtFlash = Math.max(0, (this.hurtFlash || 0) - dt * 2);
 
+    this.#grenades(s.grenades);
+    this.#updatePoints(dt);
+    this.medalTimer -= dt;
+    if (this.medalTimer <= 0) $('medal').classList.add('hidden');
+
     const w = s.weapon;
     this.set('weapon-name', w.def.name);
     const melee = !!w.def.melee;
@@ -271,14 +277,15 @@ export class Hud {
     // crosshair: gap grows with spread, fades when aiming
     const gap = 6 + s.spread * 260;
     const ch = $('crosshair');
-    ch.style.opacity = s.reloading ? 0.3 : melee ? 0.5 : 1 - s.ads;
+    ch.style.opacity = s.scoped ? 0 : s.reloading ? 0.3 : melee ? 0.5 : 1 - s.ads;
     ch.querySelector('.t').style.top = `${-gap - 9}px`;
     ch.querySelector('.b').style.top = `${gap}px`;
     ch.querySelector('.l').style.left = `${-gap - 9}px`;
     ch.querySelector('.r').style.left = `${gap}px`;
     this.parryFlash = Math.max(0, (this.parryFlash || 0) - dt * 2.5);
     $('parry-flash').style.opacity = this.parryFlash;
-    $('ads-vignette').style.opacity = s.ads * 0.9;
+    $('ads-vignette').style.opacity = s.scoped ? 0 : s.ads * 0.9;
+    $('scope').classList.toggle('hidden', !s.scoped);
 
     this.hitTimer -= dt;
     $('hitmarker').style.opacity = Math.max(0, this.hitTimer / 0.15);
@@ -343,6 +350,57 @@ export class Hud {
 
   perfectParry() { this.parryFlash = 1; }
 
+  // ---------- grenades, points, medals ----------
+  #grenades(n) {
+    if (n === this.grenadeCount) return;
+    this.grenadeCount = n;
+    $('grenades').innerHTML = 'G' + Array.from({ length: 4 }, (_, i) => `<i class="${i < n ? '' : 'empty'}"></i>`).join('');
+  }
+
+  // Call of Duty: each gain is a line next to the crosshair, and the total grows while they chain
+  points(amount, label) {
+    this.pointsTotal = (this.pointsTotal ?? 0) + amount;
+    this.pointsTimer = 2.2;
+    const total = $('points-total');
+    total.textContent = `+${this.pointsTotal.toLocaleString('fr-FR')}`;
+    total.style.opacity = 1;
+    total.classList.remove('bump'); void total.offsetWidth; total.classList.add('bump');
+    const line = document.createElement('div');
+    line.innerHTML = `${label}<b>+${amount.toLocaleString('fr-FR')}</b>`;
+    line.dataset.life = 2.2;
+    const list = $('points-list');
+    list.prepend(line);
+    while (list.children.length > 4) list.lastChild.remove();
+  }
+
+  #updatePoints(dt) {
+    if (this.pointsTimer > 0) {
+      this.pointsTimer -= dt;
+      if (this.pointsTimer <= 0) { this.pointsTotal = 0; $('points-total').style.opacity = 0; }
+    }
+    for (const el of [...$('points-list').children]) {
+      const life = Number(el.dataset.life) - dt;
+      el.dataset.life = life;
+      if (life < 0.4) el.style.opacity = Math.max(0, life / 0.4);
+      if (life <= 0) el.remove();
+    }
+  }
+
+  clearPoints() {
+    this.pointsTotal = 0; this.pointsTimer = 0;
+    $('points-total').style.opacity = 0;
+    $('points-list').innerHTML = '';
+    $('medal').classList.add('hidden');
+  }
+
+  // Halo: the medal's name, big and gold, under the top of the screen
+  medal(title, sub = '') {
+    const el = $('medal');
+    el.innerHTML = `${title}${sub ? `<small>${sub}</small>` : ''}`;
+    el.classList.remove('hidden', 'show'); void el.offsetWidth; el.classList.add('show');
+    this.medalTimer = 2.4;
+  }
+
   banner(title, sub, duration = 2.5) {
     $('banner-title').textContent = title;
     $('banner-sub').textContent = sub;
@@ -360,7 +418,7 @@ export class Hud {
   }
 }
 
-const WEAPON_LABEL = { sword: 'KHÉPESH', pistol: 'PISTOLET', rifle: 'FUSIL', shotgun: 'POMPE', explosion: 'MOMIE' };
+const WEAPON_LABEL = { sword: 'KHÉPESH', pistol: 'PISTOLET', rifle: 'FUSIL', shotgun: 'POMPE', sniper: 'PRÉCISION', explosion: 'MOMIE', grenade: 'GRENADE' };
 
 export function fmtTime(t) {
   const m = Math.floor(t / 60), s = Math.floor(t % 60);

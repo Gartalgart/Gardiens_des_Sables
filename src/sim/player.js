@@ -8,7 +8,7 @@ const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 
 // An empty command: what a player does when no input arrives.
 export function emptyCommand() {
-  return { moveX: 0, moveZ: 0, sprint: false, jump: false, fire: false, aim: false, reload: false, use: false, slot: null, cycle: 0, pickCard: null, yaw: 0, pitch: 0 };
+  return { moveX: 0, moveZ: 0, sprint: false, jump: false, fire: false, aim: false, reload: false, use: false, grenade: false, slot: null, cycle: 0, pickCard: null, yaw: 0, pitch: 0 };
 }
 
 // One player in the simulation. Commands drive it; the client only reads it.
@@ -37,6 +37,9 @@ export class PlayerSim {
     this.respawn = 0; // arena: seconds before a dead player comes back
     this.protect = 0; // arena: seconds of invulnerability after coming back
     this.killedBy = null; // arena: id of the player who scored the last kill on this one
+    this.multi = 0; // kills in a row, each less than MULTI_WINDOW after the previous one
+    this.lastKillAt = -99;
+    this.spree = 0; // arena: kills since the last death
     this.name = id;
     this.stats = { kills: 0, headshots: 0, damageTaken: 0, shotsFired: 0, shotsHit: 0, frags: 0, deaths: 0 };
     this.score = 0;

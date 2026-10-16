@@ -5,7 +5,7 @@ const SWARM = 5; // scarabs come out of the sand together
 const ELITE_FROM_WAVE = 3;
 const ELITE_CHANCE = 0.1;
 // weapon unlocked when a wave is cleared, ready for the next one
-export const UNLOCKS = { 2: 'rifle', 3: 'shotgun' };
+export const UNLOCKS = { 2: 'rifle', 3: 'shotgun', 5: 'sniper' };
 const CARD_TIMEOUT = 45; // a player who never picks gets a random card (keeps co-op games moving)
 
 // Everything the wave modes share: spawning a wave's queue, the break between waves, weapon
@@ -136,6 +136,7 @@ export class WaveBase {
       const u = UNLOCKS[next] && p.loadout.unlock(UNLOCKS[next]);
       unlocked = unlocked || u;
       p.loadout.addAmmo(0.5);
+      p.loadout.addGrenades(1);
       // upgrade cards: three to choose from, four after a completed objective
       if (!p.dead && this.cardsAfter(n)) {
         p.cardOffer = drawCards(p, winners.has(p.id) ? 4 : 3);

@@ -93,6 +93,7 @@ export class Sound {
       pistol: { f: 2200, dec: 0.16, thump: 140, vol: 0.7 },
       rifle: { f: 2600, dec: 0.12, thump: 110, vol: 0.6 },
       shotgun: { f: 1300, dec: 0.38, thump: 70, vol: 1.0 },
+      sniper: { f: 1900, dec: 0.6, thump: 55, vol: 1.1 },
     }[kind];
     const out = this.#out(pan, cfg.vol * gain);
     const n = this.#noiseSrc();
@@ -350,6 +351,65 @@ export class Sound {
       g.gain.linearRampToValueAtTime(0.0001, t + 2.2);
       o.connect(f).connect(g).connect(this.sfx);
       o.start(t); o.stop(t + 2.3);
+    });
+  }
+
+  // a fire pot hitting stone
+  thud(pan, vol) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const out = this.#out(pan, vol);
+    const o = this.ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(260, t);
+    o.frequency.exponentialRampToValueAtTime(110, t + 0.08);
+    const g = this.ctx.createGain();
+    this.#env(g, t, 0.003, 0.35, 0.1);
+    o.connect(g).connect(out);
+    o.start(t); o.stop(t + 0.15);
+  }
+
+  // Call of Duty's headshot kill: a dry crack, then a bright metallic ring that dies away
+  headshotKill() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const n = this.#noiseSrc();
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 2500;
+    const ng = this.ctx.createGain();
+    this.#env(ng, t, 0.001, 0.5, 0.05);
+    n.connect(hp).connect(ng).connect(this.sfx);
+    n.start(t); n.stop(t + 0.08);
+    // inharmonic partials, like a struck piece of metal
+    [[1850, 0.22, 0.45], [2960, 0.14, 0.35], [4410, 0.08, 0.22], [925, 0.12, 0.18]].forEach(([fr, peak, decay]) => {
+      const o = this.ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(fr * 1.02, t + 0.012);
+      o.frequency.exponentialRampToValueAtTime(fr, t + 0.1);
+      const g = this.ctx.createGain();
+      this.#env(g, t + 0.012, 0.002, peak, decay);
+      o.connect(g).connect(this.sfx);
+      o.start(t + 0.012); o.stop(t + 0.03 + decay);
+    });
+  }
+
+  // the medal sting: a short rising brass chord, brighter for bigger medals
+  medal(level = 1) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const base = 196 * Math.pow(2, Math.min(level, 8) / 12);
+    [1, 1.26, 1.5, 2].forEach((k, i) => {
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth'; o.frequency.value = base * k;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.setValueAtTime(600, t); f.frequency.linearRampToValueAtTime(2600, t + 0.25);
+      const g = this.ctx.createGain();
+      const s = t + i * 0.035;
+      g.gain.setValueAtTime(0.0001, s);
+      g.gain.linearRampToValueAtTime(0.09, s + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.9);
+      o.connect(f).connect(g).connect(this.sfx);
+      o.start(s); o.stop(s + 1);
     });
   }
 

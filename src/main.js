@@ -10,6 +10,8 @@ import { Sim } from './sim/sim.js';
 import { DIFFICULTIES } from './sim/difficulty.js';
 import { PropsView } from './view/propsView.js';
 import { PlayerView } from './view/playerView.js';
+import { GrenadeView } from './view/grenadeView.js';
+import { multiKillName, spreeName } from './medals.js';
 import { NetSession, defaultServer } from './net/session.js';
 import { emptyCommand } from './sim/player.js';
 import { WorldView } from './view/worldView.js';
@@ -108,6 +110,7 @@ const effects = new Effects(scene);
 const weaponView = new WeaponView(assets, vmScene, effects, worldFlash);
 const enemyView = new EnemyView(scene, assets, effects);
 const playerView = new PlayerView(scene, assets, effects);
+const grenadeView = new GrenadeView(scene, assets, effects);
 const hud = new Hud(level);
 Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects });
 
@@ -360,6 +363,8 @@ function resetViews() {
   hud.prompt(null);
   hud.downed(null);
   hud.clearKillfeed();
+  hud.clearPoints();
+  grenadeView.clear();
   hud.scoreboard(null);
   lastShots.clear();
   weaponView.reset();
@@ -517,13 +522,15 @@ function parrySparks(count) {
   effects.burst(pos, _fwd.clone().negate(), { count, color: new THREE.Color(1, 0.78, 0.35), speed: 4.5, size: 0.035, life: 0.32, grav: 5 });
 }
 
-const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35 };
+const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3 };
 const PLAYER_HIT_COLOR = new THREE.Color(0.75, 0.15, 0.1);
 const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? 'Un allié').toUpperCase();
 
 function handleEvents() {
   const sim = game.sim;
   let hit = null;
+  let multi = 0, spree = 0; // the best medals of this frame: a grenade can take several kills at once
+  let headshotKill = false;
   for (const ev of sim.drainEvents()) {
     const mine = ev.pid === game.localId;
     switch (ev.type) {
@@ -532,6 +539,12 @@ function handleEvents() {
         else { playerView.onEvent(ev); sound.shot(ev.weapon, pan(ev.origin), 0.6 * Math.max(0.1, vol(ev.origin, 90))); lastShots.set(ev.pid, 0); }
         break;
       case 'impactPlayer': effects.impactEnemy(ev.point, ev.normal, PLAYER_HIT_COLOR); break;
+      case 'grenadeThrow': if (mine) sound.swoosh(); break;
+      case 'grenadeBounce': sound.thud(pan(ev.pos), Math.min(1, ev.speed / 12) * vol(ev.pos, 40)); break;
+      case 'points': if (mine) hud.points(ev.amount, ev.label); break;
+      case 'headshotKill': if (mine) headshotKill = true; break;
+      case 'multikill': if (mine) multi = Math.max(multi, ev.count); break;
+      case 'spree': if (mine) spree = Math.max(spree, ev.count); break;
       case 'frag': {
         const killer = ev.by ? sim.players.get(ev.by)?.name ?? '?' : null;
         hud.frag(killer, sim.players.get(ev.pid)?.name ?? '?', ev.weapon, ev.head, mine || ev.by === game.localId);
@@ -596,8 +609,9 @@ function handleEvents() {
         break;
       case 'prime': primes.set(ev.id, 0); break;
       case 'explosion':
-        enemyView.onEvent(ev);
-        primes.clear();
+        if (ev.kind === 'grenade') grenadeView.explode(ev.pos);
+        else { enemyView.onEvent(ev); primes.clear(); }
+        blastLight.color.setHex(ev.kind === 'grenade' ? 0xff8a3a : 0x9dff6a);
         sound.explosion(pan(ev.pos), Math.max(0.3, vol(ev.pos, 70)));
         addShake(0.8 * vol(ev.pos, 22));
         blastLight.position.copy(ev.pos);
@@ -631,7 +645,16 @@ function handleEvents() {
       case 'gameOver': endGame(ev.victory, ev.winner); break;
     }
   }
-  if (hit) { hud.hit(hit.head); sound.hit(hit.head); }
+  // Call of Duty: a kill to the head has its own crack and ring, instead of the plain hit sound
+  if (headshotKill) sound.headshotKill();
+  else if (hit) sound.hit(hit.head);
+  if (hit || headshotKill) hud.hit(!!(hit?.head || headshotKill));
+  // Halo: the medal on screen and a brass sting
+  if (multi || spree) {
+    const lines = [multi && multiKillName(multi), spree && spreeName(spree)].filter(Boolean);
+    hud.medal(lines[0].toUpperCase(), spree && multi ? spreeName(spree).toUpperCase() : spree ? `${spree} ÉLIMINATIONS SANS MOURIR` : '');
+    sound.medal(multi || spree / 5 + 1);
+  }
 }
 
 // ---------- loop ----------
@@ -665,7 +688,8 @@ function tick(dt, now = (tickClock += dt)) {
     const lo = p.loadout;
     const aiming = lo.adsT > 0.5;
     const cmd = game.state === 'playing'
-      ? input.buildCommand(lo.current.def.melee ? 1 : 1 - lo.adsT * 0.45, !!p.cardOffer)
+      // aiming slows the mouse down, much more through the precision rifle's scope
+      ? input.buildCommand(lo.current.def.melee ? 1 : 1 - lo.adsT * (lo.current.def.scope ? 0.75 : 0.45), !!p.cardOffer)
       : { ...emptyCommand(), yaw: input.yaw, pitch: input.pitch };
     sim.step(dt, new Map([[game.localId, cmd]]));
 
@@ -691,6 +715,7 @@ function tick(dt, now = (tickClock += dt)) {
     // debris and poses slow down with the sword hit-stop and the parry slow motion, like the enemies
     const viewDt = dt * sim.timeScale;
     enemyView.sync(sim.enemies, viewDt, sim.time);
+    grenadeView.sync(sim.grenades, viewDt);
     if (game.net) coopHud(p, dt);
     const ranked = sim.mode.pvp ? arenaRanking() : null;
 
@@ -718,10 +743,12 @@ function tick(dt, now = (tickClock += dt)) {
       health: p.health,
       weapon: lo.current,
       weaponIndex: lo.index,
+      grenades: lo.grenades,
       unlocked: lo.items.map((w) => w.unlocked),
       reloading: lo.reloading > 0,
       spread: THREE.MathUtils.lerp(def.spread, def.adsSpread, lo.adsT) + (p.moving ? 0.012 : 0),
       ads: lo.adsT,
+      scoped: weaponView.scoped(lo) && !p.dead && game.state === 'playing',
       boss: sim.enemies.boss,
       arena: ranked && {
         frags: p.stats.frags, deaths: p.stats.deaths, scoreLimit: sim.mode.scoreLimit, timeLeft: sim.mode.timeLeft,

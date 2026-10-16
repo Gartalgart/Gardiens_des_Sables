@@ -9,7 +9,7 @@ import { readPlayer, reviveVectors, PORT } from './protocol.js';
 // snapshots to interpolate between (the server sends one every 33 ms).
 const INTERP_DELAY = 0.07;
 // what the client already did itself for its own player: the server's copies of these are skipped
-const PREDICTED = new Set(['playerShot', 'swing', 'reload', 'dry', 'switch', 'kick', 'step']);
+const PREDICTED = new Set(['playerShot', 'swing', 'reload', 'dry', 'switch', 'kick', 'step', 'grenadeThrow']);
 
 const lerpAngle = (a, b, k) => a + (((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * k;
 
@@ -86,6 +86,7 @@ export class NetSession {
     if (m.mode === 'arena') Object.assign(this.mode, { pvp: true, scoreLimit: m.arena.scoreLimit, timeLimit: m.arena.timeLimit, timeLeft: m.arena.timeLimit });
     this.enemies = { list: [], projectiles: [], pickups: [], get boss() { return this.list.find((e) => e.T.boss) || null; }, get alive() { return this.list.length; } };
     this.byId = new Map(); // enemy mirrors by id, kept between snapshots
+    this.grenades = [];
     this.snaps = [];
     this.renderTime = null;
     this.viewOffset = new THREE.Vector3(); // eases out prediction corrections on the camera
@@ -102,6 +103,7 @@ export class NetSession {
       emit(type, data = {}) { if (!self.replaying) self.events.push({ ...data, type }); },
       fireWeapon: (player, def, spread) => this.#fireCosmetic(player, def, spread),
       meleeAttack: () => 0, // the server decides what the blade hits
+      throwGrenade: () => {}, // the pot itself comes from the server
     };
     this.local = new PlayerSim(this.id, this.ctx);
     this.players.set(this.id, this.local);
@@ -228,12 +230,15 @@ export class NetSession {
       return o;
     });
     this.enemies.pickups = s.pick.map((p) => ({ id: p.i, kind: p.k, pos: new THREE.Vector3(...p.p) }));
+    const pots = new Map(this.grenades.map((g) => [g.id, g]));
+    this.grenades = s.gren.map((g) => pots.get(g.i) || { id: g.i, pos: new THREE.Vector3(...g.p) });
 
     // keep the positions for interpolation
     const snap = { time: s.time, en: new Map(), pl: new Map(), pr: new Map() };
     for (const es of s.enemies) snap.en.set(es.i, es);
     for (const ps of s.players) snap.pl.set(ps.id, ps);
     for (const p of s.proj) snap.pr.set(p.i, p.p);
+    for (const g of s.gren) snap.pr.set(g.i, g.p); // ids are shared, so pots ride along with the orbs
     this.snaps.push(snap);
     while (this.snaps.length > 12) this.snaps.shift();
     if (this.renderTime === null) this.renderTime = s.time - INTERP_DELAY;
@@ -280,7 +285,7 @@ export class NetSession {
       o.yaw = lerpAngle(pa.yaw, pb.yaw, k);
       o.pitch = pa.pitch + (pb.pitch - pa.pitch) * k;
     }
-    for (const p of this.enemies.projectiles) {
+    for (const p of [...this.enemies.projectiles, ...this.grenades]) {
       const pa = a.pr.get(p.id), pb = b.pr.get(p.id);
       if (pa && pb) p.pos.set(pa[0] + (pb[0] - pa[0]) * k, pa[1] + (pb[1] - pa[1]) * k, pa[2] + (pb[2] - pa[2]) * k);
       else if (pb || pa) p.pos.set(...(pb || pa));

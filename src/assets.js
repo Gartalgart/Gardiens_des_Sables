@@ -11,9 +11,11 @@ const FILES = {
   pistol: 'models/pistol.glb',
   rifle: 'models/rifle.glb',
   shotgun: 'models/shotgun.glb',
+  sniper: 'models/sniper.glb',
   sword: 'models/sword.glb',
   mummy: 'models/mummy.glb',
   scarab: 'models/scarab.glb',
+  grenade: 'models/grenade.glb',
 };
 
 export async function loadAssets(onProgress) {

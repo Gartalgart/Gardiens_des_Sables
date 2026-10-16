@@ -36,6 +36,8 @@
       <i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i>
     </div>
     <div id="hitmarker"></div>
+    <div id="points"><div id="points-total"></div><div id="points-list"></div></div>
+    <div id="medal" class="hidden"></div>
     <div id="damage-dirs"></div>
 
     <div id="bottom-left">
@@ -48,11 +50,13 @@
       <div id="weapon-name">PISTOLET</div>
       <div id="ammo"><span id="ammo-mag">12</span><span class="dim" id="ammo-sep"> / </span><span id="ammo-res">∞</span></div>
       <div id="reload-hint" class="hidden">[R] RECHARGER</div>
+      <div id="grenades" title="Pots de feu [G]"></div>
       <div id="slots">
         <div class="slot" data-slot="0"><b>1</b> Khépesh</div>
         <div class="slot" data-slot="1"><b>2</b> Pistolet</div>
         <div class="slot" data-slot="2"><b>3</b> Fusil d'assaut</div>
         <div class="slot" data-slot="3"><b>4</b> Fusil à pompe</div>
+        <div class="slot" data-slot="4"><b>5</b> Précision</div>
       </div>
     </div>
 
@@ -73,6 +77,7 @@
   <div id="parry-flash"></div>
   <div id="vignette"></div>
   <div id="ads-vignette"></div>
+  <div id="scope" class="hidden"><div class="reticle"></div></div>
 
   <div id="menu" class="screen">
     <div class="panel">
@@ -229,9 +234,10 @@
       <div><kbd>Clic gauche</kbd></div><div>Tirer / frapper</div>
       <div><kbd>Clic droit</kbd></div><div>Viser / parer (khépesh)</div>
       <div><kbd>R</kbd></div><div>Recharger</div>
+      <div><kbd>G</kbd></div><div>Lancer un pot de feu (grenade)</div>
       <div><kbd>E</kbd> (maintenir)</div><div>Relever un coéquipier à terre (coopération)</div>
       <div><kbd>Tab</kbd> (maintenir)</div><div>Tableau des scores (arène)</div>
-      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> / molette</div><div>Changer d'arme (choisir une carte entre les vagues)</div>
+      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd> / molette</div><div>Changer d'arme (choisir une carte entre les vagues)</div>
       <div><kbd>Échap</kbd></div><div>Pause / aide</div>
     </div>
     <p class="tips">Les tirs à la tête infligent double dégâts. Le khépesh tranche tout ce qui est devant vous, et sa parade renvoie les orbes ennemis. Seuls les ennemis tués au corps à corps lâchent de la santé. De nouvelles armes se débloquent au fil des vagues. La santé se régénère après quelques secondes sans blessure.</p>

@@ -174,6 +174,7 @@ export class Enemies {
     if (killer) {
       killer.stats.kills++;
       this.sim.scoreKill(killer, e, cause);
+      this.sim.registerKill(killer, false);
       if (cause === 'melee') {
         killer.waveStats.meleeKills++;
         if (killer.mods.lifesteal && !killer.dead) killer.health = Math.min(killer.maxHealth, killer.health + killer.mods.lifesteal);
