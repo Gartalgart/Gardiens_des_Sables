@@ -543,7 +543,10 @@ function handleEvents() {
     const mine = ev.pid === game.localId;
     switch (ev.type) {
       case 'playerShot':
-        if (mine) { sound.shot(ev.weapon); weaponView.onShot(ev, camera); addShake(SHOT_SHAKE[ev.weapon] ?? 0); }
+        if (mine) {
+          sound.shot(ev.weapon); weaponView.onShot(ev, camera); addShake(SHOT_SHAKE[ev.weapon] ?? 0);
+          if (ev.weapon === 'shotgun') sound.pump(0.13);
+        }
         else { playerView.onEvent(ev); sound.shot(ev.weapon, pan(ev.origin), 0.6 * Math.max(0.1, vol(ev.origin, 90))); lastShots.set(ev.pid, 0); }
         break;
       case 'impactPlayer': effects.impactEnemy(ev.point, ev.normal, PLAYER_HIT_COLOR); break;
@@ -574,7 +577,8 @@ function handleEvents() {
         break;
       case 'swing': if (mine) sound.swoosh(); else playerView.onEvent(ev); break;
       case 'slash': if (mine) { sound.slash(ev.hits); hud.hit(false); weaponView.onSlashHit(); } break;
-      case 'reload': if (mine) sound.reload(ev.duration); break;
+      case 'reload': if (mine) sound.reload(ev.duration, ev.weapon); break;
+      case 'shell': if (mine) { sound.shell(); if (ev.left === 0) sound.pump(0.2); } break;
       case 'dry': if (mine) sound.dry(); break;
       case 'switch': if (mine) sound.click(0.7); break;
       case 'kick': if (mine) input.addPitch(ev.pitch); break;

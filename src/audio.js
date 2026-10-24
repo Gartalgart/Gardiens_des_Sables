@@ -246,10 +246,35 @@ export class Sound {
     o.start(t); o.stop(t + 0.08);
   }
 
-  reload(duration) {
-    this.click(0.8, 0.05);
-    this.click(0.6, duration * 0.45);
-    this.click(1.1, duration * 0.9);
+  // timed with the view model: magazine out, seated, slide or bolt racked
+  reload(duration, weapon) {
+    if (weapon === 'shotgun') { this.click(0.7, 0.05); return; } // then a sound per shell
+    this.click(0.8, duration * 0.2);
+    this.#clack(duration * 0.72, 0.5, 0.9);
+    this.click(0.6, duration * 0.72);
+    if (weapon !== 'rifle') this.#clack(duration * 0.86, 0.8, 0.6);
+  }
+
+  // a shell pushed into the shotgun's tube
+  shell() { this.click(0.45); this.#clack(0.02, 0.4, 0.6); }
+
+  // the shotgun's pump: a rattle back, then a heavier clack forward
+  pump(when = 0) {
+    this.#clack(when, 0.9, 0.7);
+    this.#clack(when + 0.13, 0.55, 0.9);
+  }
+
+  #clack(when, pitch, vol) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when;
+    const n = this.#noiseSrc();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.Q.value = 2.5;
+    f.frequency.value = 2600 * pitch;
+    const g = this.ctx.createGain();
+    this.#env(g, t, 0.001, vol, 0.05);
+    n.connect(f).connect(g).connect(this.#out(0, 1));
+    n.start(t); n.stop(t + 0.1);
   }
 
   dry() { this.click(2.2); }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { findPart } from '../assets.js';
+import { findPart, baseName } from '../assets.js';
 import { makeGlowTexture } from './worldView.js';
 import { WEAPONS } from '../sim/weapons.js';
 
@@ -10,6 +10,26 @@ const VIEW = {
   rifle: { hip: new THREE.Vector3(0.15, -0.19, -0.3), adsZ: -0.24, scale: 1.0, sightY: null, holo: 'R_HoloGlass' },
   shotgun: { hip: new THREE.Vector3(0.16, -0.19, -0.26), adsZ: -0.2, scale: 1.0, sightY: null },
   sniper: { hip: new THREE.Vector3(0.17, -0.23, -0.42), adsZ: -0.22, scale: 0.85, sightY: null },
+};
+
+// Moving parts of each gun (names from blender/fps_assets.blend): the left arm's objects share a prefix,
+// the magazine drops out on reload, the rack slides back once a new one is in, the action cycles after each shot.
+// The pistol's magazine is hidden in its grip, so it is made here.
+const RIG = {
+  pistol: { arm: 'PL_', rack: [['P_Slide', 0.03]], action: { parts: [['P_Slide', 0.022]], at: [0, 0.07] } },
+  rifle: { arm: 'RL_', mag: 'R_Mag' },
+  shotgun: { arm: 'SL_', pump: 'S_Pump', action: { parts: [['S_Pump', 0.075]], at: [0.12, 0.4], arm: true } },
+  sniper: { arm: 'NL_', mag: 'N_Mag', rack: [['N_Bolt', 0.07], ['N_BoltKnob', 0.07]], action: { parts: [['N_Bolt', 0.07], ['N_BoltKnob', 0.07]], at: [0.3, 0.72] } },
+};
+
+const ease = (x) => x * x * (3 - 2 * x);
+// 0 before a, eases up to 1 at b
+const seg = (x, a, b) => ease(THREE.MathUtils.clamp((x - a) / (b - a), 0, 1));
+// out and back between a and b: snaps out fast, returns a bit slower
+const pulse = (x, a, b) => {
+  if (x <= a || x >= b) return 0;
+  const mid = a + (b - a) * 0.35;
+  return x < mid ? seg(x, a, mid) : 1 - seg(x, mid, b);
 };
 
 // First-person view model of the local player's loadout.
@@ -60,10 +80,62 @@ export class WeaponView {
       item.flash.scale.setScalar(def.id === 'shotgun' ? 0.32 : 0.22);
       item.flash.visible = false;
       item.muzzle.add(item.flash);
+      this.#rig(item);
       return item;
     });
     this.#buildTrail();
     this.reset();
+  }
+
+  // Groups the left arm under one pivot at the hand, and finds the parts that move.
+  #rig(item) {
+    const cfg = RIG[item.def.id];
+    const body = item.muzzle.parent;
+    const part = (name) => findPart(body, name);
+    const arm = new THREE.Group();
+    arm.position.copy(part(cfg.arm + 'Hand').position);
+    body.add(arm);
+    item.model.updateMatrixWorld(true);
+    for (const o of [...body.children]) if (baseName(o.name).startsWith(cfg.arm)) arm.attach(o);
+    const rig = { arm, armRest: arm.position.clone(), moving: new Map(), actionT: 9, prevK: 0 };
+    const moving = (o) => {
+      if (!rig.moving.has(o)) rig.moving.set(o, o.position.clone());
+      return o;
+    };
+    let mag = cfg.mag && part(cfg.mag);
+    if (item.def.id === 'pistol') {
+      // a magazine inside the grip, its base plate just showing under it
+      const grip = part('P_Grip');
+      mag = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.1, 0.03), part('P_Slide').material);
+      mag.quaternion.copy(grip.quaternion);
+      mag.position.copy(grip.position).add(new THREE.Vector3(0, -0.013, 0).applyQuaternion(grip.quaternion));
+      body.add(mag);
+    }
+    if (mag) {
+      rig.mag = moving(mag);
+      rig.magDown = new THREE.Vector3(0, -1, 0).applyQuaternion(mag.quaternion);
+      // the hand takes the magazine by its base
+      mag.geometry.computeBoundingBox();
+      const half = mag.geometry.boundingBox.max.y * mag.scale.y;
+      rig.grab = mag.position.clone().addScaledVector(rig.magDown, half + 0.035);
+    }
+    rig.rack = (cfg.rack ?? []).map(([name, d]) => [moving(part(name)), d]);
+    if (cfg.action) rig.action = { ...cfg.action, parts: cfg.action.parts.map(([name, d]) => [moving(part(name)), d]) };
+    if (cfg.pump) {
+      rig.pump = moving(part(cfg.pump));
+      // a shell in the left hand while loading; it goes into the port under the receiver
+      const shell = new THREE.Group();
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.046), new THREE.MeshStandardMaterial({ color: 0x9c2418, roughness: 0.6, flatShading: true }));
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.022, 0.012), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.35, flatShading: true }));
+      base.position.z = 0.028;
+      shell.add(hull, base);
+      shell.position.set(0, 0.03, -0.01);
+      shell.visible = false;
+      arm.add(shell);
+      rig.shell = shell;
+      rig.port = new THREE.Vector3(0, -0.035, -0.07);
+    }
+    item.rig = rig;
   }
 
   // Holographic sight: a faint glass pane with a glowing red ring-and-dot reticle on it.
@@ -134,6 +206,7 @@ export class WeaponView {
   reset() {
     this.kickBack = 0;
     this.kickRot = 0;
+    this.kickRoll = 0;
     this.flashTime = 0;
     this.sway = new THREE.Vector2();
     this.shownIndex = -1;
@@ -148,8 +221,11 @@ export class WeaponView {
     const muzzleWorld = it.muzzle.getWorldPosition(new THREE.Vector3()).applyMatrix4(camera.matrixWorld);
     ev.points.slice(0, 3).forEach((p) => this.effects.tracer(muzzleWorld, p));
     const heavy = ev.weapon === 'shotgun' || ev.weapon === 'sniper';
-    this.kickBack = heavy ? 0.09 : 0.05;
-    this.kickRot = heavy ? 0.22 : 0.1;
+    // the shotgun bucks hard and twists a little
+    this.kickBack = ev.weapon === 'shotgun' ? 0.14 : heavy ? 0.09 : 0.05;
+    this.kickRot = ev.weapon === 'shotgun' ? 0.38 : heavy ? 0.22 : 0.1;
+    if (ev.weapon === 'shotgun') this.kickRoll = (Math.random() < 0.5 ? -1 : 1) * 0.12;
+    it.rig.actionT = 0;
     this.flashTime = 0.05;
     it.flash.material.rotation = Math.random() * Math.PI;
   }
@@ -182,7 +258,7 @@ export class WeaponView {
     pos.y -= by - this.sway.y * (1 - t * 0.8);
     pos.z += this.kickBack;
 
-    let rx = this.kickRot * (1 - t * 0.6), ry = 0, rz = 0;
+    let rx = this.kickRot * (1 - t * 0.6), ry = 0, rz = this.kickRoll * (1 - t * 0.6);
     let snap = 25;
     if (def.melee) {
       rz += t * 1.45; rx -= t * 0.5; // block: blade held across the view
@@ -203,9 +279,10 @@ export class WeaponView {
     }
     if (player.sprinting) { rx -= 0.35; ry += 0.5; pos.x -= 0.05; pos.y -= 0.03; }
     if (loadout.reloading > 0) {
+      // tilted to show the magazine well (or the shotgun's loading port), held there while shells go in
       const k = 1 - loadout.reloading / (loadout.reloadTotal || def.reload);
-      const dip = Math.sin(Math.min(1, k) * Math.PI);
-      rx -= dip * 0.6; rz += dip * 0.5; pos.y -= dip * 0.1;
+      const tilt = def.shells ? 1 : Math.sin(Math.min(1, k) * Math.PI);
+      rz -= tilt * (def.shells ? 0.75 : 0.7); rx += tilt * 0.3; pos.y += tilt * 0.1; pos.x -= tilt * 0.08;
     }
     if (loadout.switching > 0) pos.y -= (loadout.switching / 0.35) * 0.3;
 
@@ -217,6 +294,8 @@ export class WeaponView {
 
     this.kickBack *= Math.exp(-14 * dt);
     this.kickRot *= Math.exp(-12 * dt);
+    this.kickRoll *= Math.exp(-10 * dt);
+    if (it.rig) this.#animateRig(dt, it.rig, def, loadout, player);
 
     this.#updateTrail(dt, it, loadout);
 
@@ -224,6 +303,62 @@ export class WeaponView {
     const flashing = this.flashTime > 0;
     for (const w of this.items) if (w.flash) w.flash.visible = flashing && w === it;
     this.flashLight.intensity = flashing ? 40 : 0;
+  }
+
+  // Arm, magazine, slide, bolt and pump for this frame.
+  #animateRig(dt, r, def, loadout, player) {
+    for (const [o, rest] of r.moving) o.position.copy(rest);
+    const arm = r.armRest.clone();
+    let armTilt = 0;
+    if (r.shell) r.shell.visible = false;
+    const total = loadout.reloadTotal || def.reload;
+    const k = loadout.reloading > 0 ? 1 - loadout.reloading / total : 0;
+
+    if (loadout.reloading > 0 && def.shells) {
+      // the left hand leaves the pump for the port, fetches each shell from below and pushes it in
+      const m = player.mods.reload, sh = def.shells, left = loadout.reloading;
+      const closing = loadout.shells === 0 ? 1 - left / (sh.close * m) : -1;
+      const toPort = seg(total - left, 0, sh.open * m * 0.8) * (1 - seg(closing, 0, 0.5));
+      arm.lerp(r.port, toPort);
+      armTilt = toPort * 0.5;
+      if (loadout.shells > 0) {
+        const p = 1 - (left - ((loadout.shells - 1) * sh.each + sh.close) * m) / (sh.each * m);
+        if (p >= 0) {
+          const down = p < 0.45 ? seg(p, 0, 0.3) : 1 - seg(p, 0.45, 0.8);
+          arm.y -= down * 0.14;
+          arm.z += down * 0.05 + seg(p, 0.8, 1) * 0.03;
+          r.shell.visible = p > 0.2 && p < 0.97;
+        }
+      }
+      if (closing >= 0) {
+        const back = pulse(closing, 0.4, 1) * 0.075;
+        r.pump.position.z += back;
+        arm.z += back;
+      }
+    } else if (loadout.reloading > 0 && r.mag) {
+      // the hand takes the magazine down out of view, comes back with a full one and seats it
+      const d = 0.35 * seg(k, 0.15, 0.38) * (1 - seg(k, 0.5, 0.72));
+      const w = seg(k, 0, 0.15) * (1 - seg(k, 0.76, 0.92));
+      r.mag.position.addScaledVector(r.magDown, d);
+      arm.lerp(r.grab.clone().addScaledVector(r.magDown, d), w);
+      armTilt = w * 0.35;
+      for (const [o, dz] of r.rack) o.position.z += pulse(k, 0.8, 0.95) * dz;
+      if (r.prevK < 0.72 && k >= 0.72) { this.kickRot += 0.05; this.kickBack += 0.012; } // seated
+    }
+    r.prevK = k;
+
+    // after a shot: the pistol's slide, the sniper's bolt, the shotgun's pump with the left hand riding it
+    r.actionT += dt;
+    if (r.action && loadout.reloading <= 0) {
+      const a = pulse(r.actionT, r.action.at[0], r.action.at[1]);
+      for (const [o, dz] of r.action.parts) o.position.z += a * dz;
+      if (r.action.arm) arm.z += a * r.action.parts[0][1];
+    }
+
+    // the arm eases toward its target, so a reload cut short does not teleport the hand
+    const f = 1 - Math.exp(-30 * dt);
+    r.arm.position.lerp(arm, f);
+    r.arm.rotation.z += (armTilt - r.arm.rotation.z) * f;
   }
 }
 

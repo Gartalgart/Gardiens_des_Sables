@@ -15,6 +15,8 @@ export const WEAPONS = [
   {
     id: 'shotgun', name: 'FUSIL À POMPE', dmg: 14, rpm: 78, auto: false, mag: 6, reserve: 42, pellets: 9,
     spread: 0.085, adsSpread: 0.055, reload: 2.4, recoil: 0.07, adsFov: 62,
+    // loaded one shell at a time (open, a shell each, then the pump); firing stops the reload
+    shells: { open: 0.35, each: 0.34, close: 0.4 },
   },
   {
     // unlocked for the last wave: a bolt-action with a scope; wild from the hip, dead on when aiming,
@@ -37,6 +39,7 @@ export class Loadout {
     this.index = 1;
     this.cooldown = 0;
     this.reloading = 0;
+    this.shells = 0; // shells still to load in a shell-by-shell reload
     this.switching = 0;
     this.adsT = 0;
     this.triggerHeld = false;
@@ -67,6 +70,7 @@ export class Loadout {
     if (i === this.index || i < 0 || i >= this.items.length || !this.items[i].unlocked) return;
     this.index = i;
     this.reloading = 0;
+    this.shells = 0;
     this.swingT = -1;
     this.switching = 0.35;
     this.cooldown = Math.max(this.cooldown, 0.3);
@@ -88,9 +92,13 @@ export class Loadout {
   startReload() {
     const it = this.current;
     if (it.def.melee || this.reloading > 0 || it.mag >= this.magSize(it) || it.reserve <= 0) return;
-    this.reloading = it.def.reload * this.player.mods.reload;
+    const m = this.player.mods.reload, sh = it.def.shells;
+    if (sh) {
+      this.shells = Math.min(this.magSize(it) - it.mag, it.reserve);
+      this.reloading = (sh.open + this.shells * sh.each + sh.close) * m;
+    } else this.reloading = it.def.reload * m;
     this.reloadTotal = this.reloading;
-    this.sim.emit('reload', { pid: this.player.id, duration: this.reloading });
+    this.sim.emit('reload', { pid: this.player.id, duration: this.reloading, weapon: it.def.id });
   }
 
   addAmmo(fraction) {
@@ -128,6 +136,7 @@ export class Loadout {
       this.grenades--;
       this.grenadeCd = GRENADES.cooldown;
       this.reloading = 0;
+      this.shells = 0;
       this.switching = Math.max(this.switching, GRENADES.lower);
       this.sim.throwGrenade(player);
       this.sim.emit('grenadeThrow', { pid: player.id });
@@ -135,6 +144,15 @@ export class Loadout {
     this.switching = Math.max(0, this.switching - dt);
     if (this.reloading > 0) {
       this.reloading -= dt;
+      // shell by shell: one goes in each time the time left drops past the share of the shells after it
+      const sh = this.current.def.shells, m = this.player.mods.reload;
+      while (sh && this.shells > 0 && this.reloading <= ((this.shells - 1) * sh.each + sh.close) * m) {
+        const cur = this.current;
+        cur.mag++;
+        cur.reserve--;
+        this.shells--;
+        this.sim.emit('shell', { pid: player.id, left: this.shells });
+      }
       if (this.reloading <= 0) {
         const cur = this.current;
         const take = Math.min(this.magSize(cur) - cur.mag, cur.reserve);
@@ -149,6 +167,12 @@ export class Loadout {
     this.adsT += ((aiming ? 1 : 0) - this.adsT) * (1 - Math.exp(-14 * dt));
 
     if (!cmd.fire) this.triggerHeld = false;
+    // a shell-by-shell reload stops on a fresh trigger pull once there is something to fire
+    if (def.shells && this.reloading > 0 && cmd.fire && !this.triggerHeld && it.mag > 0) {
+      this.reloading = 0;
+      this.shells = 0;
+      this.cooldown = Math.max(this.cooldown, def.shells.close * 0.6);
+    }
     const ready = this.cooldown <= 0 && this.reloading <= 0 && this.switching <= 0;
     if (def.melee) {
       // holding the button keeps slashing, alternating directions

@@ -52,6 +52,7 @@ export class ArenaMode {
     lo.index = 1;
     lo.grenades = GRENADES.start;
     lo.reloading = 0;
+    lo.shells = 0;
     lo.swingT = -1;
   }
 

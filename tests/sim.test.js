@@ -9,7 +9,7 @@ import { applyUpgrade, drawCards, UPGRADES } from '../src/sim/progression.js';
 const DT = 1 / 60;
 // every event type handled by the client (src/main.js, handleEvents)
 const KNOWN_EVENTS = [
-  'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'dry', 'switch',
+  'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
   'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
@@ -233,6 +233,28 @@ describe('combat', () => {
     run(sim, 0.1);
     expect(sim.over).toBe(true);
     expect(sim.victory).toBe(false);
+  });
+});
+
+describe('shotgun', () => {
+  it('reloads one shell at a time, and a trigger pull stops the reload', () => {
+    const { sim, player } = newGame();
+    const lo = player.loadout;
+    const sg = lo.items[3];
+    sg.unlocked = true;
+    lo.switchTo(3);
+    run(sim, 0.5);
+    sg.mag = 2;
+    const reserve = sg.reserve;
+    lo.startReload();
+    expect(lo.shells).toBe(4);
+    run(sim, 0.35 + 0.34 * 2 + 0.01); // open, then two shells
+    expect(sg.mag).toBe(4);
+    expect(sg.reserve).toBe(reserve - 2);
+    run(sim, 0.1, () => ({ ...emptyCommand(), fire: true }));
+    expect(lo.reloading).toBe(0);
+    run(sim, 0.4, () => ({ ...emptyCommand(), fire: true }));
+    expect(sg.mag).toBe(3); // it fired once the pump closed
   });
 });
 

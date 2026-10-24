@@ -35,7 +35,7 @@ export function writePlayer(p) {
     dead: p.dead, revive: r3(p.revive), respawn: r3(p.respawn), protect: r3(p.protect), killedBy: p.killedBy,
     score: p.score, stats: p.stats, mods: p.mods, upgrades: p.upgrades, cardOffer: p.cardOffer, waveStats: p.waveStats,
     lo: {
-      index: lo.index, cooldown: r3(lo.cooldown), reloading: r3(lo.reloading), reloadTotal: r3(lo.reloadTotal ?? 0),
+      index: lo.index, cooldown: r3(lo.cooldown), reloading: r3(lo.reloading), reloadTotal: r3(lo.reloadTotal ?? 0), shells: lo.shells,
       switching: r3(lo.switching), adsT: r3(lo.adsT), triggerHeld: lo.triggerHeld,
       swingT: r3(lo.swingT), swingDir: lo.swingDir, swingHitDone: lo.swingHitDone,
       aimHeld: lo.aimHeld, aimPressedAt: r3(lo.aimPressedAt), grenades: lo.grenades, grenadeCd: r3(lo.grenadeCd),
@@ -57,7 +57,7 @@ export function readPlayer(p, s) {
   const lo = p.loadout, l = s.lo;
   if (!lo) return;
   Object.assign(lo, {
-    index: l.index, cooldown: l.cooldown, reloading: l.reloading, reloadTotal: l.reloadTotal, switching: l.switching,
+    index: l.index, cooldown: l.cooldown, reloading: l.reloading, reloadTotal: l.reloadTotal, shells: l.shells ?? 0, switching: l.switching,
     adsT: l.adsT, triggerHeld: l.triggerHeld, swingT: l.swingT, swingDir: l.swingDir, swingHitDone: l.swingHitDone,
     aimHeld: l.aimHeld, aimPressedAt: l.aimPressedAt, grenades: l.grenades, grenadeCd: l.grenadeCd,
   });
