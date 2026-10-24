@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gardiens des Sables — sons</title>
+  <style>
+    body { margin: 0; padding: 24px; background: #15130f; color: #eadfc8; font: 14px/1.4 system-ui, sans-serif; }
+    h1 { margin: 0 0 4px; color: #e7c46a; font-size: 22px; }
+    h2 { margin: 24px 0 8px; color: #e7c46a; font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; }
+    p { margin: 0 0 12px; color: #b9ad94; }
+    .bar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 12px 0; }
+    .grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    button { background: #2a251c; color: #eadfc8; border: 1px solid #5a4a2a; border-radius: 6px; padding: 8px 12px; cursor: pointer; font: inherit; text-align: left; }
+    button:hover { background: #3a3324; }
+    button small { display: block; font-size: 11px; color: #9a8f78; }
+    button.file { border-left: 4px solid #6fbf5a; }
+    button.proc { border-left: 4px solid #d9903a; }
+    button.proc small { color: #d9903a; }
+    #status { color: #e7c46a; }
+  </style>
+</head>
+<body>
+  <h1>Gardiens des Sables — test des sons</h1>
+  <p>Chaque bouton appelle la méthode du jeu, avec les mêmes volumes qu'en partie.
+    Vert : le fichier joue. Orange : le fichier n'est pas chargé, c'est le son procédural de secours.</p>
+  <div class="bar">
+    <button id="start">▶ Activer le son</button>
+    <label>Musique <input id="music" type="range" min="0" max="1" step="0.05" value="0" /></label>
+    <label>Tempête <input id="storm" type="checkbox" /></label>
+    <span id="status"></span>
+  </div>
+  <div id="board"></div>
+  <script type="module" src="/src/soundBoard.js"></script>
+</body>
+</html>

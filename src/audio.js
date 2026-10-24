@@ -1,10 +1,31 @@
-// Procedural WebAudio sound effects: no audio files needed.
+// WebAudio sound effects: recorded samples from assets/audio (ElevenLabs), each with
+// a procedural version that plays while the file loads or if it fails to.
 import { Music } from './music.js';
+
+// 'weapons/pistol_fire' -> bundled url
+const SAMPLE_URLS = Object.fromEntries(
+  Object.entries(import.meta.glob('../assets/audio/**/*.mp3', { eager: true, query: '?url', import: 'default' }))
+    .map(([path, url]) => [path.slice('../assets/audio/'.length, -'.mp3'.length), url]),
+);
+
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+// the enemies' cries, by type
+const GROWLS = {
+  runner: 'enemies/runner_screech',
+  shooter: 'enemies/mummy_groan',
+  tank: 'enemies/tank_roar',
+  mummy: 'enemies/mummy_groan',
+  scarab: 'enemies/scarab_skitter',
+  boss: 'enemies/pharaoh_laugh',
+};
 
 export class Sound {
   constructor() {
     this.ctx = null;
     this.volumes = { master: 0.8, sfx: 1, music: 0.6 };
+    this.buffers = {};
+    this.lastLaugh = -Infinity;
   }
 
   // master scales everything; sfx and music are separate buses
@@ -38,6 +59,33 @@ export class Sound {
     this.#wind();
     this.musicPlayer = new Music(this.ctx, this.music, this.noise);
     this.musicPlayer.start();
+    this.samplesReady = this.#loadSamples();
+  }
+
+  hasSample(name) { return !!this.buffers[name]; }
+
+  async #loadSamples() {
+    await Promise.all(Object.entries(SAMPLE_URLS).map(async ([name, url]) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        this.buffers[name] = await this.ctx.decodeAudioData(await res.arrayBuffer());
+      } catch (err) {
+        console.warn(`sound ${name}: could not load, the procedural one stays`, err);
+      }
+    }));
+  }
+
+  // plays a loaded sample; false tells the caller to fall back on its procedural sound
+  #play(name, { pan = 0, vol = 1, when = 0, rate = 1 } = {}) {
+    const buf = this.buffers[name];
+    if (!buf) return false;
+    const s = this.ctx.createBufferSource();
+    s.buffer = buf;
+    s.playbackRate.value = rate;
+    s.connect(this.#out(pan, vol));
+    s.start(this.ctx.currentTime + when);
+    return true;
   }
 
   // 0 calm, 1 combat, 2 the pharaoh
@@ -88,6 +136,8 @@ export class Sound {
   // pan / gain: a teammate's shot is placed in space and quieter
   shot(kind, pan = 0, gain = 1) {
     if (!this.ctx) return;
+    const level = { pistol: 0.55, rifle: 0.45, shotgun: 0.7, sniper: 0.75 }[kind];
+    if (this.#play(`weapons/${kind}_fire`, { pan, vol: level * gain, rate: 0.97 + Math.random() * 0.06 })) return;
     const t = this.ctx.currentTime;
     const cfg = {
       pistol: { f: 1300, dec: 0.2, thump: 95, tail: 0.22, vol: 0.8 },
@@ -115,8 +165,28 @@ export class Sound {
     o.start(t); o.stop(t + (cfg.tail ?? 0.14) + 0.06);
   }
 
+  // the sniper's bolt, worked by the view model after each shot
+  bolt(when = 0) {
+    if (!this.ctx) return;
+    if (this.#play('weapons/sniper_bolt', { vol: 0.5, when })) return;
+    this.#clack(when, 0.7, 0.6);
+    this.#clack(when + 0.25, 0.5, 0.8);
+  }
+
+  // the khopesh's swing
   swoosh() {
     if (!this.ctx) return;
+    if (this.#play('weapons/khopesh_swing', { vol: 0.5, rate: 0.95 + Math.random() * 0.1 })) return;
+    this.#swoosh();
+  }
+
+  throw() {
+    if (!this.ctx) return;
+    if (this.#play('grenades/grenade_throw', { vol: 0.45 })) return;
+    this.#swoosh();
+  }
+
+  #swoosh() {
     const t = this.ctx.currentTime;
     const n = this.#noiseSrc();
     const f = this.ctx.createBiquadFilter();
@@ -132,6 +202,7 @@ export class Sound {
 
   slash(count) {
     if (!this.ctx) return;
+    if (this.#play('weapons/khopesh_hit', { vol: Math.min(0.8, 0.45 + count * 0.1) })) return;
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator();
     o.type = 'square';
@@ -159,9 +230,10 @@ export class Sound {
     });
   }
 
-  // mummy blast: a deep boom under a burst of noise
+  // grenade or mummy blast: a deep boom under a burst of noise
   explosion(pan, vol) {
     if (!this.ctx) return;
+    if (this.#play('grenades/grenade_explosion', { pan, vol: 0.9 * vol })) return;
     const t = this.ctx.currentTime;
     const out = this.#out(pan, vol);
     const o = this.ctx.createOscillator();
@@ -199,6 +271,7 @@ export class Sound {
   // the pharaoh vanishing / appearing
   warp(pan, vol) {
     if (!this.ctx) return;
+    if (this.#play('enemies/pharaoh_teleport', { pan, vol: 0.6 * vol })) return;
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';
@@ -210,6 +283,12 @@ export class Sound {
     this.#env(g, t, 0.02, 0.35, 0.35);
     o.connect(f).connect(g).connect(this.#out(pan, vol));
     o.start(t); o.stop(t + 0.45);
+  }
+
+  // the pharaoh rising at half health, as the storm comes (no procedural version)
+  transform() {
+    if (!this.ctx) return;
+    this.#play('enemies/pharaoh_transform', { vol: 0.85 });
   }
 
   // stronger wind during the sandstorm (k: 0..1)
@@ -248,7 +327,16 @@ export class Sound {
 
   // timed with the view model: magazine out, seated, slide or bolt racked
   reload(duration, weapon) {
+    if (!this.ctx) return;
     if (weapon === 'shotgun') { this.click(0.7, 0.05); return; } // then a sound per shell
+    // the sample is laid so it ends with the reload; the sniper's bolt is racked on its own
+    const name = weapon === 'pistol' ? 'weapons/pistol_reload' : 'weapons/rifle_reload';
+    const buf = this.buffers[name];
+    const end = weapon === 'sniper' ? duration * 0.7 : duration * 0.92;
+    if (buf && this.#play(name, { vol: 0.55, when: Math.max(0, end - buf.duration) })) {
+      if (weapon === 'sniper') this.bolt(duration * 0.75);
+      return;
+    }
     this.click(0.8, duration * 0.2);
     this.#clack(duration * 0.72, 0.5, 0.9);
     this.click(0.6, duration * 0.72);
@@ -256,10 +344,16 @@ export class Sound {
   }
 
   // a shell pushed into the shotgun's tube
-  shell() { this.click(0.45); this.#clack(0.02, 0.4, 0.6); }
+  shell() {
+    if (!this.ctx) return;
+    if (this.#play('weapons/shotgun_shell_insert', { vol: 0.5, rate: 0.95 + Math.random() * 0.1 })) return;
+    this.click(0.45); this.#clack(0.02, 0.4, 0.6);
+  }
 
   // the shotgun's pump: a rattle back, then a heavier clack forward
   pump(when = 0) {
+    if (!this.ctx) return;
+    if (this.#play('weapons/shotgun_pump', { vol: 0.5, when })) return;
     this.#clack(when, 0.9, 0.7);
     this.#clack(when + 0.13, 0.55, 0.9);
   }
@@ -277,10 +371,21 @@ export class Sound {
     n.start(t); n.stop(t + 0.1);
   }
 
-  dry() { this.click(2.2); }
+  dry() {
+    if (!this.ctx) return;
+    if (this.#play('weapons/dry_fire', { vol: 0.5 })) return;
+    this.click(2.2);
+  }
+
+  weaponSwitch() {
+    if (!this.ctx) return;
+    if (this.#play('weapons/weapon_switch', { vol: 0.4 })) return;
+    this.click(0.7);
+  }
 
   hit(head) {
     if (!this.ctx) return;
+    if (this.#play('enemies/enemy_hit', { vol: head ? 0.5 : 0.4, rate: head ? 1.15 : 1 })) return;
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator();
     o.type = 'triangle';
@@ -305,8 +410,25 @@ export class Sound {
     n.start(t); n.stop(t + dec + 0.1);
   }
 
+  // an enemy turning to sand; the pharaoh has his own death
+  kill(pan, vol, type) {
+    if (!this.ctx) return;
+    const big = type === 'tank' || type === 'boss';
+    if (type === 'boss' && this.#play('enemies/pharaoh_death', { pan, vol: 0.9 })) return;
+    if (this.#play('enemies/enemy_death_crumble', { pan, vol: 0.6 * vol, rate: big ? 0.8 : 0.95 + Math.random() * 0.1 })) return;
+    this.crumble(pan, vol, big);
+  }
+
+  // the stone guardian's ground slam, or its charge ending in a wall
+  slam(pan, vol) {
+    if (!this.ctx) return;
+    if (this.#play('enemies/tank_slam', { pan, vol: 0.8 * vol })) return;
+    this.crumble(pan, vol, true);
+  }
+
   enemyFire(pan, vol) {
     if (!this.ctx) return;
+    if (this.#play('enemies/shooter_fire', { pan, vol: 0.5 * vol })) return;
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';
@@ -320,9 +442,15 @@ export class Sound {
     o.start(t); o.stop(t + 0.4);
   }
 
-  growl(pan, vol, low = false) {
+  growl(pan, vol, low = false, type = null) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    if (type === 'boss') {
+      if (t - this.lastLaugh < 6) return; // the laugh is long: not on every swing
+      this.lastLaugh = t;
+    }
+    const name = GROWLS[type];
+    if (name && this.#play(name, { pan, vol: 0.6 * vol, rate: 0.93 + Math.random() * 0.14 })) return;
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';
     const base = low ? 55 : 110;
@@ -363,6 +491,7 @@ export class Sound {
 
   horn(victory = false) {
     if (!this.ctx) return;
+    if (victory && this.#play('medals/wave_cleared', { vol: 0.6 })) return;
     const t = this.ctx.currentTime;
     const notes = victory ? [220, 277, 330, 440] : [110, 165, 220];
     notes.forEach((fr) => {
@@ -382,6 +511,7 @@ export class Sound {
   // a fire pot hitting stone
   thud(pan, vol) {
     if (!this.ctx) return;
+    if (this.#play('grenades/grenade_bounce', { pan, vol: 0.6 * vol, rate: 0.95 + Math.random() * 0.1 })) return;
     const t = this.ctx.currentTime;
     const out = this.#out(pan, vol);
     const o = this.ctx.createOscillator();
@@ -397,6 +527,7 @@ export class Sound {
   // Call of Duty's headshot kill: a dry crack, then a bright metallic ring that dies away
   headshotKill() {
     if (!this.ctx) return;
+    if (this.#play('medals/headshot', { vol: 0.6 })) return;
     const t = this.ctx.currentTime;
     const n = this.#noiseSrc();
     const hp = this.ctx.createBiquadFilter();
@@ -418,9 +549,11 @@ export class Sound {
     });
   }
 
-  // the medal sting: a short rising brass chord, brighter for bigger medals
-  medal(level = 1) {
+  // the medal sting: a short rising brass chord, brighter for bigger medals; a spree has its fanfare
+  medal(level = 1, spree = false) {
     if (!this.ctx) return;
+    const name = spree ? 'medals/spree' : `medals/medal_${Math.min(3, Math.max(1, Math.floor(level) - 1))}`;
+    if (this.#play(name, { vol: spree ? 0.7 : 0.6 })) return;
     const t = this.ctx.currentTime;
     const base = 196 * Math.pow(2, Math.min(level, 8) / 12);
     [1, 1.26, 1.5, 2].forEach((k, i) => {
@@ -438,8 +571,14 @@ export class Sound {
     });
   }
 
-  step(sprint) {
+  // land: the end of a fall
+  step(sprint, land = false) {
     if (!this.ctx) return;
+    const name = land ? 'footsteps/sand_land'
+      : sprint ? pick(['footsteps/sand_run_1', 'footsteps/sand_run_2'])
+      : pick(['footsteps/sand_walk_1', 'footsteps/sand_walk_2', 'footsteps/sand_walk_3']);
+    const vol = land ? 0.55 : sprint ? 0.45 : 0.35;
+    if (this.#play(name, { vol, rate: 0.92 + Math.random() * 0.16 })) return;
     const t = this.ctx.currentTime;
     const n = this.#noiseSrc();
     const f = this.ctx.createBiquadFilter();

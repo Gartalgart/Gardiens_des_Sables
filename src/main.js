@@ -546,11 +546,12 @@ function handleEvents() {
         if (mine) {
           sound.shot(ev.weapon); weaponView.onShot(ev, camera); addShake(SHOT_SHAKE[ev.weapon] ?? 0);
           if (ev.weapon === 'shotgun') sound.pump(0.13);
+          else if (ev.weapon === 'sniper') sound.bolt(0.28);
         }
         else { playerView.onEvent(ev); sound.shot(ev.weapon, pan(ev.origin), 0.6 * Math.max(0.1, vol(ev.origin, 90))); lastShots.set(ev.pid, 0); }
         break;
       case 'impactPlayer': effects.impactEnemy(ev.point, ev.normal, PLAYER_HIT_COLOR); break;
-      case 'grenadeThrow': if (mine) sound.swoosh(); break;
+      case 'grenadeThrow': if (mine) sound.throw(); break;
       case 'grenadeBounce': sound.thud(pan(ev.pos), Math.min(1, ev.speed / 12) * vol(ev.pos, 40)); break;
       case 'points': if (mine) hud.points(ev.amount, ev.label); break;
       case 'headshotKill': if (mine) headshotKill = true; break;
@@ -580,9 +581,9 @@ function handleEvents() {
       case 'reload': if (mine) sound.reload(ev.duration, ev.weapon); break;
       case 'shell': if (mine) { sound.shell(); if (ev.left === 0) sound.pump(0.2); } break;
       case 'dry': if (mine) sound.dry(); break;
-      case 'switch': if (mine) sound.click(0.7); break;
+      case 'switch': if (mine) sound.weaponSwitch(); break;
       case 'kick': if (mine) input.addPitch(ev.pitch); break;
-      case 'step': if (mine) sound.step(ev.sprint); break;
+      case 'step': if (mine) sound.step(ev.sprint, ev.land); break;
       case 'reflectHit': if (mine) { hud.hit(false); sound.hit(false); } break;
       case 'blocked': if (mine) { sound.clang(); weaponView.onBlocked(); parrySparks(14); addShake(0.2); } break;
       case 'perfectParry':
@@ -603,18 +604,18 @@ function handleEvents() {
         break;
       case 'enemyKill':
         enemyView.onEvent(ev);
-        sound.crumble(0, Math.max(0.15, vol(ev.pos, 50)), ev.enemyType === 'tank' || ev.enemyType === 'boss');
+        sound.kill(0, Math.max(0.15, vol(ev.pos, 50)), ev.enemyType);
         if (ev.enemyType === 'tank' || ev.enemyType === 'boss') addShake(0.3 * vol(ev.pos, 25));
         break;
-      case 'slam': enemyView.onEvent(ev); sound.crumble(0, 1, true); addShake(0.6 * vol(ev.pos, 25)); break;
-      case 'wallStun': enemyView.onEvent(ev); sound.crumble(pan(ev.pos), vol(ev.pos), true); addShake(0.5 * vol(ev.pos, 20)); break;
+      case 'slam': enemyView.onEvent(ev); sound.slam(0, 1); addShake(0.6 * vol(ev.pos, 25)); break;
+      case 'wallStun': enemyView.onEvent(ev); sound.slam(pan(ev.pos), vol(ev.pos)); addShake(0.5 * vol(ev.pos, 20)); break;
       case 'reflect':
         enemyView.onEvent(ev);
         if (mine && ev.perfect) { sound.perfect(); parrySparks(30); hud.perfectParry(); addShake(0.3); }
         else if (mine) { sound.clang(); parrySparks(12); addShake(0.12); }
         else sound.clang();
         break;
-      case 'growl': sound.growl(pan(ev.pos), ev.loud ? 1 : vol(ev.pos), ev.low); break;
+      case 'growl': sound.growl(pan(ev.pos), ev.loud ? 1 : vol(ev.pos), ev.low, ev.enemyType); break;
       case 'enemyFire': sound.enemyFire(pan(ev.pos), vol(ev.pos)); break;
       case 'enemySpawn': case 'enemyHit': case 'ring': case 'projectileEnd':
         enemyView.onEvent(ev);
@@ -636,7 +637,7 @@ function handleEvents() {
         addShake(0.35 * vol(ev.pos, 12));
         break;
       case 'teleportOut': case 'teleportIn': enemyView.onEvent(ev); sound.warp(pan(ev.pos), vol(ev.pos, 70)); break;
-      case 'bossPhase2': enemyView.onEvent(ev); addShake(0.5); break;
+      case 'bossPhase2': enemyView.onEvent(ev); sound.transform(); addShake(0.5); break;
       case 'weather': worldView.setWeather(ev.kind); sound.setStorm(ev.kind === 'sandstorm' ? 1 : 0); break;
       case 'banner': hud.banner(ev.title, ev.sub, ev.duration); break;
       case 'horn': sound.horn(ev.victory); break;
@@ -665,7 +666,7 @@ function handleEvents() {
   if (multi || spree) {
     const lines = [multi && multiKillName(multi), spree && spreeName(spree)].filter(Boolean);
     hud.medal(lines[0].toUpperCase(), spree && multi ? spreeName(spree).toUpperCase() : spree ? `${spree} ÉLIMINATIONS SANS MOURIR` : '');
-    sound.medal(multi || spree / 5 + 1);
+    sound.medal(multi || spree / 5 + 1, !multi);
   }
 }
 

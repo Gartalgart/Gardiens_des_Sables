@@ -426,7 +426,7 @@ export class Enemies {
       e.act = { kind: 'slam', t: 0, dur: T.slam.windup };
       e.slamCd = T.slam.cd;
       this.sim.emit('ring', { pos: e.pos.clone(), radius: T.slam.range, enemyType: e.type, life: T.slam.windup });
-      this.sim.emit('growl', { pos: e.pos.clone(), low: true, loud: true });
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true, loud: true });
       return;
     }
     const token = T.big || this.meleeActive < this.maxMelee;
@@ -435,7 +435,7 @@ export class Enemies {
       e.engagedUntil = this.clock + T.melee.windup + T.melee.cd;
       e.act = { kind: 'melee', t: 0, dur: T.melee.windup };
       e.attackCd = T.melee.cd * D.attackCd;
-      if (Math.random() < 0.4) this.sim.emit('growl', { pos: e.pos.clone(), low: !!T.big });
+      if (Math.random() < 0.4) this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: !!T.big });
       return;
     }
     if (T.leap && e.hasLos && level && dist > T.leap.min && dist < T.leap.max && e.leapCd <= 0 && token) {
@@ -443,13 +443,13 @@ export class Enemies {
       e.engagedUntil = this.clock + T.leap.dur + 0.8;
       e.act = { kind: 'leap', t: 0, dur: T.leap.dur, dir: toPlayer.clone(), speed: (dist - 1.0) / T.leap.dur, hit: false };
       e.leapCd = rand(...T.leap.cd) * D.leapCd;
-      this.sim.emit('growl', { pos: e.pos.clone(), low: false });
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: false });
       return;
     }
     if (T.charge && e.hasLos && level && dist > T.charge.min && dist < T.charge.max && e.chargeCd <= 0) {
       e.act = { kind: 'charge-wind', t: 0, dur: T.charge.wind, dir: toPlayer.clone() };
       e.chargeCd = rand(...T.charge.cd) * D.chargeCd;
-      this.sim.emit('growl', { pos: e.pos.clone(), low: true });
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true });
       return;
     }
     if (T.ranged && e.hasLos && dist < T.ranged.max && e.fireCd <= 0) {

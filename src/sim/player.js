@@ -97,7 +97,7 @@ export class PlayerSim {
     this.pos.y += this.vel.y * dt;
     const ground = level.groundAt(this.pos.x, this.pos.z, PLAYER_RADIUS, Math.max(this.pos.y, beforeY));
     if (this.pos.y <= ground) {
-      if (!this.onGround && this.vel.y < -6) this.sim.emit('step', { pid: this.id, sprint: true });
+      if (!this.onGround && this.vel.y < -6) this.sim.emit('step', { pid: this.id, sprint: true, land: true });
       this.pos.y = ground;
       this.vel.y = 0;
       this.onGround = true;
