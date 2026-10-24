@@ -45,6 +45,10 @@ const GAIT = {
   gunner: { run: 99, walkRef: 1.2, runRef: 3 },
   siren: { run: 99, walkRef: 1, runRef: 3 },
   tentacle: { run: 99, walkRef: 1, runRef: 3 },
+  // the station's
+  parasite: { run: 3, walkRef: 2.5, runRef: 8 },
+  host: { run: 99, walkRef: 1.6, runRef: 3 },
+  brute: { run: 99, walkRef: 2.0, runRef: 5 },
 };
 // a swarm (the bats): this many copies of the one-bat model, flapping around the swarm's centre
 const SWARM = 12;
@@ -238,6 +242,11 @@ export class EnemyView {
         this.effects.burst(ev.pos, UP, { count: 50, color: new THREE.Color(1, 0.6, 0.2), speed: 6, size: 0.45, life: 0.9, grav: -1, spread: 1.5 });
         this.effects.burst(ev.pos.clone().setY(ev.pos.y - 0.8), UP, { count: 40, color: new THREE.Color(0.35, 0.27, 0.18), speed: 4, size: 0.7, life: 1.4, grav: 1, spread: 2 });
         break;
+      case 'burst':
+        // a parasite tearing its way out of a host's chest
+        this.effects.burst(ev.pos, UP, { count: 45, color: new THREE.Color(0.35, 0.05, 0.04), speed: 6, size: 0.12, life: 0.7, grav: 12, spread: 1 });
+        this.effects.burst(ev.pos, UP, { count: 20, color: new THREE.Color(0.4, 0.45, 0.2), speed: 3, size: 0.2, life: 0.5, grav: 8, spread: 0.8 });
+        break;
       case 'teleportOut': case 'teleportIn':
         this.effects.burst(ev.pos.clone().setY(ev.pos.y + 2.2), null, { count: 60, color: ENEMY_LOOK.boss.color, speed: 6, size: 0.25, life: 0.7, grav: 0 });
         break;
@@ -419,6 +428,7 @@ export class EnemyView {
     const gait = GAIT[e.type];
     let name, timeScale = 1;
     if (e.rise > 0) name = 'idle';
+    else if (e.latched && v.actions.hold) name = 'hold'; // a parasite wrapped round a face
     else if (e.stun > 0) name = 'stun';
     else if (a && ACT_CLIPS[a.kind] && v.actions[ACT_CLIPS[a.kind][0]]) {
       const [clip, lead] = ACT_CLIPS[a.kind];
@@ -478,7 +488,8 @@ export class EnemyView {
     // a climbing scarab stands up against the wall
     v.mesh.rotation.order = 'YXZ';
     v.mesh.rotation.x += ((e.climbing ? -Math.PI / 2 : 0) - v.mesh.rotation.x) * Math.min(1, dt * 12);
-    v.mesh.visible = !e.hidden;
+    // a parasite on the local player's own face is drawn as a screen overlay instead (src/main.js)
+    v.mesh.visible = !e.hidden && !(e.latched && e.latched.id === this.localId);
     v.blob.visible = !e.hidden && !T.fly;
     const shadowSize = T.radius * 2.6 * (1 - Math.min(0.5, e.lift * 0.3)) * (1 - e.rise);
     v.blob.position.set(e.pos.x, e.pos.y + 0.03, e.pos.z);

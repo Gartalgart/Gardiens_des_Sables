@@ -3,7 +3,8 @@ import { SABLES } from './sables.js';
 // "Station spatiale infestée" (U2): an orbital station gone dark, over a ringed planet.
 // The map is its own (blender/station/station.py): a ring of corridors round the engine room, the
 // greenhouse, the hangar, the observation deck, and two airlocks on the void. The weapons
-// (blender/station/weapons.py) are its own; enemies and waves are still the desert's.
+// (blender/station/weapons.py) and the enemies (blender/station/enemies.py) are its own; the boss
+// is still the desert's pharaoh until the hive queen is made.
 export const STATION = {
   ...SABLES,
   id: 'station',
@@ -24,6 +25,9 @@ export const STATION = {
       flamer: 'models/station/flamer.glb',
       railgun: 'models/station/railgun.glb',
       grenade: 'models/station/mine.glb',
+      parasite: 'models/station/parasite.glb',
+      host: 'models/station/host.glb',
+      brute: 'models/station/brute.glb',
     },
   },
   props: null,
@@ -61,6 +65,61 @@ export const STATION = {
   unlocks: { 2: 'plasma', 3: 'flamer', 5: 'railgun' },
   grenade: 'mine', // G: sticky mines (MINE in src/sim/sim.js)
 
+  // ---------- enemies (models: blender/station/enemies.py) ----------
+  enemies: {
+    ...SABLES.enemies,
+    // the parasite: small and fast, comes in groups; it leaps at the face and clings there (sight
+    // blurred, it feeds) until a blow of the baton knocks it off — bullets cannot reach it there
+    parasite: {
+      hp: 28, speed: 8.2, radius: 0.32, height: 0.45, headY: 0.3, early: 0.8,
+      melee: { range: 1.1, dmg: 5, windup: 0.12, cd: 0.6 },
+      leap: { min: 2.5, max: 7, dur: 0.45, dmg: 6, cd: [2.5, 4] },
+      latch: { dps: 9, max: 10 }, // damage per second while on a face, seconds before it lets go
+      swarm: 3, load: 0.5,
+    },
+    // the host: a crew member the infestation took over; slow and tough, it comes in numbers, and
+    // what grows inside it sometimes bursts out when it dies
+    host: {
+      hp: 210, speed: 2.7, radius: 0.42, height: 1.85, headY: 1.45,
+      melee: { range: 1.8, dmg: 18, windup: 0.4, cd: 1.3 },
+      swarm: 2,
+      burst: { type: 'parasite', chance: 0.3 },
+    },
+    // the armoured brute: a carapace in front stops most of a blow; it charges in a straight line
+    brute: {
+      hp: 620, speed: 3.0, radius: 0.95, height: 2.6, headY: 2.0,
+      melee: { range: 2.8, dmg: 32, windup: 0.5, cd: 1.6 },
+      charge: { min: 5, max: 22, wind: 0.75, speed: 13, dur: 1.3, dmg: 30, cd: [5, 7] },
+      armor: { mul: 0.25, arc: 0.5 }, // damage × mul within ±60° of its face
+      big: true,
+    },
+    boss: { ...SABLES.enemies.boss, summon: 'parasite' },
+  },
+  waves: [
+    { host: 6, parasite: 6 },
+    { host: 8, parasite: 9, brute: 1 },
+    { host: 10, parasite: 9, brute: 2 },
+    { host: 12, parasite: 12, brute: 3 },
+    { host: 6, parasite: 9, brute: 2, boss: 1 },
+  ],
+  survival: [
+    { type: 'host', cost: 2, from: 1, count: 2 }, // a pair
+    { type: 'parasite', cost: 1.5, from: 1, count: 3 }, // a whole group
+    { type: 'brute', cost: 4, from: 2 },
+  ],
+  arenaGuards: ['host', 'host', 'brute'],
+  targets: [['host', 2], ['parasite', 3], ['brute', 1]],
+  // the creatures' cries: the desert's recordings, pitched (src/audio.js setVoices)
+  voices: {
+    growls: { parasite: 'enemies/scarab_skitter', host: 'enemies/mummy_groan', brute: 'enemies/tank_roar' },
+    rates: { parasite: 1.5, host: 0.8, brute: 0.75 },
+  },
+  looks: {
+    parasite: { color: [0.85, 0.72, 0.5], dot: '#e0c08a' },
+    host: { color: [0.55, 0.9, 0.35], dot: '#9de070' },
+    brute: { color: [1, 0.35, 0.15], dot: '#ff5a2a' },
+  },
+
   texts: {
     ...SABLES.texts,
     // the map's oxygen bottles blow up when shot (the port's powder kegs)
@@ -72,6 +131,8 @@ export const STATION = {
     grenadeKill: 'MINE',
     kegKill: 'BONBONNE',
     airlockKill: 'DANS LE VIDE',
+    latched: 'UN PARASITE VOUS AGRIPPE — MATRAQUE [1] !',
+    killsLabel: 'Créatures abattues',
     airlockOpen: 'Sas ouvert — dépressurisation !',
     airlockClosed: 'Sas refermé',
     airlockUse: '[E] Ouvrir le sas',

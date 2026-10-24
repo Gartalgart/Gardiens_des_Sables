@@ -13,7 +13,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock', 'charge', 'overheat', 'vented', 'mineStick',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock', 'charge', 'overheat', 'vented', 'mineStick', 'latch', 'burst',
 ];
 let level;
 
@@ -1487,5 +1487,52 @@ describe('station weapons', () => {
     run(sim, 6, (p) => { for (const ev of sim.events) if (ev.type === 'explosion') blasts.push(ev); return emptyCommand(); });
     expect(sim.grenades).not.toContain(mine);
     expect(sim.enemies.list).not.toContain(e);
+  });
+});
+
+describe('station enemies', () => {
+  const stationGame = () => newGame({ world: 'station' });
+
+  it('a parasite leaps onto the face, feeds there out of reach of bullets, and a baton blow knocks it off', () => {
+    const { sim, player } = stationGame();
+    const e = sim.enemies.spawn('parasite', new THREE.Vector3(0, 0, 33));
+    e.rise = 0;
+    e.leapCd = 0;
+    run(sim, 3, (p) => aimAt(p, e.pos.clone().setY(0.3)));
+    expect(player.latch).toBe(e);
+    const hp = player.health;
+    run(sim, 1);
+    expect(player.health).toBeLessThan(hp);
+    // shooting straight ahead does not touch it
+    const lo = player.loadout;
+    run(sim, 0.3, (p, i) => ({ ...emptyCommand(), yaw: p.yaw, fire: i === 0 }));
+    expect(sim.enemies.list).toContain(e);
+    expect(player.latch).toBe(e);
+    // the baton does
+    lo.switchTo(0);
+    run(sim, 0.5, (p) => ({ ...emptyCommand(), yaw: p.yaw }));
+    run(sim, 0.3, (p, i) => ({ ...emptyCommand(), yaw: p.yaw, fire: i === 0 }));
+    expect(player.latch).toBeFalsy();
+  });
+
+  it('a host that dies may let a parasite out of its body', () => {
+    const { sim } = stationGame();
+    const h = sim.enemies.spawn('host', new THREE.Vector3(0, 0, 30));
+    h.T = { ...h.T, burst: { ...h.T.burst, chance: 1 } };
+    sim.enemies.damage(h, 9999, null, null);
+    expect(sim.enemies.list.filter((e) => e.type === 'parasite').length).toBe(1);
+  });
+
+  it("the brute's carapace stops most of a blow from the front, not from behind", () => {
+    const { sim } = stationGame();
+    const b = sim.enemies.spawn('brute', new THREE.Vector3(0, 0, 30));
+    b.facing = 0; // facing +Z
+    const hp = b.hp;
+    sim.enemies.damage(b, 100, new THREE.Vector3(0, 0, -1), null); // a shot coming at its face
+    const front = hp - b.hp;
+    sim.enemies.damage(b, 100, new THREE.Vector3(0, 0, 1), null); // in the back
+    const back = hp - front - b.hp;
+    expect(front).toBeCloseTo(25);
+    expect(back).toBeCloseTo(100);
   });
 });

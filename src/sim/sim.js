@@ -427,7 +427,7 @@ export class Sim {
       }
       for (const e of [...this.enemies.list]) {
         // what keeps to its spot (a boss, a turret) holds on
-        if (e.T.stay || e.T.part || e.T.boss || e.hidden) continue;
+        if (e.T.stay || e.T.part || e.T.boss || e.hidden || e.latched) continue;
         if (this.#suck(a, e.pos, e.T.radius, e.T.height, dt)) this.enemies.space(e, a.by && this.players.has(a.by.id) ? a.by : null);
       }
     }
@@ -768,7 +768,7 @@ export class Sim {
     if (player.dead) return 'hit';
     if (player.protect > 0) return 'immune';
     // explosions, orb rain and bullets cannot be parried
-    if (player.loadout.blocking && kind !== 'explosion' && kind !== 'bullet') {
+    if (player.loadout.blocking && kind !== 'explosion' && kind !== 'bullet' && kind !== 'latch') {
       const to = new THREE.Vector3(from.x - player.pos.x, 0, from.z - player.pos.z).normalize();
       if (player.flatForward().dot(to) > 0.3) {
         const perfect = player.loadout.perfectParry;

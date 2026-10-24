@@ -269,7 +269,7 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] **Lumière volumétrique** (`src/view/lightBeams.js`, des cônes additifs qui s'estompent vers leurs bords et leur extrémité) : un cône de lumière sous chaque néon (qui clignote avec lui), les faisceaux des gyrophares, le faisceau de la lampe torche, des rais de soleil à travers le toit de la serre.
 - 87 tests automatisés, tous verts.
 
-### U2 Phase 2 — Armes `[~]`
+### U2 Phase 2 — Armes `[x]`
 - [x] **Six modèles** (`blender/station/weapons.py`, scène « Weapons » de `station.blend`), tenus par des gants noirs dans les manches d'une combinaison olive :
   - **[1] Matraque électrique** : corps à corps, parade qui renvoie les tirs ; chaque coup paralyse l'ennemi un instant (moins les gros), arc bleu et grésillement.
   - **[2] Pistolet laser** : pas de chargeur, tir rapide ; chaque tir chauffe l'arme (les bobines rougeoient), trop insister la bloque 1,4 s.
@@ -279,7 +279,17 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
   - **[G] Mines collantes** : elles se collent au mur, au sol ou à un ennemi ; armées après 0,6 s, elles sautent au passage d'un ennemi (ou 1,3 s après s'être collées sur lui).
 - [x] Traits d'énergie colorés, flammes, vapeur de surchauffe ; le HUD affiche la chaleur au lieu des munitions (« SURCHAUFFE ») ; sons procéduraux pour chaque arme, la charge et la surchauffe.
 - [x] 93 tests automatisés, dont 6 nouveaux (une par arme et les mines). Le test du tentacule du Kraken, instable avant cette phase (6 échecs sur 15), lit la vie du joueur au moment du coup ; il échoue encore parfois quand aucun tentacule ne frappe dans le temps imparti.
-- **Validation :** essayer chaque arme sur des cibles en Exploration ([N]).
+- **Validation :** essayer chaque arme sur des cibles en Exploration ([N]). Validée le 24/10/2026.
+
+### U2 Phase 3 — Ennemis de base `[x]`
+- [x] **Trois créatures modélisées, riggées et animées** (`blender/station/enemies.py`, scène « Enemies » de `station.blend`) :
+  - **Parasite** : un corps plat sur huit longs doigts, une queue. Petit et rapide, il vient par trois et saute au visage : il s'y agrippe (image floue et assombrie, ses doigts sur l'écran, il se nourrit), hors de portée des balles, jusqu'à un coup de **matraque** qui l'arrache et l'étourdit.
+  - **Hôte** : un membre d'équipage infecté, combinaison déchirée, poitrine ouverte sur des excroissances noires. Lent et résistant, il vient par deux et en nombre ; à sa mort, un parasite sort parfois de son corps (30 %).
+  - **Brute blindée** : une carapace d'os devant la tête et les épaules arrête 75 % d'un coup de face ; elle charge tête baissée en ligne droite et s'assomme contre les murs.
+- [x] Vagues de la station (hôtes et parasites d'abord, brutes à partir de la vague 2), survie, gardiens de l'arène, cibles de l'Exploration ([N]). Le boss reste le pharaon du désert jusqu'à la Reine-ruche ; il appelle des parasites.
+- [x] Cris : enregistrements du désert, joués plus aigus ou plus graves.
+- [x] 96 tests automatisés, dont 3 nouveaux : le parasite agrippé (les balles ne le touchent pas, la matraque l'arrache), le parasite qui sort d'un hôte, la carapace de la brute.
+- **Validation :** jouer les vagues 1 et 2. Validée le 24/10/2026.
 
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.

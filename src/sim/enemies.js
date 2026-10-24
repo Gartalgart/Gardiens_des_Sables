@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WATER_SLOW } from './constants.js';
+import { WATER_SLOW, EYE } from './constants.js';
 
 // Enemy rules. Each universe gives its enemy types (src/worlds/); colours and models are the
 // client's business (see src/view/enemyView.js).
@@ -103,7 +103,8 @@ export class Enemies {
   raycast(origin, dir, maxDist, skip = null) {
     let best = null;
     for (const e of this.list) {
-      if (e === skip || e.hidden || e.submerged || e.diving) continue;
+      // a parasite on a player's face is out of the line of fire (only a blow knocks it off)
+      if (e === skip || e.hidden || e.submerged || e.diving || e.latched) continue;
       const base = e.pos.y + e.lift - e.rise * e.T.height;
       const t = rayCylinder(origin, dir, e.pos, e.T.radius, base, base + e.T.height);
       if (t !== null && t < maxDist && (!best || t < best.dist)) {
@@ -141,6 +142,7 @@ export class Enemies {
 
   // sword hit: damage plus knockback and a short stagger that cancels attacks
   meleeHit(e, amount, dir, killer) {
+    if (e.latched) this.release(e, 8); // knocked off the face
     const big = !!e.T.big;
     e.knock.copy(dir).setY(0).normalize().multiplyScalar(big ? (e.T.boss ? 1 : 3) : 9);
     if (!e.T.boss) {
@@ -174,6 +176,7 @@ export class Enemies {
       const j = this.list.indexOf(t);
       if (j >= 0) this.list.splice(j, 1);
     }
+    if (e.latched) this.release(e);
     this.sim.emit('enemyKill', { id: e.id, enemyType: e.type, pos: e.pos.clone(), dir: dir ? dir.clone() : null, cause, killer: killer?.id ?? null });
     if (killer) {
       killer.stats.kills++;
@@ -192,6 +195,14 @@ export class Enemies {
     if (e.T.explode && !e.exploded) {
       e.exploded = true;
       this.sim.explode(e.pos.clone().setY(e.pos.y + 1), e.T.explode, killer);
+    }
+    // an infected host: what grew inside it sometimes comes out of the body
+    const B = e.T.burst;
+    if (B && cause !== 'airlock' && Math.random() < B.chance) {
+      const out = this.spawn(B.type, e.pos);
+      out.rise = 0;
+      out.stun = 0.4;
+      this.sim.emit('burst', { pos: e.pos.clone().setY(e.pos.y + e.T.height * 0.6), enemyType: e.type });
     }
     if (!e.T.boss && cause !== 'self' && cause !== 'airlock') { // nothing drops in the void
       // health only rewards blade kills; ammo can drop either way; elites always drop something
@@ -244,6 +255,7 @@ export class Enemies {
   #think(e, dt, players) {
     const T = e.T;
     if (T.kraken) return this.#kraken(e, dt, players);
+    if (e.latched) return this.#latch(e, dt);
     if (T.tentacle) return this.#tentacle(e, dt, players);
     if (e.rise > 0) {
       e.rise = Math.max(0, e.rise - dt * 1.3);
@@ -386,6 +398,51 @@ export class Enemies {
 
     e.speed = moved;
     e.phase += dt * (2.5 + moved * 2.0); // drives the runners' weave
+  }
+
+  // ---------- the parasite on a player's face ----------
+  // It holds on and feeds until a blow knocks it off (Enemies#meleeHit), the player goes down, or
+  // it has fed for T.latch.max seconds; bullets cannot reach it there (see raycast).
+  #latchOn(e, player, dmg) {
+    e.act = null;
+    e.latched = player;
+    e.latchT = 0;
+    e.latchAcc = 0;
+    player.latch = e;
+    this.sim.hitPlayer(player, dmg, e.pos, 'latch', e);
+    this.sim.emit('latch', { pid: player.id, id: e.id, on: true, pos: player.eye });
+  }
+
+  #latch(e, dt) {
+    const p = e.latched, L = e.T.latch;
+    e.latchT += dt;
+    if (p.dead || !this.sim.players.has(p.id) || e.latchT > L.max) return this.release(e);
+    const fwd = p.flatForward();
+    e.pos.copy(p.pos).addScaledVector(fwd, 0.3);
+    e.lift = EYE - e.T.height * 0.6; // over the face
+    e.facing = Math.atan2(-fwd.x, -fwd.z);
+    e.speed = 0;
+    e.latchAcc += dt;
+    if (e.latchAcc >= 0.5) {
+      this.sim.hitPlayer(p, L.dps * e.latchAcc * this.dmgMul, e.pos, 'latch', e);
+      e.latchAcc = 0;
+    }
+  }
+
+  // off the face, thrown `knock` m/s forward and dazed
+  release(e, knock = 0) {
+    const p = e.latched;
+    if (!p) return;
+    p.latch = null;
+    e.latched = null;
+    e.lift = 0;
+    const fwd = p.flatForward();
+    e.pos.copy(p.pos);
+    this.level.moveBody(e.pos, fwd.x * 0.9, fwd.z * 0.9, e.T.radius, e.T.height);
+    e.knock.copy(fwd).multiplyScalar(knock);
+    e.stun = 1.2;
+    e.leapCd = Math.max(e.leapCd, 2);
+    this.sim.emit('latch', { pid: p.id, id: e.id, on: false, pos: e.pos.clone() });
   }
 
   // ---------- the Kraken ----------
@@ -771,6 +828,8 @@ export class Enemies {
         const c = e.pos.clone().setY(e.pos.y + e.lift + 1);
         if (!a.hit && c.distanceTo(player.center) < 1.5) {
           a.hit = true;
+          // the parasite: onto the face, if that face is free
+          if (T.latch && !player.latch && !player.dead && !player.loadout.blocking) { this.#latchOn(e, player, T.leap.dmg * dmgMul); return { move: null }; }
           this.sim.hitPlayer(player, T.leap.dmg * dmgMul, e.pos, 'melee', e);
           player.impulse(a.dir.clone().multiplyScalar(3));
         }

@@ -134,6 +134,17 @@ html, body {
   background: radial-gradient(ellipse at center, transparent 30%, rgba(255, 90, 200, 0.35) 75%, rgba(120, 20, 110, 0.7) 100%);
   animation: charm-breathe 2.2s ease-in-out infinite; }
 @keyframes charm-breathe { 50% { transform: scale(1.06); filter: hue-rotate(-25deg); } }
+/* a parasite on the face (the station): pale fingers gripping in from the edges, a fleshy dark rim,
+   squeezing in a slow pulse */
+#hugger { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.12s;
+  background:
+    linear-gradient(100deg, transparent 60%, rgba(120, 95, 70, 0.95) 61% 66%, transparent 67%) 0 0 / 100% 100%,
+    linear-gradient(80deg, transparent 33%, rgba(120, 95, 70, 0.95) 34% 39%, transparent 40%) 0 0 / 100% 100%,
+    linear-gradient(15deg, transparent 70%, rgba(110, 88, 64, 0.95) 71% 75%, transparent 76%) 0 0 / 100% 100%,
+    linear-gradient(165deg, transparent 70%, rgba(110, 88, 64, 0.95) 71% 75%, transparent 76%) 0 0 / 100% 100%,
+    radial-gradient(ellipse at center, rgba(60, 40, 30, 0.2) 25%, rgba(70, 45, 32, 0.92) 62%, rgba(25, 12, 8, 1) 85%); }
+#hugger.on { opacity: 1; animation: hugger-squeeze 0.6s ease-in-out infinite; }
+@keyframes hugger-squeeze { 50% { transform: scale(0.94); } }
 /* the Kraken's ink: dark splashes over the view, the middle less covered */
 #ink { position: fixed; inset: 0; pointer-events: none; opacity: 0;
   background:

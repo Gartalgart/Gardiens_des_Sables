@@ -439,6 +439,8 @@ function clearCharm() {
   game.shownCharm = 0;
   canvas.style.filter = '';
   $('charm').style.opacity = 0;
+  $('hugger').classList.remove('on');
+  game.shownHug = 0;
   sound.setSong(0);
 }
 
@@ -642,6 +644,13 @@ function handleEvents() {
       case 'charge': if (mine) sound.charge(ev.time); break;
       case 'overheat': if (mine) { sound.overheat(); weaponView.onOverheat(camera); hud.pickup('SURCHAUFFE'); } break;
       case 'vented': if (mine) sound.click(1.5); break;
+      case 'latch':
+        if (ev.pid === game.localId) {
+          if (ev.on) { sound.growl(0, 1, false, 'parasite'); sound.hurt(); addShake(0.6); }
+          else { sound.slash(1); addShake(0.3); }
+        }
+        break;
+      case 'burst': enemyView.onEvent(ev); sound.growl(pan(ev.pos), vol(ev.pos, 40), false, 'parasite'); sound.crumble(pan(ev.pos), vol(ev.pos, 40)); break;
       case 'mineStick': sound.thud(pan(ev.pos), 0.5 * vol(ev.pos, 30)); break;
       case 'grenadeBounce': sound.thud(pan(ev.pos), Math.min(1, ev.speed / 12) * vol(ev.pos, 40)); break;
       case 'points': if (mine) hud.points(ev.amount, ev.label); break;
@@ -877,6 +886,7 @@ function tick(dt, now = (tickClock += dt)) {
 
     // debris and poses slow down with the sword hit-stop and the parry slow motion, like the enemies
     const viewDt = dt * sim.timeScale;
+    enemyView.localId = game.localId;
     enemyView.sync(sim.enemies, viewDt, sim.time);
     grenadeView.sync(sim.grenades, viewDt);
     kegView.sync(sim.kegs);
@@ -934,12 +944,18 @@ function tick(dt, now = (tickClock += dt)) {
       hud.scoreboard(game.state === 'playing' && input.down('Tab') ? ranked.map((o) => ({ name: o.name, frags: o.stats.frags, deaths: o.stats.deaths, kills: o.stats.kills, me: o === p })) : null,
         `Premier à ${sim.mode.scoreLimit} · ${fmtTime(Math.ceil(sim.mode.timeLeft))} restantes`);
     } else hud.drawMinimap(p, sim.enemies, game.net ? [...sim.players.values()].filter((o) => o !== p) : []);
-    // the siren's song: blurred, tinted view; the loudest singer is heard
+    // the siren's song: blurred, tinted view; the loudest singer is heard. A parasite on the face
+    // (the station) blurs it much more and covers the screen with its fingers.
     const charm = p.charm ?? 0;
-    if (Math.abs(charm - (game.shownCharm ?? 0)) > 0.01) {
+    const hugged = p.latch ? 1 : 0;
+    if (Math.abs(charm - (game.shownCharm ?? 0)) > 0.01 || hugged !== game.shownHug) {
       game.shownCharm = charm;
-      canvas.style.filter = charm > 0.02 ? `blur(${(charm * 2.5).toFixed(2)}px) saturate(${(1 + charm * 0.6).toFixed(2)})` : '';
+      game.shownHug = hugged;
+      canvas.style.filter = hugged ? 'blur(6px) brightness(0.55) sepia(0.4)'
+        : charm > 0.02 ? `blur(${(charm * 2.5).toFixed(2)}px) saturate(${(1 + charm * 0.6).toFixed(2)})` : '';
       $('charm').style.opacity = (charm * 0.9).toFixed(2);
+      $('hugger').classList.toggle('on', !!hugged);
+      if (hugged) hud.prompt(world.texts.latched); else if (!game.leverPrompt) hud.prompt(null);
     }
     let singer = null, loud = 0;
     for (const e of sim.enemies.list) {
