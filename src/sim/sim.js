@@ -26,6 +26,9 @@ export const KEG = { radius: 0.42, height: 1.0, blast: 5.5, dmg: 220, playerDmg:
 // out drags bodies towards it (m/s at the door, fading out at reach + reachPerWidth × the door's
 // width); whoever goes through the door is lost. use: how close to the lever a player must stand.
 export const AIRLOCK = { dur: 7, pull: 10, reach: 10, reachPerWidth: 0.9, use: 1.8, cooldown: 1 };
+// the station's sticky mines (world.grenade 'mine'): they stick to what they hit, arm, and go off
+// when an enemy comes near (or after `fuse` seconds on an enemy's back)
+export const MINE = { speed: 16, lift: 2, arm: 0.6, trigger: 2.4, fuse: 1.3, radius: 4.6, dmg: 200, playerDmg: 60, life: 60 };
 // Halo: kills less than 4 s apart chain into a multi-kill
 export const MULTI_WINDOW = 4;
 const REVIVE_TIME = 3;
@@ -130,6 +133,7 @@ export class Sim {
     this.#updateStrikes(dt * this.timeScale);
     this.#updateGrenades(dt * this.timeScale);
     this.#updateKegs(dt * this.timeScale);
+    this.#updateBurns(dt * this.timeScale);
     this.#updateAirlocks(dt);
     if (!this.over) this.mode.update(dt);
   }
@@ -262,6 +266,18 @@ export class Sim {
       if (res === 'hit') this.emit('hitConfirm', { pid: player.id, head: ph.head });
       return { point: ph.point, player: ph.player };
     }
+    if (eh && def.pierceAll) {
+      // the railgun: through every enemy on its line, up to the wall
+      let at = eh, from = origin, done = 0;
+      while (at) {
+        this.#hitEnemy(player, { ...at, dist: done + at.dist }, dir, def, 1);
+        done += at.dist;
+        from = at.point;
+        at = this.enemies.raycast(from, dir, maxD - done, at.enemy);
+      }
+      if (wh) this.emit('impactWall', { point: wh.point, normal: wh.normal });
+      return { point: wh ? wh.point : origin.clone().addScaledVector(dir, 250), enemy: eh.enemy };
+    }
     if (eh) {
       this.#hitEnemy(player, eh, dir, def, 1);
       // "Balles perforantes": the bullet goes on into one more enemy, a little weaker
@@ -288,6 +304,46 @@ export class Sim {
     const vel = dir.multiplyScalar(def.ball.speed);
     this.grenades.push({ id: this.nextId(), kind: 'ball', pos, vel, fuse: Infinity, owner: player, ball: def.ball });
     this.emit('playerShot', { pid: player.id, weapon: def.id, origin: player.eye, points: [] });
+  }
+
+  // The flamethrower: everything in a short cone in front catches fire (direct damage, then a burn
+  // that goes on for a few seconds); an oxygen bottle in the flames blows up.
+  fireFlame(player, def) {
+    player.protect = 0;
+    const F = def.flame, eye = player.eye;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.aimQuaternion());
+    const cos = Math.cos(F.angle);
+    const inCone = (c, r) => {
+      const to = c.clone().sub(eye);
+      const d = to.length();
+      return d <= F.range + r && (d < r + 0.5 || to.divideScalar(d).dot(fwd) >= cos) && this.level.lineOfSight(eye, c);
+    };
+    let hit = false;
+    for (const e of [...this.enemies.list]) {
+      if (e.rise > 0.5 || e.hidden || e.submerged) continue;
+      if (!inCone(e.pos.clone().setY(e.pos.y + e.lift + e.T.height * 0.5), e.T.radius)) continue;
+      hit = true;
+      e.burn = { t: F.burn, dps: F.burnDps, by: player, acc: 0 };
+      this.enemies.damage(e, def.dmg, fwd, player, 'fire');
+    }
+    for (const k of this.kegs) if (k.alive && k.fuse === null && inCone(k.pos.clone().setY(k.pos.y + 0.5), KEG.radius)) this.blowKeg(k, player);
+    if (hit) this.emit('hitConfirm', { pid: player.id, head: false });
+    this.emit('playerShot', { pid: player.id, weapon: def.id, origin: eye, points: [], dir: fwd });
+  }
+
+  // burning enemies lose health every quarter of a second until the fire dies down
+  #updateBurns(dt) {
+    for (const e of [...this.enemies.list]) {
+      const b = e.burn;
+      if (!b) continue;
+      b.t -= dt;
+      b.acc += dt;
+      if (b.acc >= 0.25 || b.t <= 0) {
+        this.enemies.damage(e, b.dps * b.acc, null, this.players.has(b.by.id) ? b.by : null, 'fire');
+        b.acc = 0;
+      }
+      if (b.t <= 0) e.burn = null;
+    }
   }
 
   #raycastKegs(origin, dir, maxDist) {
@@ -443,6 +499,12 @@ export class Sim {
   // ---------- grenades ----------
   throwGrenade(player) {
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.aimQuaternion());
+    if (this.world.grenade === 'mine') {
+      const pos = player.eye.addScaledVector(dir, 0.45).add(new THREE.Vector3(0, -0.15, 0));
+      const vel = dir.multiplyScalar(MINE.speed).add(new THREE.Vector3(0, MINE.lift, 0)).addScaledVector(player.vel, 0.5);
+      this.grenades.push({ id: this.nextId(), kind: 'mine', pos, vel, fuse: MINE.life, owner: player, stuck: false, armed: -1, normal: null, on: null });
+      return;
+    }
     const pos = player.eye.addScaledVector(dir, 0.45).add(new THREE.Vector3(0, -0.15, 0));
     const vel = dir.multiplyScalar(GRENADE.speed).add(new THREE.Vector3(0, GRENADE.lift, 0)).addScaledVector(player.vel, 0.5);
     this.grenades.push({ id: this.nextId(), pos, vel, fuse: GRENADE.fuse, owner: player });
@@ -458,6 +520,8 @@ export class Sim {
         this.#grenadeBlast(g);
         continue;
       }
+      if (g.kind === 'mine' && this.#updateMine(g, dt)) { this.grenades.splice(i, 1); this.#grenadeBlast(g); continue; }
+      if (g.stuck) continue;
       g.vel.y -= (g.ball ? g.ball.gravity : GRAVITY_GRENADE) * dt;
       const step = g.vel.clone().multiplyScalar(dt);
       const len = step.length();
@@ -481,6 +545,26 @@ export class Sim {
         this.#grenadeBlast(g);
         continue;
       }
+      if (g.kind === 'mine') {
+        // it sticks to the first enemy or surface on its way
+        const eh = this.enemies.raycast(g.pos, dir, hit ? hit.dist : len + GRENADE.size);
+        if (eh) {
+          g.stuck = true;
+          g.on = eh.enemy;
+          g.offset = eh.point.clone().sub(eh.enemy.pos);
+          g.normal = dir.clone().negate();
+          g.pos.copy(eh.point);
+          g.armed = MINE.fuse; // on an enemy, it goes off after its fuse
+          this.emit('mineStick', { pos: g.pos.clone(), enemy: true });
+        } else if (hit) {
+          g.stuck = true;
+          g.normal = hit.normal.clone();
+          g.pos.copy(hit.point).addScaledVector(hit.normal, 0.02);
+          g.armed = MINE.arm;
+          this.emit('mineStick', { pos: g.pos.clone(), enemy: false });
+        } else g.pos.add(step);
+        continue;
+      }
       if (!hit) { g.pos.add(step); continue; }
       // bounce: the part of the speed into the surface comes back weaker, the rest slides with friction
       g.pos.copy(hit.point).addScaledVector(hit.normal, GRENADE.size);
@@ -492,9 +576,26 @@ export class Sim {
     }
   }
 
+  // a stuck mine: rides on its enemy, arms, then waits for an enemy to come near; true when it goes off
+  #updateMine(g, dt) {
+    if (!g.stuck) return false;
+    if (g.on) {
+      if (this.enemies.list.includes(g.on)) g.pos.copy(g.on.pos).add(g.offset);
+      g.armed -= dt;
+      return g.armed <= 0;
+    }
+    if (g.armed > 0) { g.armed -= dt; return false; }
+    for (const e of this.enemies.list) {
+      if (e.rise > 0.5 || e.hidden || e.submerged) continue;
+      const c = e.pos.clone().setY(e.pos.y + e.lift + e.T.height * 0.5);
+      if (c.distanceTo(g.pos) < MINE.trigger + e.T.radius) return true;
+    }
+    return false;
+  }
+
   #grenadeBlast(g) {
     const owner = this.players.has(g.owner.id) ? g.owner : null;
-    const cfg = g.ball ?? { radius: GRENADE.radius, dmg: GRENADE.dmg, playerDmg: GRENADE.playerDmg };
+    const cfg = g.ball ?? (g.kind === 'mine' ? MINE : { radius: GRENADE.radius, dmg: GRENADE.dmg, playerDmg: GRENADE.playerDmg });
     this.#blast(g.pos.clone(), cfg, owner, g.ball ? 'ball' : 'grenade');
   }
 
@@ -619,8 +720,10 @@ export class Sim {
       if (eye.y < base - 0.8 || eye.y > base + e.T.height + 1.2) continue;
       to.normalize();
       if (fwd.dot(to) < arc && reach > 0.5) continue;
-      this.emit('meleeImpact', { point: e.pos.clone().setY(base + e.T.height * 0.55), normal: to.clone().negate(), fwd: fwd.clone(), enemyType: e.type });
+      this.emit('meleeImpact', { point: e.pos.clone().setY(base + e.T.height * 0.55), normal: to.clone().negate(), fwd: fwd.clone(), enemyType: e.type, shock: !!def.shock });
       this.enemies.meleeHit(e, def.dmg * m.swordDmg, to, player);
+      // the electric baton: a shock that leaves the enemy twitching on the spot
+      if (def.shock && !e.T.boss && this.enemies.list.includes(e)) e.stun = Math.max(e.stun, e.T.big ? def.shock * 0.4 : def.shock);
       hits++;
     }
     for (const p of this.enemies.projectiles) {

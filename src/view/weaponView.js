@@ -18,6 +18,13 @@ const VIEW = {
   blunderbuss: { hip: new THREE.Vector3(0.16, -0.21, -0.36), adsZ: -0.3, sightY: 0.11, scale: 1.0, kick: [0.15, 0.42, 0.14], flash: 0.42, smoke: 1.6 },
   musket: { hip: new THREE.Vector3(0.17, -0.23, -0.42), adsZ: -0.22, scale: 0.85, kick: [0.1, 0.3, 0.05], flash: 0.3, smoke: 1.2 },
   cannon: { hip: new THREE.Vector3(0.2, -0.28, -0.46), adsZ: -0.38, sightY: 0.21, scale: 0.95, kick: [0.22, 0.55, 0.1], flash: 0.55, smoke: 2.4 },
+  // the station's (src/worlds/station.js); flashColor: the muzzle's light, trail: a melee weapon's
+  // slash, beam: [width, seconds] of an energy shot
+  baton: { hip: new THREE.Vector3(0.3, -0.31, -0.6), block: new THREE.Vector3(0.05, -0.2, -0.6), scale: 0.72, trail: 0x7ab8ff },
+  laser: { hip: new THREE.Vector3(0.16, -0.15, -0.4), adsZ: -0.3, scale: 0.9, kick: [0.03, 0.06, 0], flash: 0.16, flashColor: 0xff4a30, beam: [0.012, 0.07] },
+  plasma: { hip: new THREE.Vector3(0.17, -0.22, -0.46), adsZ: -0.36, scale: 1.0, kick: [0.05, 0.12, 0.03], flash: 0.24, flashColor: 0x6affb8, beam: [0.03, 0.1] },
+  flamer: { hip: new THREE.Vector3(0.17, -0.22, -0.4), adsZ: -0.32, scale: 0.95, kick: [0.006, 0.012, 0], flash: 0.22, flashColor: 0xff9a3a },
+  railgun: { hip: new THREE.Vector3(0.18, -0.24, -0.52), adsZ: -0.32, scale: 0.85, kick: [0.16, 0.42, 0.05], flash: 0.45, flashColor: 0x8ad0ff, beam: [0.07, 0.5] },
 };
 
 // Moving parts of each gun (names from blender/fps_assets.blend): the left arm's objects share a prefix,
@@ -34,6 +41,12 @@ const RIG = {
   blunderbuss: { arm: 'BL_', ram: { rod: 'B_Rod', len: 0.38, charge: 'paper' } },
   cannon: { arm: 'CL_', ram: { charge: 'ball' } },
   musket: { arm: 'ML_', ram: { rod: 'M_Rod', len: 0.7, charge: 'paper' } },
+  // energy weapons: no magazine, their coils (glow) brighten with heat or with the railgun's charge;
+  // the flamethrower's fuel canister and the railgun's power cell come out like magazines
+  laser: { arm: 'XL_', glow: 'X_Coil' },
+  plasma: { arm: 'QL_', glow: 'Q_Coil' },
+  flamer: { arm: 'GL_', mag: 'G_Tank', magDir: [0, -1, 0] },
+  railgun: { arm: 'YL_', mag: 'Y_Cell', glow: 'Y_Coil' },
 };
 
 const ease = (x) => x * x * (3 - 2 * x);
@@ -67,7 +80,7 @@ export class WeaponView {
           o.material.emissiveIntensity *= def.melee ? 0.25 : 0.12;
           if (def.melee) o.material.roughness = Math.max(o.material.roughness, 0.5);
           // hands and sleeves: toned down so they sit in the night instead of glowing under the view model lights
-          if (['Linen', 'Skin', 'Shirt'].includes(o.material.name)) o.material.color.multiplyScalar(0.55);
+          if (['Linen', 'Skin', 'Shirt', 'Suit', 'SuitGlove', 'SuitCuff'].includes(o.material.name)) o.material.color.multiplyScalar(0.55);
         }
       });
       const holder = new THREE.Group();
@@ -93,6 +106,7 @@ export class WeaponView {
       if (view.holo) this.#holoSight(findPart(model, view.holo));
       item.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
       item.flash.scale.setScalar(view.flash ?? 0.22);
+      if (view.flashColor) item.flash.material.color.set(view.flashColor);
       item.flash.visible = false;
       item.muzzle.add(item.flash);
       this.#rig(item);
@@ -128,7 +142,7 @@ export class WeaponView {
     }
     if (mag) {
       rig.mag = moving(mag);
-      rig.magDown = new THREE.Vector3(0, -1, 0).applyQuaternion(mag.quaternion);
+      rig.magDown = cfg.magDir ? new THREE.Vector3(...cfg.magDir) : new THREE.Vector3(0, -1, 0).applyQuaternion(mag.quaternion);
       // the hand takes the magazine by its base
       mag.geometry.computeBoundingBox();
       const half = mag.geometry.boundingBox.max.y * mag.scale.y;
@@ -165,6 +179,11 @@ export class WeaponView {
       rig.hammer = part(cfg.hammer);
       rig.hammerRest = rig.hammer.rotation.x;
       rig.fired = false; // the hammer is down until the next reload cocks it
+    }
+    if (cfg.glow) {
+      rig.glow = [];
+      body.traverse((o) => { if (o.isMesh && baseName(o.name).startsWith(cfg.glow)) rig.glow.push([o.material, o.material.emissiveIntensity]); });
+      rig.glowT = 0;
     }
     item.rig = rig;
   }
@@ -214,6 +233,7 @@ export class WeaponView {
     const tr = this.trail;
     for (const s of tr.samples) s.age += dt;
     while (tr.samples.length && tr.samples[tr.samples.length - 1].age > tr.life) tr.samples.pop();
+    if (it.def.melee) tr.mesh.material.uniforms.color.value.set(it.view.trail ?? 0xffb859);
     if (it.def.melee && loadout.swingT >= 0) {
       const p = loadout.swingT / it.def.swing;
       if (p > 0.1 && p < 0.75) {
@@ -250,19 +270,38 @@ export class WeaponView {
     it.muzzle.updateWorldMatrix(true, false);
     // the view model camera sits at the camera origin, so the muzzle maps straight to world space
     const muzzleWorld = it.muzzle.getWorldPosition(new THREE.Vector3()).applyMatrix4(camera.matrixWorld);
-    ev.points.slice(0, 3).forEach((p) => this.effects.tracer(muzzleWorld, p));
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    if (it.view.beam) ev.points.slice(0, 3).forEach((p) => this.effects.beam(muzzleWorld, p, it.view.flashColor, ...it.view.beam));
+    else ev.points.slice(0, 3).forEach((p) => this.effects.tracer(muzzleWorld, p));
+    if (it.def.flame) {
+      // a tongue of fire out of the nozzle, smoke curling over it
+      const fx = this.effects;
+      fx.burst(muzzleWorld, fwd, { count: 22, color: new THREE.Color(0.85, 0.28, 0.04), speed: 13, size: 0.42, life: 0.5, grav: -2.5, spread: 0.2 });
+      fx.burst(muzzleWorld, fwd, { count: 10, color: new THREE.Color(0.9, 0.55, 0.15), speed: 9, size: 0.22, life: 0.3, grav: -1, spread: 0.1 });
+      fx.burst(muzzleWorld, fwd, { count: 6, color: new THREE.Color(0.25, 0.35, 0.9), speed: 3, size: 0.08, life: 0.1, grav: 0, spread: 0.1 }); // the blue root of the flame
+      fx.burst(muzzleWorld.clone().addScaledVector(fwd, 3), fwd, { count: 2, color: new THREE.Color(0.12, 0.1, 0.09), speed: 4, size: 0.7, life: 1.1, grav: -1.2, spread: 0.6 });
+    }
+    this.flashLight.color.set(it.view.flashColor ?? 0xffb060);
     const [back, rot, roll] = it.view.kick;
     this.kickBack = back;
     this.kickRot = rot;
     if (roll) this.kickRoll = (Math.random() < 0.5 ? -1 : 1) * roll;
     if (it.view.smoke) {
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion), k = it.view.smoke;
+      const k = it.view.smoke;
       this.effects.burst(muzzleWorld, fwd, { count: Math.round(14 * k), color: new THREE.Color(0.16, 0.16, 0.15), speed: 2.5 * k, size: 0.2 * k, life: 1.1, grav: -0.6, spread: 0.6 });
     }
     it.rig.actionT = 0;
     it.rig.fired = true;
     this.flashTime = 0.05;
     it.flash.material.rotation = Math.random() * Math.PI;
+  }
+
+  // an energy weapon overheated: steam out of the muzzle
+  onOverheat(camera) {
+    const it = this.items[this.shownIndex];
+    if (!it?.muzzle) return;
+    const at = it.muzzle.getWorldPosition(new THREE.Vector3()).applyMatrix4(camera.matrixWorld);
+    this.effects.burst(at, new THREE.Vector3(0, 1, 0), { count: 22, color: new THREE.Color(0.5, 0.52, 0.55), speed: 1.6, size: 0.25, life: 1.2, grav: -0.8, spread: 0.8 });
   }
 
   onSlashHit() { this.kickRot = 0.08; }
@@ -313,6 +352,15 @@ export class WeaponView {
       }
     }
     if (player.sprinting) { rx -= 0.35; ry += 0.5; pos.x -= 0.05; pos.y -= 0.03; }
+    // an overheated energy weapon is held aside while it vents; the railgun shakes as it charges
+    const cur = loadout.current;
+    if (def.heat && cur.locked > 0) { rz -= 0.55; rx += 0.25; pos.y -= 0.05; pos.x -= 0.04; }
+    if (def.charge && loadout.charging >= 0) {
+      const c = loadout.charging / def.charge;
+      pos.x += (Math.random() - 0.5) * 0.006 * c;
+      pos.y += (Math.random() - 0.5) * 0.006 * c;
+      pos.z += c * 0.03;
+    }
     if (loadout.reloading > 0 && it.rig?.ram) {
       // a muzzle-loader comes up, mouth high and toward the middle, so the rod can go down the barrel
       const k = 1 - loadout.reloading / (loadout.reloadTotal || def.reload);
@@ -408,6 +456,14 @@ export class WeaponView {
       if (r.prevK < 0.72 && k >= 0.72) { this.kickRot += 0.05; this.kickBack += 0.012; } // seated
     }
     r.prevK = k;
+    if (r.glow) {
+      // heat (or charge) brightens the coils; a locked gun flickers
+      r.glowT += dt;
+      const it = loadout.current;
+      const heat = def.heat ? it.heat : def.charge && loadout.charging >= 0 ? loadout.charging / def.charge : 0;
+      const flick = it.locked > 0 ? 0.55 + 0.45 * Math.sin(r.glowT * 38) : 1;
+      for (const [m, b] of r.glow) m.emissiveIntensity = b * (1 + 14 * heat) * flick;
+    }
     if (r.ram && loadout.reloading <= 0) r.ram.charge.visible = false;
     if (r.hammer) {
       const aim = r.hammerRest - (r.fired ? 0.7 : 0);

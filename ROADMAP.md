@@ -269,6 +269,18 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] **Lumière volumétrique** (`src/view/lightBeams.js`, des cônes additifs qui s'estompent vers leurs bords et leur extrémité) : un cône de lumière sous chaque néon (qui clignote avec lui), les faisceaux des gyrophares, le faisceau de la lampe torche, des rais de soleil à travers le toit de la serre.
 - 87 tests automatisés, tous verts.
 
+### U2 Phase 2 — Armes `[~]`
+- [x] **Six modèles** (`blender/station/weapons.py`, scène « Weapons » de `station.blend`), tenus par des gants noirs dans les manches d'une combinaison olive :
+  - **[1] Matraque électrique** : corps à corps, parade qui renvoie les tirs ; chaque coup paralyse l'ennemi un instant (moins les gros), arc bleu et grésillement.
+  - **[2] Pistolet laser** : pas de chargeur, tir rapide ; chaque tir chauffe l'arme (les bobines rougeoient), trop insister la bloque 1,4 s.
+  - **[3] Fusil à plasma** : rafales de trois tirs verts par pression ; chauffe vite, et la surchauffe le bloque 3 s (vapeur, arme tenue de côté).
+  - **[4] Lance-flammes** : un cône court (7,5 m) qui enflamme tout ce qui est devant ; les ennemis brûlent encore 3 s ; fait sauter les bonbonnes. Cartouche de carburant rechargée comme un chargeur.
+  - **[5] Fusil électromagnétique (railgun)**, à la vague 5 : 0,7 s de charge (sifflement montant, bobines bleues), puis un trait qui traverse tous les ennemis sur sa ligne.
+  - **[G] Mines collantes** : elles se collent au mur, au sol ou à un ennemi ; armées après 0,6 s, elles sautent au passage d'un ennemi (ou 1,3 s après s'être collées sur lui).
+- [x] Traits d'énergie colorés, flammes, vapeur de surchauffe ; le HUD affiche la chaleur au lieu des munitions (« SURCHAUFFE ») ; sons procéduraux pour chaque arme, la charge et la surchauffe.
+- [x] 93 tests automatisés, dont 6 nouveaux (une par arme et les mines). Le test du tentacule du Kraken, instable avant cette phase (6 échecs sur 15), lit la vie du joueur au moment du coup ; il échoue encore parfois quand aucun tentacule ne frappe dans le temps imparti.
+- **Validation :** essayer chaque arme sur des cibles en Exploration ([N]).
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).

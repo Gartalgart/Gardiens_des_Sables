@@ -7,8 +7,9 @@ export class Loadout {
     this.player = player;
     this.sim = sim;
     // the weapons and the ones held from the start belong to the universe (src/worlds/)
+    // heat (energy weapons, def.heat): 0..1, and seconds still locked after it overheated
     this.items = sim.world.weapons.map((def) => ({
-      def, mag: def.mag, reserve: def.reserve, unlocked: sim.world.startUnlocked.includes(def.id),
+      def, mag: def.mag, reserve: def.reserve, unlocked: sim.world.startUnlocked.includes(def.id), heat: 0, locked: 0, coolWait: 0,
     }));
     this.index = 1;
     this.cooldown = 0;
@@ -24,6 +25,8 @@ export class Loadout {
     this.aimPressedAt = -99;
     this.grenades = GRENADES.start;
     this.grenadeCd = 0;
+    this.burstLeft = 0; // shots still to come in a burst (def.burst)
+    this.charging = -1; // seconds a charged shot (def.charge) has been charging, -1 when not
   }
 
   // returns true when the pouch took at least one
@@ -44,6 +47,8 @@ export class Loadout {
     if (i === this.index || i < 0 || i >= this.items.length || !this.items[i].unlocked) return;
     this.index = i;
     this.reloading = 0;
+    this.burstLeft = 0;
+    this.charging = -1;
     this.shells = 0;
     this.swingT = -1;
     this.switching = 0.35;
@@ -105,6 +110,7 @@ export class Loadout {
 
     this.cooldown -= dt;
     this.grenadeCd -= dt;
+    this.#cool(dt);
     // G: the weapon goes down for a moment while the other hand throws a fire pot
     if (cmd.grenade && this.grenades > 0 && this.grenadeCd <= 0 && this.swingT < 0) {
       this.grenades--;
@@ -154,12 +160,41 @@ export class Loadout {
       this.#updateSwing(dt);
     } else {
       const wantFire = cmd.fire && (def.auto || !this.triggerHeld);
-      if (wantFire && ready) {
-        if (it.mag > 0) this.#fire();
+      const hot = def.heat && it.locked > 0;
+      if (this.burstLeft > 0) {
+        // the rest of a burst goes on by itself, unless the gun locks up
+        if (hot) this.burstLeft = 0;
+        else if (this.cooldown <= 0 && this.switching <= 0) this.#fire();
+      } else if (this.charging >= 0) {
+        // a charged shot leaves once charged, whatever the trigger does
+        this.charging += dt;
+        if (this.charging >= def.charge) { this.charging = -1; if (it.mag > 0) this.#fire(); }
+      } else if (wantFire && ready) {
+        if (hot) { if (!this.triggerHeld) this.sim.emit('dry', { pid: player.id }); }
+        else if (it.mag > 0 && def.charge) {
+          this.charging = 0;
+          this.sim.emit('charge', { pid: player.id, weapon: def.id, time: def.charge });
+        } else if (it.mag > 0) this.#fire();
         else if (!this.triggerHeld) { this.sim.emit('dry', { pid: player.id }); this.startReload(); }
         this.triggerHeld = true;
       }
       if (it.mag === 0 && it.reserve > 0 && this.reloading <= 0 && !cmd.fire) this.startReload();
+    }
+  }
+
+  // energy weapons cool down a moment after the last shot; an overheated one stays locked a while
+  #cool(dt) {
+    for (const it of this.items) {
+      const H = it.def.heat;
+      if (!H) continue;
+      if (it.locked > 0) {
+        it.locked -= dt;
+        it.heat = Math.max(0.3, it.heat - H.cool * dt * 0.5);
+        if (it.locked <= 0) { it.locked = 0; this.sim.emit('vented', { pid: this.player.id, weapon: it.def.id }); }
+        continue;
+      }
+      it.coolWait -= dt;
+      if (it.coolWait <= 0) it.heat = Math.max(0, it.heat - H.cool * dt);
     }
   }
 
@@ -193,14 +228,30 @@ export class Loadout {
     const player = this.player;
     const it = this.current;
     const def = it.def;
-    it.mag--;
+    if (def.heat) {
+      // no magazine: every shot heats it, and too much heat locks it up
+      it.heat = Math.min(1, it.heat + def.heat.per);
+      it.coolWait = 0.25;
+      if (it.heat >= 1) {
+        it.locked = def.heat.lock;
+        this.burstLeft = 0;
+        this.sim.emit('overheat', { pid: player.id, weapon: def.id });
+      }
+    } else it.mag--;
     this.cooldown = 60 / def.rpm;
+    if (def.burst) {
+      // one pull, `burst` shots, then a pause
+      this.burstLeft = this.burstLeft > 0 ? this.burstLeft - 1 : def.burst - 1;
+      if (it.locked > 0) this.burstLeft = 0;
+      if (this.burstLeft === 0) this.cooldown = def.burstGap;
+    }
     player.stats.shotsFired++;
 
     const moveSpread = player.moving ? (player.sprinting ? 0.03 : 0.012) : 0;
     const airSpread = player.onGround ? 0 : 0.03;
     const spread = def.spread + (def.adsSpread - def.spread) * this.adsT + moveSpread * (1 - this.adsT * 0.7) + airSpread;
     if (def.ball) this.sim.fireBall(player, def, spread);
+    else if (def.flame) this.sim.fireFlame(player, def);
     else this.sim.fireWeapon(player, def, spread);
 
     const kick = def.recoil * (1 - this.adsT * 0.45);

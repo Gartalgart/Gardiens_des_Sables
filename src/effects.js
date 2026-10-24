@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const MAX = 1500;
 
-// Pooled additive point particles + short-lived tracer lines.
+// Pooled additive point particles, short-lived tracer lines and energy beams.
 export class Effects {
   constructor(scene) {
     this.scene = scene;
@@ -51,6 +51,37 @@ export class Effects {
     this.tracerPool = [];
     this.density = 1; // particle budget scale, set from the graphics quality
     this.tracerMat = new THREE.LineBasicMaterial({ color: 0xffd28a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.beams = [];
+    this.beamPool = [];
+    // a beam: an open tube one unit long along +Y, scaled to its length and width
+    this.beamGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).translate(0, 0.5, 0);
+  }
+
+  // An energy weapon's shot: a glowing tube from `from` to `to` (a white core in a coloured sheath)
+  // that thins and fades over `life` seconds.
+  beam(from, to, color, width = 0.015, life = 0.08) {
+    const dir = to.clone().sub(from);
+    const len = dir.length();
+    if (len < 0.01) return;
+    dir.divideScalar(len);
+    let b = this.beamPool.pop();
+    if (!b) {
+      b = new THREE.Group();
+      for (const k of [1, 0.35]) {
+        const m = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+        m.scale.set(k, 1, k);
+        b.add(m);
+      }
+      b.frustumCulled = false;
+    }
+    b.children[0].material.color.set(color);
+    b.children[1].material.color.set(0xffffff);
+    b.position.copy(from);
+    b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    b.scale.set(width, len, width);
+    b.userData = { life, total: life, width };
+    this.scene.add(b);
+    this.beams.push(b);
   }
 
   emit(p, v, color, size, life, grav = 0) {
@@ -116,6 +147,19 @@ export class Effects {
     }
     for (const name of ['position', 'color', 'size', 'alpha']) this.geo.attributes[name].needsUpdate = true;
 
+    for (let i = this.beams.length - 1; i >= 0; i--) {
+      const b = this.beams[i], u = b.userData;
+      u.life -= dt;
+      const k = Math.max(0, u.life / u.total);
+      b.children[0].material.opacity = 0.8 * k;
+      b.children[1].material.opacity = k;
+      b.scale.x = b.scale.z = u.width * (0.4 + 0.6 * k);
+      if (u.life <= 0) {
+        this.scene.remove(b);
+        this.beamPool.push(b);
+        this.beams.splice(i, 1);
+      }
+    }
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
       t.userData.life -= dt;

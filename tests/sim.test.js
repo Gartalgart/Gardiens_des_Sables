@@ -13,7 +13,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock', 'charge', 'overheat', 'vented', 'mineStick',
 ];
 let level;
 
@@ -1263,12 +1263,13 @@ describe('the Kraken', () => {
 
   it('a tentacle warns with a red circle, then strikes where the player stood', () => {
     const { sim, player, tentacles } = krakenGame();
-    let ring = null, slam = null;
+    let ring = null, slam = null, after = null;
     const hp0 = 100;
-    run(sim, 6, () => {
+    // long enough for the slowest rise and cooldowns the dice can give
+    run(sim, 12, () => {
       for (const ev of sim.drainEvents()) {
         if (ev.type === 'ring' && ev.enemyType === 'tentacle' && !ring) ring = ev;
-        if (ev.type === 'slam' && ring && !slam) slam = ev;
+        if (ev.type === 'slam' && ring && !slam) { slam = ev; after = player.health; } // before it heals
       }
       if (!slam) player.health = hp0;
       return emptyCommand();
@@ -1276,7 +1277,7 @@ describe('the Kraken', () => {
     expect(ring).not.toBeNull();
     expect(Math.hypot(ring.pos.x - player.pos.x, ring.pos.z - player.pos.z)).toBeLessThan(3);
     expect(slam).not.toBeNull();
-    expect(player.health).toBeLessThan(hp0);
+    expect(after).toBeLessThan(hp0);
     expect(tentacles.some((t) => t.act === null || t.act?.kind === 'strike')).toBe(true);
   });
 
@@ -1400,5 +1401,91 @@ describe('pirate objectives', () => {
     const gold = sim.chest.gold;
     run(sim, 2, () => { player.health = 100; return emptyCommand(); });
     expect(sim.chest.gold).toBeGreaterThan(gold - 3);
+  });
+});
+
+describe('station weapons', () => {
+  // on the desert's open sand, with the station's loadout
+  const stationGame = () => newGame({ world: 'station' });
+  const still = (e) => { e.T = { ...e.T, speed: 0 }; return e; };
+  const events = (sim, type) => sim.drainEvents().filter((ev) => ev.type === type);
+
+  it('the laser pistol uses no ammo but heats up, locks when too hot, then cools', () => {
+    const { sim, player } = stationGame();
+    const lo = player.loadout;
+    expect(lo.current.def.id).toBe('laser');
+    run(sim, 6, (p, i) => ({ ...emptyCommand(), fire: i % 8 < 4 }));
+    const it = lo.current;
+    expect(it.mag).toBe(1);
+    expect(events(sim, 'overheat').length).toBeGreaterThan(0);
+    // locked: the trigger does nothing
+    it.heat = 1; it.locked = 1;
+    run(sim, 0.5, (p, i) => ({ ...emptyCommand(), fire: i % 8 < 4 }));
+    expect(events(sim, 'playerShot').length).toBe(0);
+    run(sim, 4);
+    expect(it.locked).toBe(0);
+    expect(it.heat).toBe(0);
+  });
+
+  it('the plasma rifle fires three shots per pull', () => {
+    const { sim, player } = stationGame();
+    player.loadout.unlock('plasma');
+    run(sim, 0.5);
+    sim.drainEvents();
+    run(sim, 0.25, (p, i) => ({ ...emptyCommand(), fire: i === 0 }));
+    expect(events(sim, 'playerShot').length).toBe(3);
+  });
+
+  it('the railgun charges, then its slug goes through every enemy on its line', () => {
+    const { sim, player } = stationGame();
+    player.loadout.unlock('railgun');
+    run(sim, 0.5);
+    const line = [28, 24, 20].map((z) => still(pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, z)))));
+    const target = line[2].pos.clone().setY(1.0);
+    run(sim, 0.5, (p) => aimAt(p, target, { aim: true })); // through the sights: no spread
+    run(sim, 0.4, (p, i) => aimAt(p, target, { aim: true, fire: i === 0 }));
+    expect(sim.enemies.list.length).toBe(3); // still charging
+    run(sim, 0.6, (p) => aimAt(p, target, { aim: true }));
+    for (const e of line) expect(sim.enemies.list).not.toContain(e);
+  });
+
+  it('the flamethrower sets what is in front on fire; the burn goes on after the flames', () => {
+    const { sim, player } = stationGame();
+    player.loadout.unlock('flamer');
+    run(sim, 0.5);
+    const front = still(pacify(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 33))));
+    const behind = still(pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 43))));
+    const aim = front.pos.clone().setY(1.2);
+    run(sim, 0.5, (p) => aimAt(p, aim, { fire: true }));
+    expect(front.burn).toBeTruthy();
+    expect(behind.burn).toBeFalsy();
+    const hp = front.hp;
+    run(sim, 1, (p) => aimAt(p, aim));
+    expect(front.hp).toBeLessThan(hp);
+    expect(behind.hp).toBe(behind.T.hp);
+  });
+
+  it('the electric baton stuns what it hits', () => {
+    const { sim, player } = stationGame();
+    player.loadout.switchTo(0);
+    run(sim, 0.5);
+    const e = still(pacify(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 36))));
+    run(sim, 0.15, (p, i) => aimAt(p, e.pos.clone().setY(1.2), { fire: i === 0 }));
+    expect(e.stun).toBeGreaterThan(0.2);
+  });
+
+  it('a sticky mine sticks where it lands and goes off when an enemy comes near', () => {
+    const { sim, player } = stationGame();
+    run(sim, 0.3, (p, i) => aimAt(p, new THREE.Vector3(0, 0, 32), { grenade: i === 0 }));
+    run(sim, 1.5);
+    const mine = sim.grenades.find((g) => g.kind === 'mine');
+    expect(mine?.stuck).toBe(true);
+    const e = pacify(sim.enemies.spawn('runner', mine.pos.clone().add(new THREE.Vector3(0, 0, -12))));
+    e.T = { ...e.T, hp: 60 };
+    e.hp = 60;
+    const blasts = [];
+    run(sim, 6, (p) => { for (const ev of sim.events) if (ev.type === 'explosion') blasts.push(ev); return emptyCommand(); });
+    expect(sim.grenades).not.toContain(mine);
+    expect(sim.enemies.list).not.toContain(e);
   });
 });

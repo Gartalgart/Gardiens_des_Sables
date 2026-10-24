@@ -615,7 +615,8 @@ function parrySparks(count) {
   effects.burst(pos, _fwd.clone().negate(), { count, color: new THREE.Color(1, 0.78, 0.35), speed: 4.5, size: 0.035, life: 0.32, grav: 5 });
 }
 
-const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3, flintlock: 0.25, blunderbuss: 0.45, cannon: 0.7, musket: 0.3 };
+const FIRE_COLOR = new THREE.Color(1, 0.48, 0.12), SMOKE_COLOR = new THREE.Color(0.12, 0.1, 0.09);
+const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3, flintlock: 0.25, blunderbuss: 0.45, cannon: 0.7, musket: 0.3, laser: 0.04, plasma: 0.08, flamer: 0.015, railgun: 0.55 };
 const PLAYER_HIT_COLOR = new THREE.Color(0.75, 0.15, 0.1);
 const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? 'Un allié').toUpperCase();
 
@@ -637,6 +638,11 @@ function handleEvents() {
         break;
       case 'impactPlayer': effects.impactEnemy(ev.point, ev.normal, PLAYER_HIT_COLOR); break;
       case 'grenadeThrow': if (mine) sound.throw(); break;
+      // the station's weapons
+      case 'charge': if (mine) sound.charge(ev.time); break;
+      case 'overheat': if (mine) { sound.overheat(); weaponView.onOverheat(camera); hud.pickup('SURCHAUFFE'); } break;
+      case 'vented': if (mine) sound.click(1.5); break;
+      case 'mineStick': sound.thud(pan(ev.pos), 0.5 * vol(ev.pos, 30)); break;
       case 'grenadeBounce': sound.thud(pan(ev.pos), Math.min(1, ev.speed / 12) * vol(ev.pos, 40)); break;
       case 'points': if (mine) hud.points(ev.amount, ev.label); break;
       case 'headshotKill': if (mine) headshotKill = true; break;
@@ -659,6 +665,8 @@ function handleEvents() {
         break;
       case 'meleeImpact':
         effects.impactEnemy(ev.point, ev.normal, ENEMY_LOOK[ev.enemyType].color);
+        // the electric baton: a crackling blue arc
+        if (ev.shock) { effects.burst(ev.point, ev.normal, { count: 26, color: new THREE.Color(0.5, 0.75, 1), speed: 9, size: 0.06, life: 0.2, grav: 4 }); sound.spark(0, 1); }
         effects.burst(ev.point, ev.fwd, { count: 18, color: new THREE.Color(1, 0.8, 0.5), speed: 7, size: 0.07, life: 0.25 });
         break;
       case 'swing': if (mine) sound.swoosh(); else playerView.onEvent(ev); break;
@@ -872,6 +880,12 @@ function tick(dt, now = (tickClock += dt)) {
     enemyView.sync(sim.enemies, viewDt, sim.time);
     grenadeView.sync(sim.grenades, viewDt);
     kegView.sync(sim.kegs);
+    // enemies on fire (the flamethrower) burn with flames and smoke
+    for (const e of sim.enemies.list) {
+      if (!e.burn || Math.random() > 0.6) continue;
+      const at = e.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * e.T.radius * 1.4, e.lift + Math.random() * e.T.height, (Math.random() - 0.5) * e.T.radius * 1.4));
+      effects.emit(at, new THREE.Vector3(0, 1.5 + Math.random(), 0), Math.random() < 0.8 ? FIRE_COLOR : SMOKE_COLOR, 0.25, 0.45, -1.5);
+    }
     updateAirlocks(sim, p);
     if (game.net) coopHud(p, dt);
     const ranked = sim.mode.pvp ? arenaRanking() : null;

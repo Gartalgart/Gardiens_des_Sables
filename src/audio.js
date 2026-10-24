@@ -9,6 +9,13 @@ const SAMPLE_URLS = Object.fromEntries(
 );
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
+// the station's energy weapons (see Sound#energy)
+const ENERGY = {
+  laser: { osc: ['square', 2400, 260, 0.13], noise: ['highpass', 3000, 0.05], vol: 0.3 },
+  plasma: { osc: ['sawtooth', 900, 110, 0.18], noise: ['lowpass', 900, 0.12], vol: 0.4 },
+  flamer: { noise: ['bandpass', 650, 0.16], vol: 0.35 },
+  railgun: { osc: ['sawtooth', 3000, 80, 0.45], noise: ['highpass', 1800, 0.3], boom: 110, vol: 0.85 },
+};
 // the siren's melody, in hertz (A minor, rising and falling)
 const SONG_NOTES = [440, 523, 494, 392, 440, 659, 587, 523, 494, 440, 392, 330];
 
@@ -169,6 +176,7 @@ export class Sound {
   // pan / gain: a teammate's shot is placed in space and quieter
   shot(kind, pan = 0, gain = 1) {
     if (!this.ctx) return;
+    if (ENERGY[kind]) { this.#energy(ENERGY[kind], pan, gain); return; }
     const level = { pistol: 0.55, rifle: 0.45, shotgun: 0.7, sniper: 0.75, flintlock: 0.7, blunderbuss: 0.8, cannon: 0.9, musket: 0.8 }[kind];
     if (this.#play(`weapons/${kind}_fire`, { pan, vol: level * gain, rate: 0.97 + Math.random() * 0.06 })) return;
     const t = this.ctx.currentTime;
@@ -202,6 +210,84 @@ export class Sound {
     this.#env(og, t, 0.002, 0.9, cfg.tail ?? 0.14);
     o.connect(og).connect(out);
     o.start(t); o.stop(t + (cfg.tail ?? 0.14) + 0.06);
+  }
+
+  // The station's weapons: a sweep of an oscillator (osc: type, from, to Hz, seconds) and a burst of
+  // filtered noise (noise: [filter type, Hz, seconds]); the railgun adds a deep boom.
+  #energy(cfg, pan, gain) {
+    const t = this.ctx.currentTime, out = this.#out(pan, cfg.vol * gain);
+    if (cfg.osc) {
+      const [type, f0, f1, dur] = cfg.osc;
+      const o = this.ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      const g = this.ctx.createGain();
+      this.#env(g, t, 0.003, 0.5, dur);
+      o.connect(g).connect(out);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+    if (cfg.noise) {
+      const [type, f, dur] = cfg.noise;
+      const n = this.#noiseSrc();
+      const fl = this.ctx.createBiquadFilter();
+      fl.type = type; fl.frequency.value = f;
+      const g = this.ctx.createGain();
+      this.#env(g, t, 0.004, 0.8, dur);
+      n.connect(fl).connect(g).connect(out);
+      n.start(t); n.stop(t + dur + 0.05);
+    }
+    if (cfg.boom) {
+      const o = this.ctx.createOscillator();
+      o.frequency.setValueAtTime(cfg.boom, t);
+      o.frequency.exponentialRampToValueAtTime(28, t + 0.5);
+      const g = this.ctx.createGain();
+      this.#env(g, t, 0.003, 1, 0.6);
+      o.connect(g).connect(out);
+      o.start(t); o.stop(t + 0.7);
+    }
+  }
+
+  // the railgun charging: a whine that rises over `time` seconds
+  charge(time) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(180, t);
+    o.frequency.exponentialRampToValueAtTime(2200, t + time);
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 2;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.18, t + time);
+    g.gain.linearRampToValueAtTime(0, t + time + 0.05);
+    o.connect(f).connect(g).connect(this.#out(0, 1));
+    o.start(t); o.stop(t + time + 0.1);
+  }
+
+  // an energy weapon overheats: a falling alarm tone over a long hiss of venting gas
+  overheat() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    for (const k of [0, 0.15]) {
+      const o = this.ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(1300, t + k);
+      o.frequency.exponentialRampToValueAtTime(500, t + k + 0.12);
+      const g = this.ctx.createGain();
+      this.#env(g, t + k, 0.002, 0.12, 0.1);
+      o.connect(g).connect(this.#out(0, 1));
+      o.start(t + k); o.stop(t + k + 0.15);
+    }
+    const n = this.#noiseSrc();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'highpass'; f.frequency.value = 2500;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.25, t);
+    g.gain.linearRampToValueAtTime(0, t + 1.2);
+    n.connect(f).connect(g).connect(this.#out(0, 1));
+    n.start(t); n.stop(t + 1.3);
   }
 
   // the sniper's bolt, worked by the view model after each shot

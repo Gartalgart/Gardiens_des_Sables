@@ -266,11 +266,13 @@ export class Hud {
     const w = s.weapon;
     this.set('weapon-name', w.def.name);
     const melee = !!w.def.melee;
-    this.set('ammo-mag', melee ? '—' : w.mag);
-    this.set('ammo-res', melee ? (s.ads > 0.5 ? ' PARADE' : '') : w.reserve === Infinity ? '∞' : w.reserve);
-    $('ammo-mag').classList.toggle('empty', !melee && w.mag === 0);
-    $('ammo-sep').style.display = melee ? 'none' : '';
-    $('reload-hint').classList.toggle('hidden', melee || !(w.mag <= Math.ceil(w.def.mag * 0.25) && !s.reloading && w.reserve > 0));
+    // an energy weapon shows its heat, and a warning while it is locked
+    const heat = !!w.def.heat;
+    this.set('ammo-mag', melee ? '—' : heat ? `${Math.round(w.heat * 100)}%` : w.mag);
+    this.set('ammo-res', melee ? (s.ads > 0.5 ? ' PARADE' : '') : heat ? (w.locked > 0 ? ' SURCHAUFFE' : ' CHALEUR') : w.reserve === Infinity ? '∞' : w.reserve);
+    $('ammo-mag').classList.toggle('empty', !melee && (heat ? w.locked > 0 || w.heat > 0.8 : w.mag === 0));
+    $('ammo-sep').style.display = melee || heat ? 'none' : '';
+    $('reload-hint').classList.toggle('hidden', melee || heat || !(w.mag <= Math.ceil(w.def.mag * 0.25) && !s.reloading && w.reserve > 0));
     document.querySelectorAll('.slot').forEach((el, i) => {
       el.classList.toggle('active', i === s.weaponIndex);
       el.classList.toggle('locked', !s.unlocked[i]);
