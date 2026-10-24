@@ -15,6 +15,8 @@ export const PIRATES = {
     // computed from level.glb by scripts/level-json-from-glb.mjs
     levelData: 'models/pirates/level.json',
     props: 'models/pirates/props.glb',
+    // dressing without collision (blender/pirates/decor.py): drawn with the map, not in level.json
+    decor: 'models/pirates/decor.glb',
     // models of this universe that replace or add to the shared ones (src/assets.js), by key
     models: {
       cutlass: 'models/pirates/cutlass.glb',
@@ -172,6 +174,7 @@ export const PIRATES = {
   targets: [['skeleton', 3], ['gunner', 2], ['crab', 1], ['siren', 1], ['bats', 1]],
   props: {
     inside: 40, // the cliffs stand at ±42 m
+    maxZ: 11, // the quay and the sea beyond it
     list: [
       { name: 'Prop_Rope', count: 8, clear: 1, shadow: true },
       { name: 'Prop_Bottle', count: 14, clear: 1, shadow: false, scale: 1.2 },
@@ -179,6 +182,12 @@ export const PIRATES = {
       { name: 'Prop_Skull', count: 10, clear: 1, shadow: false, scale: 1.3 },
       { name: 'Prop_Crab', count: 12, clear: 1, shadow: false },
       { name: 'Prop_Palm', count: 12, clear: 2, shadow: true, edge: true },
+      { name: 'Prop_Bush', count: 16, clear: 1, shadow: true, edge: true },
+      { name: 'Prop_Grass', count: 70, clear: 0, shadow: false, scale: 1.2 },
+      { name: 'Prop_Shells', count: 24, clear: 0, shadow: false },
+      { name: 'Prop_Driftwood', count: 8, clear: 1, shadow: true },
+      { name: 'Prop_Cannonballs', count: 6, clear: 1, shadow: true },
+      { name: 'Prop_BrokenBarrel', count: 6, clear: 1, shadow: true },
     ],
   },
 

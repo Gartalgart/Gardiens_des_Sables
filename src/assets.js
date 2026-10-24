@@ -21,10 +21,11 @@ const FILES = {
 // world: the universe (src/worlds/); a map or props file it does not have yet is left null
 export async function loadAssets(world, onProgress) {
   const loader = new GLTFLoader();
-  const out = { clips: {}, level: null, props: null }; // clips: animations of each model, by file key
+  const out = { clips: {}, level: null, props: null, decor: null }; // clips: animations of each model, by file key
   const files = { ...FILES, ...world.files.models };
   if (world.files.level) files.level = world.files.level;
   if (world.files.props) files.props = world.files.props;
+  if (world.files.decor) files.decor = world.files.decor;
   let done = 0;
   const keys = Object.keys(files);
   await Promise.all(keys.map(async (k) => {

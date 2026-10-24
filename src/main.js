@@ -134,6 +134,8 @@ const [assets, levelData] = await Promise.all([
 const level = new Level(levelData);
 // the parts of the map the boss can break (the Kraken's piers), with the rectangles the sim uses
 const breakable = (world.enemies.boss?.kraken?.piers ?? []).map(([x0, x1]) => ({ minX: x0 - 0.3, maxX: x1 + 0.3, minZ: 18, maxZ: 38.5, maxY: 3.3 }));
+// the map's dressing (no collision) is drawn with the map itself
+if (assets.decor && assets.level) assets.level.add(assets.decor);
 const worldView = new WorldView(scene, assets.level, level, world.ambiance, breakable);
 // this universe's own colours for types the desert also has (the Kraken is the 'boss' too)
 for (const [type, l] of Object.entries(world.looks ?? {})) ENEMY_LOOK[type] = { color: new THREE.Color(...l.color), dot: l.dot };

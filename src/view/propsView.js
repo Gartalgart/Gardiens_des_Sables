@@ -28,6 +28,7 @@ export class PropsView {
 
     // a cell is free when it and its neighbours (within `clear` cells) are open flat ground
     const free = (x, z, clear) => {
+      if (props.maxZ !== undefined && z > props.maxZ) return false; // the sea, past the quay
       const i = nav.index(x, z);
       if (i < 0) return false;
       const ix = i % nav.n, iz = (i / nav.n) | 0;

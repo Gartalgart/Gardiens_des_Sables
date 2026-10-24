@@ -413,4 +413,38 @@ for k in range(7):
     a = k / 7 * math.tau
     box(nm("Frond"), PROPS, (2.2, 0.5, 0.05), (1.5 + math.cos(a) * 1.0, math.sin(a) * 1.0, 7.6), M["leaf"], parent=pa,
         rot=(0, 25, math.degrees(a)))
+# more ground clutter, added with the map's dressing (decor.py)
+random.seed(31)
+grass = mat("P_Grass", (0.1, 0.17, 0.06), 1.0)
+g = prop("Prop_Grass")  # a tuft of beach grass
+for k in range(7):
+    a = k / 7 * 360 + random.uniform(-20, 20)
+    h = random.uniform(0.3, 0.6)
+    box(nm("Blade"), PROPS, (0.08, 0.02, h), (math.cos(math.radians(a)) * 0.08, math.sin(math.radians(a)) * 0.08, h / 2), grass,
+        parent=g, rot=(random.uniform(-25, 25), random.uniform(-25, 25), a), taper=0.1)
+s = prop("Prop_Shells")  # shells and a starfish
+for k in range(3):
+    sphere(nm("Shell"), PROPS, 0.05, (random.uniform(-0.3, 0.3), random.uniform(-0.3, 0.3), 0.015), mat("P_Shell", (0.6, 0.47, 0.42), 0.6),
+           parent=s, scale=(1.2, 1, 0.35))
+for k in range(5):
+    a = k / 5 * 360
+    box(nm("Arm"), PROPS, (0.14, 0.04, 0.02), (0.25 + math.cos(math.radians(a)) * 0.07, 0.1 + math.sin(math.radians(a)) * 0.07, 0.01),
+        mat("P_Starfish", (0.6, 0.2, 0.08), 0.9), parent=s, rot=(0, 0, a), taper=0.5)
+d = prop("Prop_Driftwood")  # a bleached log and a branch
+drift = mat("P_Driftwood", (0.3, 0.27, 0.22), 1.0)
+cyl(nm("Log"), PROPS, 0.12, 1.6, (0, 0, 0.1), drift, parent=d, rot=(0, 88, 0), verts=7, radius_top=0.08)
+cyl(nm("Branch"), PROPS, 0.04, 0.7, (0.3, 0.25, 0.08), drift, parent=d, rot=(0, 85, 50), verts=5, radius_top=0.02)
+c = prop("Prop_Cannonballs")  # a pyramid of balls
+for (x, y, z) in ((-0.12, -0.12, 0.12), (0.12, -0.12, 0.12), (-0.12, 0.12, 0.12), (0.12, 0.12, 0.12), (0, 0, 0.29)):
+    sphere(nm("Ball"), PROPS, 0.12, (x, y, z), M["iron"], parent=c)
+b = prop("Prop_BrokenBarrel")  # a stove-in barrel on its side, staves around
+cyl(nm("Barrel"), PROPS, 0.33, 0.85, (0, 0, 0.33), M["wood"], parent=b, rot=(90, 0, 0), verts=10)
+cyl(nm("Hoop"), PROPS, 0.345, 0.05, (0, 0.3, 0.33), M["iron"], parent=b, rot=(90, 0, 0), verts=10)
+for k in range(3):
+    box(nm("Stave"), PROPS, (0.6, 0.09, 0.03), (0.6 + k * 0.1, random.uniform(-0.4, 0.4), 0.015), M["wood"], parent=b,
+        rot=(0, 0, random.uniform(0, 180)))
+u = prop("Prop_Bush")  # a low bush along the cliffs
+for k in range(5):
+    sphere(nm("Leaves"), PROPS, random.uniform(0.35, 0.6), (random.uniform(-0.4, 0.4), random.uniform(-0.4, 0.4), 0.3), M["leaf"],
+           parent=u, scale=(1, 1, random.uniform(0.6, 0.9)))
 print("props:", [o.name for o in PROPS.objects if o.type == "EMPTY"])
