@@ -13,7 +13,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak',
 ];
 let level;
 
@@ -1032,13 +1032,14 @@ describe('pirate enemies', () => {
     expect(sim.drainEvents().some((e) => e.type === 'rainMark')).toBe(false);
   });
 
-  it('the boss and the crabs only come through gates a big body can walk out of', () => {
+  it('big bodies only come through gates they can walk out of', () => {
     const { sim, player } = pirateSim();
     player.pos.set(-6, 0, 4);
     run(sim, 0.1);
     const nav = sim.level.nav;
+    sim.world = { ...sim.world, enemies: { ...sim.world.enemies, brute: { ...sim.world.enemies.crab, fromWater: null } } };
     for (let i = 0; i < 30; i++) {
-      const at = sim.pickSpawn('boss');
+      const at = sim.pickSpawn('brute'); // a crab that comes through the gates
       expect(nav.layers.big.dist[nav.index(at.x, at.z)]).toBeLessThan(Infinity);
     }
     // every gate lets a small body out
@@ -1151,5 +1152,119 @@ describe('pirate enemies', () => {
       if (spawns.length) group = spawns.length;
     }
     expect(group).toBe(3);
+  });
+});
+
+describe('the Kraken', () => {
+  const port = new Level(JSON.parse(readFileSync(new URL(`../public/${getWorld('pirates').files.levelData}`, import.meta.url), 'utf8')));
+  const krakenGame = () => {
+    const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' });
+    const player = sim.addPlayer('p1');
+    player.pos.set(-10, 1, 15); // on the quay
+    run(sim, 0.1);
+    const kraken = sim.enemies.spawn('boss', sim.pickSpawn('boss'));
+    return { sim, player, kraken, tentacles: kraken.parts };
+  };
+  const keep = (player) => () => { player.health = 100; return emptyCommand(); };
+
+  it('waits under the water with four tentacles along the shore; only the body counts as an enemy left', () => {
+    const { sim, kraken, tentacles } = krakenGame();
+    expect(kraken.submerged).toBe(true);
+    expect(tentacles.length).toBe(4);
+    for (const t of tentacles) expect(t.pos.z).toBeGreaterThan(18); // in the water
+    expect(sim.enemies.alive).toBe(1);
+    // bullets cannot reach the body under the water
+    const hit = sim.enemies.raycast(new THREE.Vector3(-8.5, 3, 20), new THREE.Vector3(0, 0, 1), 40);
+    expect(hit?.enemy).not.toBe(kraken);
+  });
+
+  it('a tentacle warns with a red circle, then strikes where the player stood', () => {
+    const { sim, player, tentacles } = krakenGame();
+    let ring = null, slam = null;
+    const hp0 = 100;
+    run(sim, 6, () => {
+      for (const ev of sim.drainEvents()) {
+        if (ev.type === 'ring' && ev.enemyType === 'tentacle' && !ring) ring = ev;
+        if (ev.type === 'slam' && ring && !slam) slam = ev;
+      }
+      if (!slam) player.health = hp0;
+      return emptyCommand();
+    });
+    expect(ring).not.toBeNull();
+    expect(Math.hypot(ring.pos.x - player.pos.x, ring.pos.z - player.pos.z)).toBeLessThan(3);
+    expect(slam).not.toBeNull();
+    expect(player.health).toBeLessThan(hp0);
+    expect(tentacles.some((t) => t.act === null || t.act?.kind === 'strike')).toBe(true);
+  });
+
+  it('cutting a tentacle makes it dive and costs the Kraken a share of its health; it comes up again elsewhere', () => {
+    const { sim, player, kraken, tentacles } = krakenGame();
+    run(sim, 3, keep(player)); // let them rise
+    const t = tentacles[0];
+    const from = t.pos.clone();
+    sim.enemies.damage(t, 1e6, null, player);
+    expect(t.diving).toBe(true);
+    expect(kraken.hp).toBeCloseTo(kraken.maxHp * 0.92);
+    expect(sim.enemies.list).toContain(t); // dived, not dead
+    run(sim, 8, keep(player));
+    expect(t.diving).toBe(false);
+    expect(t.hp).toBe(t.maxHp);
+    expect(player.score).toBeGreaterThan(0);
+    void from;
+  });
+
+  it('at half health its head comes up, spits ink that blinds, and calls the crew from the land', () => {
+    const { sim, player, kraken } = krakenGame();
+    kraken.hp = kraken.maxHp * 0.49;
+    let skeletons = 0, inked = false;
+    run(sim, 12, () => {
+      for (const ev of sim.drainEvents()) {
+        if (ev.type === 'enemySpawn' && ev.enemyType === 'skeleton') skeletons++;
+        if (ev.type === 'inked') inked = true;
+      }
+      player.health = 100;
+      return emptyCommand();
+    });
+    expect(kraken.stage).toBe(2);
+    expect(kraken.submerged).toBe(false);
+    expect(kraken.rise).toBe(0);
+    expect(skeletons).toBeGreaterThanOrEqual(4);
+    for (const e of sim.enemies.list.filter((x) => x.type === 'skeleton')) expect(e.pos.z).toBeLessThan(18); // on land
+    expect(inked).toBe(true);
+    // up, the head can be shot
+    const hit = sim.enemies.raycast(new THREE.Vector3(-8.5, 3.5, 20), new THREE.Vector3(0, 0, 1), 40);
+    expect(hit?.enemy).toBe(kraken);
+  });
+
+  it('at a third it smashes the nearest pier, and its tentacles grab; hurting the one that holds you frees you', () => {
+    const { sim, player, kraken, tentacles } = krakenGame();
+    player.pos.set(-22.5, 1, 24); // out on the western pier
+    const boxes = port.boxes.length;
+    kraken.stage = 2;
+    kraken.submerged = false;
+    kraken.hp = kraken.maxHp * 0.3;
+    run(sim, 0.1, keep(player));
+    expect(kraken.stage).toBe(3);
+    expect(sim.drainEvents().some((e) => e.type === 'pierBreak')).toBe(true);
+    expect(port.boxes.length).toBeLessThan(boxes);
+    expect(port.groundAt(-22.5, 26, 0.4, 2)).toBe(0); // no more pier
+    expect(player.pos.z).toBeLessThan(28); // thrown back into the shallows, inside the barrier
+    // a tentacle next to the player grabs them
+    player.pos.set(-12, 1, 15);
+    const t = tentacles[0];
+    t.pos.set(-12, 0, 17.5);
+    t.rise = 0; t.diving = false; t.act = null; t.leapCd = 0; t.attackCd = 99;
+    run(sim, 1.5, keep(player));
+    expect(player.grabbed?.by).toBe(t.id);
+    const held = player.pos.clone();
+    run(sim, 0.5, () => ({ ...emptyCommand(), moveZ: -1 })); // cannot walk away
+    expect(player.pos.distanceTo(held)).toBeLessThan(0.3);
+    sim.enemies.damage(t, 80, null, player);
+    expect(player.grabbed).toBeNull();
+    expect(t.diving).toBe(true);
+    // a new game finds the pier standing again
+    new Sim(port, { mode: 'sandbox', world: 'pirates' });
+    expect(port.boxes.length).toBe(boxes);
+    expect(port.groundAt(-22.5, 26, 0.4, 2)).toBe(1);
   });
 });

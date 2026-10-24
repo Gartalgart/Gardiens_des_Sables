@@ -4,12 +4,16 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // What the level looks like: merged meshes, sky, moon, braziers and their lights.
 // Collisions and navigation live in the simulation (src/sim/level.js).
 // look: the universe's ambiance (fog, sky, moon, fire colours; see src/worlds/).
+// breakable: rectangles of the map that can break during a game ({ minX, maxX, minZ, maxZ, maxY },
+// the Kraken's piers): their meshes are kept apart from the merged ones so they can be hidden.
 export class WorldView {
-  constructor(scene, levelRoot, level, look) {
+  constructor(scene, levelRoot, level, look, breakable = []) {
     this.scene = scene;
     this.look = look;
     this.braziers = level.braziers;
     this.flames = [];
+    this.breakable = breakable.map((rect) => ({ rect, group: new THREE.Group() }));
+    for (const b of this.breakable) scene.add(b.group);
 
     // a universe whose map is not modelled yet is drawn from its collision boxes
     if (levelRoot) this.#buildLevel(levelRoot);
@@ -18,6 +22,16 @@ export class WorldView {
     this.#buildLights();
     this.#buildStorm();
     if (look.sea) this.#buildSea(look.sea);
+  }
+
+  // a part of the map broke (the sim's 'pierBreak' event gives its rectangle); restoreBroken() for a new game
+  breakArea(rect) {
+    const b = this.breakable.find(({ rect: r }) => Math.abs(r.minX - rect.minX) < 0.01 && Math.abs(r.minZ - rect.minZ) < 0.01);
+    if (b) b.group.visible = false;
+  }
+
+  restoreBroken() {
+    for (const b of this.breakable) b.group.visible = true;
   }
 
   // The sea (pirate port): a wide sheet from the shore to the horizon, its swell moved in the
@@ -93,6 +107,16 @@ export class WorldView {
       if (o.name.startsWith('C_') || o.name.startsWith('Z_')) return;
       if (o.name.startsWith('L_DecoFire')) {
         fires.push(o);
+        return;
+      }
+      // a part of something that can break: drawn on its own
+      const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+      const part = this.breakable.find(({ rect: r }) => c.x >= r.minX && c.x <= r.maxX && c.z >= r.minZ && c.z <= r.maxZ && c.y <= r.maxY);
+      if (part) {
+        const m = new THREE.Mesh(o.geometry, o.material);
+        o.matrixWorld.decompose(m.position, m.quaternion, m.scale);
+        m.castShadow = m.receiveShadow = true;
+        part.group.add(m);
         return;
       }
       const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);

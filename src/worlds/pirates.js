@@ -2,7 +2,7 @@ import { SABLES } from './sables.js';
 
 // "L'Île des pirates maudits" (U1): a ruined pirate port on a misty night.
 // The map (blender/pirates/port.py), the weapons (blender/pirates/weapons.py) and the enemies
-// (blender/pirates/enemies.py) are its own; the pharaoh stands in for its boss until phase 6.
+// (blender/pirates/enemies.py) are its own, the Kraken (blender/pirates/kraken.py) too.
 export const PIRATES = {
   ...SABLES,
   id: 'pirates',
@@ -26,6 +26,8 @@ export const PIRATES = {
       skeleton: 'models/pirates/skeleton.glb',
       siren: 'models/pirates/siren.glb',
       bats: 'models/pirates/bat.glb', // one bat: the client draws a swarm of them
+      boss: 'models/pirates/kraken.glb',
+      tentacle: 'models/pirates/tentacle.glb',
       crab: 'models/pirates/crab.glb',
       gunner: 'models/pirates/gunner.glb',
     },
@@ -109,8 +111,42 @@ export const PIRATES = {
       fly: { height: 1.6, reach: 1.5 }, // cruising height over the ground, distance it bites from
       blastMul: 5, load: 0.5,
     },
-    // the pharaoh stands in for the Kraken until phase 6
-    boss: { ...SABLES.enemies.boss, summon: 'skeleton' },
+    // the Kraken: its body waits out in the deep water between the piers, its tentacles rise along
+    // the shore; cutting them hurts it (see Enemies#kraken). At half health its head comes up, spits
+    // ink and calls the crew; at a third it smashes a pier and its tentacles start grabbing.
+    boss: {
+      hp: 3600, speed: 0, radius: 2.4, height: 6.5, headY: 4.0, big: true, boss: true, stay: true,
+      melee: { range: 0.01, dmg: 0, windup: 1, cd: 99 },
+      // ink lobbed over the barrier of the deep water: seconds of blindness for the player it lands on
+      ranged: { lob: true, min: 0, max: 70, cd: 2.6, windup: 0.6, speed: 22, dmg: 12, radius: 2.4, ink: 4 },
+      muzzle: [0, 2.4, 2.0], // the beak
+      summon: 'skeleton',
+      kraken: {
+        anchor: [-8.5, 0, 35],
+        tentacle: 'tentacle', tentacles: 4,
+        cut: 0.08, // share of its health a cut tentacle costs it
+        dive: [4, 6], // seconds under water before a cut tentacle comes up elsewhere
+        summonEvery: 22,
+        piers: [[-24, -21], [4, 7]], // x ranges of the piers it can smash (z 18 to 38)
+        // where tentacles rise: off the quay, along the piers, off the west beach (x, y, z)
+        spots: [
+          [-37, 0, 19], [-31, 0, 19.5], [-27.5, 0, 19.5], [-16, 0, 19.5], [-10, 0, 19.5], [-4, 0, 19.5], [0.5, 0, 19.5],
+          [10, 0, 19.5], [13, 0, 19.5],
+          [-25.6, 0, 24], [-19.4, 0, 24], [2.4, 0, 24], [8.6, 0, 24],
+          [-25.6, 0, 29], [-19.4, 0, 29], [2.4, 0, 29], [8.6, 0, 29],
+          [-25.6, 0, 34], [-19.4, 0, 34], [2.4, 0, 34], [8.6, 0, 34],
+        ],
+      },
+    },
+    // one of the Kraken's tentacles (a part of the boss, not counted as an enemy left)
+    tentacle: {
+      hp: 150, speed: 0, radius: 0.7, height: 5.4, headY: 99, stay: true, part: true, tentacle: true, load: 0,
+      melee: { range: 0.01, dmg: 0, windup: 1, cd: 99 },
+      // strikes where the player stands, after a red circle has warned them
+      strike: { reach: 7.5, radius: 2.3, windup: 1.1, dmg: 28, cd: [2.5, 4] },
+      // last phase: grabs a player within range; free: damage that makes it let go; hold: seconds before it throws them
+      grab: { range: 3.2, windup: 0.6, dps: 9, free: 70, hold: 6, cd: 8 },
+    },
   },
   // where gunners stand: the main deck and the sterncastle of the galleon (x, y, z)
   posts: [[24, 4, 21.5], [25.5, 4, 17.5], [18, 4, 22.3], [34.5, 6.6, 18], [34.5, 6.6, 22]],
@@ -146,8 +182,25 @@ export const PIRATES = {
     ...SABLES.texts,
     start: 'Sabre [1] et pistolet à silex [2] — bombes [G] — tenez le port',
     grenadeKill: 'BOMBE',
+    bossName: 'LE KRAKEN',
+    bossKill: 'KRAKEN TERRASSÉ',
+    bossWave: 'le Kraken',
+    bossWakes: 'Le Kraken remonte des profondeurs…',
+    bossSummon: "Le Kraken appelle l'équipage maudit !",
+    bossRise: "Le Kraken sort la tête de l'eau !",
+    bossPier: 'Le Kraken brise le ponton !',
+    modes: {
+      ...SABLES.texts.modes,
+      waves: "Cinq vagues de l'équipage maudit à repousser, le Kraken à la dernière.",
+      survival: 'Des vagues sans fin, le Kraken toutes les cinq vagues.',
+    },
     victory: "La brume se lève sur le port. L'équipage maudit retourne au fond de la baie.",
   },
+
+  // the Kraken's roar and death: the colossus's recordings, slowed right down (src/audio.js setVoices)
+  voices: { growls: { boss: 'enemies/tank_roar', tentacle: 'enemies/scarab_skitter' }, rates: { boss: 0.5, tentacle: 0.5 }, bossDeath: 'enemies/tank_roar' },
+  // colours of this universe's own types where the desert has the same key (the boss)
+  looks: { boss: { color: [0.75, 0.25, 0.9], dot: '#c060ff' } },
 
   ambiance: {
     fog: { color: 0x0d1a1c, density: 0.024 },

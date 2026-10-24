@@ -35,6 +35,10 @@ export class Sound {
     this.volumes = { master: 0.8, sfx: 1, music: 0.6 };
     this.buffers = {};
     this.lastLaugh = -Infinity;
+    // the cries of each enemy type, and the boss's death: a universe can give its own (setVoices)
+    this.growls = { ...GROWLS };
+    this.growlRates = { ...GROWL_RATE };
+    this.bossDeath = 'enemies/pharaoh_death';
   }
 
   // master scales everything; sfx and music are separate buses
@@ -99,6 +103,13 @@ export class Sound {
   }
 
   // 0 calm, 1 combat, 2 the pharaoh
+  // a universe's own voices: { growls: { type: sample }, rates: { type: playback rate }, bossDeath }
+  setVoices({ growls = {}, rates = {}, bossDeath } = {}) {
+    Object.assign(this.growls, growls);
+    Object.assign(this.growlRates, rates);
+    if (bossDeath) this.bossDeath = bossDeath;
+  }
+
   setMusicIntensity(level) { this.musicPlayer?.setIntensity(level); }
 
   resume() { this.ctx?.resume(); }
@@ -564,7 +575,7 @@ export class Sound {
     if (!this.ctx) return;
     if (type === 'skeleton') this.#rattle(pan, vol, 12);
     const big = type === 'tank' || type === 'boss' || type === 'crab';
-    if (type === 'boss' && this.#play('enemies/pharaoh_death', { pan, vol: 0.9 })) return;
+    if (type === 'boss' && this.#play(this.bossDeath, { pan, vol: 0.9, rate: this.growlRates.boss ?? 1 })) return;
     if (this.#play('enemies/enemy_death_crumble', { pan, vol: 0.6 * vol, rate: big ? 0.8 : 0.95 + Math.random() * 0.1 })) return;
     this.crumble(pan, vol, big);
   }
@@ -600,8 +611,8 @@ export class Sound {
       this.lastLaugh = t;
     }
     if (type === 'skeleton') { this.#rattle(pan, vol); return; }
-    const name = GROWLS[type];
-    if (name && this.#play(name, { pan, vol: 0.6 * vol, rate: (GROWL_RATE[type] ?? 1) * (0.93 + Math.random() * 0.14) })) return;
+    const name = this.growls[type];
+    if (name && this.#play(name, { pan, vol: 0.6 * vol, rate: (this.growlRates[type] ?? 1) * (0.93 + Math.random() * 0.14) })) return;
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';
     const base = low ? 55 : 110;

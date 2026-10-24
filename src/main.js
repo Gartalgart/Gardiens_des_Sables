@@ -108,6 +108,7 @@ let savedWorld = null;
 try { savedWorld = localStorage.getItem('gds-world'); } catch {}
 const world = getWorld(savedWorld);
 game.world = world;
+sound.setVoices(world.voices);
 $('menu-title').innerHTML = `${world.title[0]}<br /><span>${world.title[1]}</span>`;
 $('menu-lede').textContent = world.lede;
 document.title = world.name;
@@ -125,7 +126,11 @@ const [assets, levelData] = await Promise.all([
   fetch(world.files.levelData).then((r) => r.json()),
 ]);
 const level = new Level(levelData);
-const worldView = new WorldView(scene, assets.level, level, world.ambiance);
+// the parts of the map the boss can break (the Kraken's piers), with the rectangles the sim uses
+const breakable = (world.enemies.boss?.kraken?.piers ?? []).map(([x0, x1]) => ({ minX: x0 - 0.3, maxX: x1 + 0.3, minZ: 18, maxZ: 38.5, maxY: 3.3 }));
+const worldView = new WorldView(scene, assets.level, level, world.ambiance, breakable);
+// this universe's own colours for types the desert also has (the Kraken is the 'boss' too)
+for (const [type, l] of Object.entries(world.looks ?? {})) ENEMY_LOOK[type] = { color: new THREE.Color(...l.color), dot: l.dot };
 const propsView = assets.props ? new PropsView(scene, assets.props, level, world.props) : null;
 const effects = new Effects(scene);
 const weaponView = new WeaponView(assets, vmScene, effects, worldFlash, world.weapons);
@@ -392,6 +397,8 @@ function clearCharm() {
 
 function resetViews() {
   clearCharm();
+  worldView.restoreBroken();
+  $('ink').style.opacity = 0;
   enemyView.clear();
   playerView.clear();
   hud.team([]);
@@ -657,6 +664,28 @@ function handleEvents() {
         break;
       case 'prime': primes.set(ev.id, 0); break;
       case 'song': if (ev.on) sound.growl(pan(ev.pos), vol(ev.pos, 50), false, 'siren'); break;
+      // the Kraken
+      case 'tentacleCut':
+        effects.burst(ev.pos.clone().setY(1.5), null, { count: 40, color: new THREE.Color(0.5, 0.1, 0.3), speed: 6, size: 0.25, life: 0.7, grav: 6 });
+        sound.growl(pan(ev.pos), vol(ev.pos, 60), true, 'boss');
+        break;
+      case 'grab':
+        if (mine) { if (!ev.released) { sound.hurt(); addShake(0.4); } hud.prompt(ev.released ? null : 'UNE TENTACULE VOUS TIENT — FRAPPEZ-LA POUR VOUS LIBÉRER'); }
+        break;
+      case 'inked': if (mine) { sound.thud(0, 1); addShake(0.2); } break;
+      case 'pierBreak': {
+        worldView.breakArea(ev);
+        const mid = new THREE.Vector3((ev.minX + ev.maxX) / 2, 1, (ev.minZ + ev.maxZ) / 2);
+        for (let z = ev.minZ; z < ev.maxZ; z += 3) {
+          const at = mid.clone().setZ(z);
+          effects.burst(at, null, { count: 18, color: new THREE.Color(0.35, 0.22, 0.12), speed: 6, size: 0.3, life: 1.2, grav: 9 });
+          effects.burst(at, new THREE.Vector3(0, 1, 0), { count: 12, color: new THREE.Color(0.6, 0.75, 0.8), speed: 7, size: 0.35, life: 0.9, grav: 9, spread: 0.6 });
+        }
+        sound.explosion(pan(mid), Math.max(0.4, vol(mid, 80)));
+        sound.crumble(pan(mid), 1, true);
+        addShake(0.9 * Math.max(0.3, vol(mid, 40)));
+        break;
+      }
       case 'explosion':
         // fire pots, cannon balls and powder kegs burst into flames; a mummy's blast is green
         if (ev.kind === 'grenade' || ev.kind === 'keg' || ev.kind === 'ball') grenadeView.explode(ev.pos);
@@ -670,7 +699,8 @@ function handleEvents() {
       case 'rainMark': enemyView.onEvent(ev); break;
       case 'rainStrike':
         enemyView.onEvent(ev);
-        if (ev.kind === 'lob') sound.explosion(pan(ev.pos), 0.6 * Math.max(0.3, vol(ev.pos, 60)));
+        if (ev.kind === 'lob' && ev.ink) sound.thud(pan(ev.pos), vol(ev.pos, 40));
+        else if (ev.kind === 'lob') sound.explosion(pan(ev.pos), 0.6 * Math.max(0.3, vol(ev.pos, 60)));
         else sound.crumble(pan(ev.pos), vol(ev.pos, 40), true);
         addShake((ev.kind === 'lob' ? 0.5 : 0.35) * vol(ev.pos, 12));
         break;
@@ -693,7 +723,7 @@ function handleEvents() {
         if (mine) { hud.pickup('RELEVÉ !'); sound.pickup(); }
         else if (ev.by === game.localId) { hud.pickup(`${nameOf(ev.pid)} RELEVÉ  +200`); sound.pickup(); }
         break;
-      case 'gameOver': clearCharm(); endGame(ev.victory, ev.winner); break;
+      case 'gameOver': clearCharm(); hud.prompt(null); endGame(ev.victory, ev.winner); break;
     }
   }
   // Call of Duty: a kill to the head has its own crack and ring, instead of the plain hit sound
@@ -744,6 +774,7 @@ function tick(dt, now = (tickClock += dt)) {
       : { ...emptyCommand(), yaw: input.yaw, pitch: input.pitch };
     // exploration: N calls a group of enemies to try the weapons on
     if (game.state === 'playing' && !game.net && sim.mode.callTargets && input.wasPressed('KeyN')) sim.mode.callTargets();
+    if (game.state === 'playing' && !game.net && sim.mode.callBoss && input.wasPressed('KeyB')) sim.mode.callBoss();
     sim.step(dt, new Map([[game.localId, cmd]]));
 
     // camera: the player's eye with a walking bob, plus the recoil the simulation applied
@@ -833,6 +864,9 @@ function tick(dt, now = (tickClock += dt)) {
       if (v > loud) { loud = v; singer = e; }
     }
     sound.setSong(singer ? Math.max(loud, charm) : 0, singer ? pan(singer.pos) : 0);
+    // the Kraken's ink over the eyes, fading in its last second
+    const ink = Math.min(1, (p.ink ?? 0) / 1.2);
+    if (Math.abs(ink - (game.shownInk ?? 0)) > 0.01) { game.shownInk = ink; $('ink').style.opacity = (ink * 0.95).toFixed(2); }
     // the music follows the fight: calm between waves, louder in combat, fiercer against the pharaoh
     sound.setMusicIntensity(sim.over ? 0 : ranked ? 1 : sim.enemies.boss ? 2 : sim.mode.waveActive && sim.enemies.alive ? 1 : 0);
   } else if (game.state === 'menu') {

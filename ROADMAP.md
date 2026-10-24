@@ -228,6 +228,15 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 74 tests automatisés, dont 4 nouveaux : le chant de la sirène (charme, attirance, elle ne bouge pas, tout s'arrête à sa mort) ; la nuée qui arrive en vol, mord à répétition et meurt dans l'explosion d'un baril ; un ennemi hors carte ou piégé qui revient par une porte ; des vagues qui finissent toujours, même pour un joueur qui ne tue que ce qui s'approche. Le test de la charge du crabe ne dépend plus du hasard.
 - **Validation :** jouer des vagues qui mélangent les cinq ennemis (ou les appeler avec N en Exploration). Validée le 24/10/2026.
 
+### U1 Phase 6 — Le Kraken `[x]`
+- [x] **Deux modèles avec squelette et animations** (`blender/pirates/kraken.py`, scène « Kraken » de `port.blend`) : la tête (grand manteau violet, yeux jaunes à pupille fendue, bec, moignons de bras) et une tentacule sur une chaîne de six os (ventouses, frappe, saisie, étreinte).
+- [x] **Phase 1** : le corps attend sous l'eau, au large entre les deux pontons, intouchable. Quatre tentacules surgissent le long du quai, des pontons et de la plage ouest, près du joueur. Chacune s'abat là où il se tient, après un cercle rouge d'avertissement (1,1 s). Couper une tentacule l'oblige à replonger, coûte 8 % de sa vie au Kraken (points « TENTACULE »), et elle ressort ailleurs 4 à 6 s plus tard.
+- [x] **Phase 2, à la moitié de sa vie** : la tête sort de l'eau et devient la cible. Elle crache en cloche, par-dessus la barrière de l'eau profonde, une boule d'encre annoncée par son ombre, qui aveugle 4 s (taches noires sur l'écran). Elle appelle quatre squelettes depuis la terre, puis d'autres toutes les 22 s.
+- [x] **Phase 3, au dernier tiers** : il brise le ponton le plus proche du joueur (les collisions et la navigation changent, une barrière referme l'eau profonde, quiconque est dessus est rejeté dans les hauts-fonds). Ses tentacules saisissent désormais un joueur trop proche : immobilisé et blessé, il se libère en infligeant 70 dégâts à celle qui le tient, sinon elle le rejette au bout de 6 s. Le ponton est de nouveau là à la partie suivante.
+- [x] Le Kraken est le boss de la vague 5 et de la survie ; en Exploration, la touche **B** l'appelle. Ses rugissements sont ceux du colosse, très ralentis ; chaque univers peut maintenant avoir ses propres voix (`voices`) et couleurs (`looks`).
+- [x] 79 tests automatisés, dont 5 nouveaux : le Kraken immergé et ses quatre tentacules, l'avertissement puis la frappe, la tentacule coupée qui replonge et revient, la tête qui sort, l'encre et les renforts, le ponton brisé, la saisie et la libération, le ponton restauré.
+- **Validation :** affronter le Kraken seul (B en Exploration), puis à la fin de la vague 5. Validée le 24/10/2026.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).

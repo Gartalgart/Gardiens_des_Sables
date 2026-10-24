@@ -52,7 +52,9 @@ export class Sim {
     this.grenades = [];
     // the map's powder kegs; fuse: seconds before a keg caught in a blast goes off too
     this.kegs = level.kegs.map((pos, id) => ({ id, pos: pos.clone(), alive: true, fuse: null, by: null }));
-    // the nav grid belongs to the shared Level: forget the previous game's targets
+    // the Level is shared by the games: a pier the Kraken broke stands again, and the nav grid
+    // forgets the previous game's targets
+    level.restore();
     level.nav.lastCell = null;
     level.nav.timer = 0;
     this.mode = new MODES[mode](this, arena);
@@ -426,7 +428,7 @@ export class Sim {
     const from = pos.clone().setY(pos.y + 0.3);
     const exposed = (p) => this.level.lineOfSight(from, p);
     for (const e of [...this.enemies.list]) {
-      if (e.rise > 0.5 || e.hidden) continue;
+      if (e.rise > 0.5 || e.hidden || e.submerged) continue;
       const c = e.pos.clone().setY(e.pos.y + e.lift + e.T.height * 0.5);
       const d = c.distanceTo(pos);
       if (d > R + e.T.radius || !exposed(c)) continue;
@@ -444,6 +446,23 @@ export class Sim {
       this.hitPlayer(p, cfg.playerDmg * k, pos, 'explosion', null, owner ? { by: owner, weapon: kind } : null);
       p.impulse(p.pos.clone().sub(pos).setY(0).normalize().multiplyScalar(8 * k).add(new THREE.Vector3(0, 3.5 * k, 0)));
     }
+  }
+
+  // The Kraken's last phase: it smashes the pier nearest the player. Anyone out on it is thrown
+  // into the shallows, and a barrier closes the gap it leaves in the deep water's edge.
+  breakPier(kraken, player) {
+    const piers = kraken.T.kraken.piers;
+    const [x0, x1] = piers.reduce((best, p) => Math.abs((p[0] + p[1]) / 2 - player.pos.x) < Math.abs((best[0] + best[1]) / 2 - player.pos.x) ? p : best);
+    const rect = { minX: x0 - 0.3, maxX: x1 + 0.3, minZ: 18, maxZ: 38.5, maxY: 3.3 };
+    this.level.breakArea(rect, [[x0, 0, 30, x1, 3, 31]]);
+    for (const p of this.players.values()) {
+      if (p.pos.x < rect.minX || p.pos.x > rect.maxX || p.pos.z < rect.minZ) continue;
+      p.pos.set((x0 + x1) / 2, Math.max(p.pos.y, 1), Math.min(p.pos.z, 27));
+      p.impulse(new THREE.Vector3(0, 4, -3));
+    }
+    this.emit('pierBreak', rect);
+    this.emit('banner', { title: '', sub: this.world.texts.bossPier, duration: 2.5 });
+    this.emit('horn', { victory: false });
   }
 
   // The pharaoh's second phase: the storm rises.
@@ -479,9 +498,10 @@ export class Sim {
     const flight = THREE.MathUtils.clamp(from.distanceTo(player.pos) / R.speed, 1.1, 2.4);
     const pos = player.pos.clone().addScaledVector(player.vel.clone().setY(0), flight * 0.5);
     pos.y = this.level.groundAt(pos.x, pos.z, 0.5, player.pos.y + 0.6);
-    const strike = { id: this.nextId(), pos, radius: R.radius, dmg: R.dmg * dmgMul, t: flight, kind: 'lob' };
+    // ink: the Kraken's, a blob that blinds whoever it lands on for that many seconds
+    const strike = { id: this.nextId(), pos, radius: R.radius, dmg: R.dmg * dmgMul, t: flight, kind: 'lob', ink: R.ink ?? 0 };
     this.strikes.push(strike);
-    this.emit('rainMark', { id: strike.id, pos: pos.clone(), radius: strike.radius, delay: flight, from: from.clone(), kind: 'lob' });
+    this.emit('rainMark', { id: strike.id, pos: pos.clone(), radius: strike.radius, delay: flight, from: from.clone(), kind: 'lob', ink: strike.ink > 0 });
   }
 
   #updateStrikes(dt) {
@@ -490,11 +510,14 @@ export class Sim {
       s.t -= dt;
       if (s.t > 0) continue;
       this.strikes.splice(i, 1);
-      this.emit('rainStrike', { id: s.id, pos: s.pos.clone(), radius: s.radius, kind: s.kind });
-      if (s.kind === 'lob') this.#lightKegs(s.pos, s.radius, null);
+      this.emit('rainStrike', { id: s.id, pos: s.pos.clone(), radius: s.radius, kind: s.kind, ink: s.ink > 0 });
+      if (s.kind === 'lob' && !s.ink) this.#lightKegs(s.pos, s.radius, null);
       for (const p of this.alivePlayers()) {
         const d = Math.hypot(p.pos.x - s.pos.x, p.pos.z - s.pos.z);
-        if (d < s.radius && Math.abs(p.pos.y - s.pos.y) < 2.5) this.hitPlayer(p, s.dmg, s.pos, 'explosion');
+        if (d < s.radius && Math.abs(p.pos.y - s.pos.y) < 2.5) {
+          this.hitPlayer(p, s.dmg, s.pos, 'explosion');
+          if (s.ink) { p.ink = Math.max(p.ink, s.ink); this.emit('inked', { pid: p.id }); }
+        }
       }
     }
   }
@@ -623,7 +646,8 @@ export class Sim {
       const a = (i / 4) * Math.PI * 2;
       const p = boss.pos.clone().add(new THREE.Vector3(Math.cos(a) * 3.5, 0, Math.sin(a) * 3.5));
       p.y = this.level.groundAt(p.x, p.z, 0.4, boss.pos.y + 0.5);
-      this.enemies.spawn(boss.T.summon, p);
+      // the Kraken, out in the deep water, calls its crew from the land
+      this.enemies.spawn(boss.T.summon, boss.T.kraken ? this.pickSpawn(boss.T.summon) : p);
     }
     this.emit('banner', { title: '', sub: this.world.texts.bossSummon, duration: 2 });
     this.emit('horn', { victory: false });
@@ -650,6 +674,7 @@ export class Sim {
     const D = this.difficulty;
     const players = this.alivePlayers();
     const T = this.world.enemies[type];
+    if (T.kraken) return new THREE.Vector3(...T.kraken.anchor); // out in the deep water, between the piers
     if (T.post && this.world.posts?.length) {
       const free = this.world.posts.filter(([x, , z]) => !this.enemies.list.some((e) => e.T.post && Math.hypot(e.pos.x - x, e.pos.z - z) < 1.5));
       const pool = free.length ? free : this.world.posts;

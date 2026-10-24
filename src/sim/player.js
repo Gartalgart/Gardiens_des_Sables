@@ -22,6 +22,8 @@ export class PlayerSim {
     this.push = new THREE.Vector3(); // knockback / lunge, decays on its own
     this.drift = new THREE.Vector3(); // a siren's song pulling the player toward her, set by the enemies each step
     this.charm = 0; // 0..1, how far the song has taken hold (the client blurs the screen)
+    this.ink = 0; // seconds of the Kraken's ink still over the eyes
+    this.grabbed = null; // a Kraken's tentacle holding the player: { by: enemy id, at: where }
     this.recoil = { pitch: 0, yaw: 0 };
     this.yaw = 0; // looking north (-Z), towards the temple
     this.pitch = 0;
@@ -71,6 +73,22 @@ export class PlayerSim {
     const level = this.sim.level;
     this.yaw = cmd.yaw;
     this.pitch = THREE.MathUtils.clamp(cmd.pitch, -1.5, 1.5);
+
+    this.ink = Math.max(0, this.ink - dt);
+    // held by a tentacle: no walking, a little off the ground, until it lets go
+    if (this.grabbed) {
+      this.vel.set(0, 0, 0);
+      this.push.set(0, 0, 0);
+      this.pos.lerp(this.grabbed.at, 1 - Math.exp(-6 * dt));
+      this.eyeY = this.pos.y + EYE;
+      this.moving = false;
+      this.sprinting = false;
+      this.onGround = false;
+      const rk = 1 - Math.exp(-10 * dt); // the recoil still recovers (the player keeps shooting)
+      this.recoil.pitch -= this.recoil.pitch * rk;
+      this.recoil.yaw -= this.recoil.yaw * rk;
+      return;
+    }
 
     // input direction in local space
     let fx = cmd.moveX, fz = cmd.moveZ;

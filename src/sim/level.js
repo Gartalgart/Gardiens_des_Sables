@@ -15,6 +15,26 @@ export class Level {
     this.kegs = (data.kegs ?? []).map((p) => new THREE.Vector3(...p));
     this.#buildBoxGrid();
     this.nav = new NavGrid(this);
+    this.original = null; // the boxes before a part of the map was broken (see breakArea)
+  }
+
+  // A part of the map breaks (the Kraken smashes a pier): the boxes inside the rectangle and below
+  // maxY go, the ones in `add` appear (a barrier closing the gap), and the nav grid is worked out again.
+  breakArea({ minX, maxX, minZ, maxZ, maxY }, add = []) {
+    this.original ??= this.boxes;
+    this.boxes = this.boxes.filter((b) => !(b.min.x >= minX && b.max.x <= maxX && b.min.z >= minZ && b.max.z <= maxZ && b.max.y <= maxY));
+    for (const [a, b, c, d, e, f] of add) this.boxes.push(new THREE.Box3(new THREE.Vector3(a, b, c), new THREE.Vector3(d, e, f)));
+    this.#buildBoxGrid();
+    this.nav = new NavGrid(this);
+  }
+
+  // back as exported, for a new game
+  restore() {
+    if (!this.original) return;
+    this.boxes = this.original;
+    this.original = null;
+    this.#buildBoxGrid();
+    this.nav = new NavGrid(this);
   }
 
   #buildBoxGrid() {

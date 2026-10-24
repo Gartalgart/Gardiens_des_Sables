@@ -75,10 +75,24 @@ export class Enemies {
     };
     this.list.push(e);
     this.sim.emit('enemySpawn', { id: e.id, enemyType: type, pos: position.clone(), elite });
+    if (T.kraken) {
+      // the body stays under the water at first; its tentacles rise around the quay
+      e.submerged = true;
+      e.stage = 1;
+      e.parts = [];
+      e.summonT = T.kraken.summonEvery;
+      for (let i = 0; i < T.kraken.tentacles; i++) {
+        const t = this.spawn(T.kraken.tentacle, this.#tentacleSpot(e, null));
+        t.owner = e;
+        t.rise = 1 + i * 0.4; // one after the other
+        e.parts.push(t);
+      }
+    }
     return e;
   }
 
-  get alive() { return this.list.length; }
+  // the parts of a boss (the Kraken's tentacles) do not count as enemies left
+  get alive() { return this.list.reduce((n, e) => n + (e.T.part ? 0 : 1), 0); }
   // how much of the spawn limit the living enemies use (scarabs are light)
   get load() { return this.list.reduce((s, e) => s + (e.T.load ?? 1), 0); }
   get boss() { return this.list.find((e) => e.T.boss) || null; }
@@ -87,7 +101,7 @@ export class Enemies {
   raycast(origin, dir, maxDist, skip = null) {
     let best = null;
     for (const e of this.list) {
-      if (e === skip) continue;
+      if (e === skip || e.hidden || e.submerged || e.diving) continue;
       const base = e.pos.y + e.lift - e.rise * e.T.height;
       const t = rayCylinder(origin, dir, e.pos, e.T.radius, base, base + e.T.height);
       if (t !== null && t < maxDist && (!best || t < best.dist)) {
@@ -102,12 +116,19 @@ export class Enemies {
   // cause: 'ranged' (bullets, reflected orbs) or 'melee' (khépesh) — only melee kills drop health
   damage(e, amount, dir, killer, cause = 'ranged') {
     if (e.hidden || e.act?.kind === 'transform') return; // the pharaoh cannot be hurt while changing or teleporting
+    if (e.diving) return; // a cut tentacle going back under
     // a shell in front (the crab): blows that come at its face lose most of their force
     const A = e.T.armor;
     const armored = !!(A && dir && -(Math.sin(e.facing) * dir.x + Math.cos(e.facing) * dir.z) / (Math.hypot(dir.x, dir.z) || 1) > A.arc);
     if (armored) amount *= A.mul;
     e.hp -= amount;
     this.sim.emit('enemyHit', { id: e.id, armored, pos: armored ? e.pos.clone() : undefined });
+    if (e.T.tentacle) {
+      // a tentacle is never killed: cut, or hurt enough to let go of a player, it dives
+      if (e.act?.kind === 'hold') e.act.taken += amount;
+      if (e.hp <= 0 || (e.act?.kind === 'hold' && e.act.taken >= e.T.grab.free)) this.#cut(e, killer);
+      return;
+    }
     if (e.hp <= 0) this.#kill(e, dir, killer, cause);
   }
 
@@ -140,6 +161,12 @@ export class Enemies {
     const i = this.list.indexOf(e);
     if (i < 0) return;
     this.list.splice(i, 1);
+    // the Kraken's tentacles go with it
+    for (const t of e.parts ?? []) {
+      this.#release(t);
+      const j = this.list.indexOf(t);
+      if (j >= 0) this.list.splice(j, 1);
+    }
     this.sim.emit('enemyKill', { id: e.id, enemyType: e.type, pos: e.pos.clone(), dir: dir ? dir.clone() : null, cause, killer: killer?.id ?? null });
     if (killer) {
       killer.stats.kills++;
@@ -208,6 +235,8 @@ export class Enemies {
 
   #think(e, dt, players) {
     const T = e.T;
+    if (T.kraken) return this.#kraken(e, dt, players);
+    if (T.tentacle) return this.#tentacle(e, dt, players);
     if (e.rise > 0) {
       e.rise = Math.max(0, e.rise - dt * 1.3);
       e.speed = 0;
@@ -284,7 +313,7 @@ export class Enemies {
     // separation from other enemies
     const sep = _w.set(0, 0, 0);
     for (const o of this.list) {
-      if (o === e || o.rise > 0 || o.T.fly) continue; // a swarm flies over the others
+      if (o === e || o.rise > 0 || o.T.fly || o.T.part || o.T.kraken) continue; // a swarm flies over the others, the Kraken is out at sea
       const ox = e.pos.x - o.pos.x, oz = e.pos.z - o.pos.z;
       const min = T.radius + o.T.radius + 0.25;
       const d2 = ox * ox + oz * oz;
@@ -346,6 +375,161 @@ export class Enemies {
 
     e.speed = moved;
     e.phase += dt * (2.5 + moved * 2.0); // drives the runners' weave
+  }
+
+  // ---------- the Kraken ----------
+  // The body: under the water at first (only cutting its tentacles hurts it); at half health its head
+  // comes up between the piers, spits ink and calls the crew; at a third it smashes a pier, and from
+  // then on its tentacles grab.
+  #kraken(e, dt, players) {
+    const T = e.T, K = T.kraken;
+    const player = this.#nearest(e, players);
+    const toPlayer = _v.subVectors(player.pos, e.pos).setY(0);
+    const dist = toPlayer.length();
+    toPlayer.divideScalar(dist || 1);
+    let dA = Math.atan2(toPlayer.x, toPlayer.z) - e.facing;
+    dA = Math.atan2(Math.sin(dA), Math.cos(dA));
+    e.facing += dA * Math.min(1, dt * 1.5);
+    const ratio = e.hp / e.maxHp;
+    if (e.stage === 1 && ratio <= 0.5) {
+      e.stage = 2;
+      e.submerged = false;
+      this.sim.emit('banner', { title: '', sub: this.sim.world.texts.bossRise, duration: 2.5 });
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true, loud: true });
+      this.sim.summon(e);
+    }
+    if (e.stage === 2 && ratio <= 1 / 3) {
+      e.stage = 3;
+      this.sim.breakPier(e, player);
+    }
+    e.rise = e.submerged ? 1 : Math.max(0, e.rise - dt * 0.5);
+    if (e.stage < 2 || e.rise > 0) return;
+    // up: ink at whoever it sees, and the crew every so often
+    e.summonT -= dt;
+    if (e.summonT <= 0) { e.summonT = K.summonEvery; this.sim.summon(e); }
+    e.fireCd -= dt;
+    e.losTimer -= dt;
+    if (e.losTimer <= 0) {
+      e.losTimer = 0.2;
+      e.hasLos = this.level.lineOfSight(e.pos.clone().setY(e.pos.y + T.height * 0.6), player.center);
+    }
+    // its ink is lobbed over the deep water's edge: no need to see the player, only open sky over them
+    const canFire = T.ranged.lob ? !this.level.nav.coveredAt(player.pos.x, player.pos.z) : e.hasLos;
+    if (e.act) {
+      e.act.t += dt;
+      if (e.act.t >= e.act.dur) { this.#fire(e, player); e.act = null; }
+    } else if (canFire && e.fireCd <= 0) {
+      e.act = { kind: 'ranged', t: 0, dur: T.ranged.windup };
+      e.fireCd = T.ranged.cd * rand(0.8, 1.2);
+    }
+  }
+
+  // A tentacle: it rises at a spot of the shore near the player and strikes where they stand (a red
+  // circle warns first); in the last phase, close enough, it grabs.
+  #tentacle(e, dt, players) {
+    const T = e.T;
+    if (e.diving) {
+      e.rise = Math.min(1, e.rise + dt * 1.6);
+      e.diveT -= dt;
+      if (e.diveT <= 0) {
+        e.diving = false;
+        e.pos.copy(this.#tentacleSpot(e.owner, e));
+        e.rise = 1;
+        e.attackCd = rand(1, 2);
+      }
+      return;
+    }
+    if (e.rise > 0) { e.rise = Math.max(0, e.rise - dt * 0.9); return; }
+    const player = this.#nearest(e, players);
+    const toPlayer = _v.subVectors(player.pos, e.pos).setY(0);
+    const dist = toPlayer.length();
+    toPlayer.divideScalar(dist || 1);
+    let dA = Math.atan2(toPlayer.x, toPlayer.z) - e.facing;
+    dA = Math.atan2(Math.sin(dA), Math.cos(dA));
+    e.facing += dA * Math.min(1, dt * 4);
+    e.attackCd -= dt;
+    e.leapCd -= dt;
+    const a = e.act;
+    const dmgMul = this.dmgMul;
+    if (a) {
+      a.t += dt;
+      if (a.kind === 'strike' && a.t >= a.dur) {
+        this.sim.emit('slam', { pos: a.at.clone() });
+        for (const p of this.sim.alivePlayers()) {
+          const away = new THREE.Vector3(p.pos.x - a.at.x, 0, p.pos.z - a.at.z);
+          if (away.length() < T.strike.radius && Math.abs(p.pos.y - a.at.y) < 2.2) {
+            this.sim.hitPlayer(p, T.strike.dmg * dmgMul, a.at, 'melee', e);
+            p.impulse(away.normalize().multiplyScalar(7).add(new THREE.Vector3(0, 3, 0)));
+          }
+        }
+        e.act = null;
+        e.attackCd = rand(...T.strike.cd);
+      } else if (a.kind === 'grab' && a.t >= a.dur) {
+        e.act = null;
+        if (dist < T.grab.range + 0.6 && !player.grabbed && !player.dead) {
+          const at = e.pos.clone().addScaledVector(toPlayer, 1.4).setY(Math.max(player.pos.y, e.pos.y) + 1.2);
+          player.grabbed = { by: e.id, at };
+          e.act = { kind: 'hold', t: 0, dur: T.grab.hold, taken: 0, player, tick: 0 };
+          this.sim.emit('grab', { pid: player.id, id: e.id });
+        }
+      } else if (a.kind === 'hold') {
+        a.tick -= dt;
+        if (a.tick <= 0) { a.tick = 0.5; this.sim.hitPlayer(a.player, T.grab.dps * 0.5 * dmgMul, e.pos, 'melee', e); }
+        if (a.t >= a.dur || a.player.dead) {
+          // thrown back onto the shore
+          const p = a.player;
+          this.#release(e);
+          p.impulse(toPlayer.clone().multiplyScalar(6).add(new THREE.Vector3(0, 5, 0)));
+          e.act = null;
+        }
+      }
+      return;
+    }
+    if (e.owner?.stage >= 3 && e.leapCd <= 0 && dist < T.grab.range && !player.grabbed) {
+      e.act = { kind: 'grab', t: 0, dur: T.grab.windup };
+      e.leapCd = T.grab.cd;
+      this.sim.emit('ring', { pos: player.pos.clone(), radius: 1.2, enemyType: e.type, life: T.grab.windup });
+      return;
+    }
+    if (e.attackCd <= 0 && dist < T.strike.reach && Math.abs(player.pos.y - e.pos.y) < 3) {
+      const at = player.pos.clone().addScaledVector(player.vel.clone().setY(0), 0.3);
+      at.y = this.level.groundAt(at.x, at.z, 0.4, player.pos.y + 0.6);
+      e.act = { kind: 'strike', t: 0, dur: T.strike.windup, at };
+      this.sim.emit('ring', { pos: at.clone(), radius: T.strike.radius, enemyType: e.type, life: T.strike.windup });
+    }
+  }
+
+  // a spot of the shore for a tentacle: the free one nearest the players
+  #tentacleSpot(kraken, self) {
+    const K = kraken.T.kraken;
+    const players = this.sim.alivePlayers();
+    const taken = (kraken.parts ?? []).filter((t) => t !== self && !t.diving).map((t) => t.pos);
+    const score = ([x, , z]) => Math.min(...players.map((p) => Math.hypot(p.pos.x - x, p.pos.z - z)), 1e9);
+    const free = K.spots.filter(([x, , z]) => taken.every((q) => Math.hypot(q.x - x, q.z - z) > 3));
+    const pool = (free.length ? free : K.spots).slice().sort((a, b) => score(a) - score(b));
+    // one of the three nearest, so they do not always come up at the same places
+    return new THREE.Vector3(...pool[Math.floor(Math.random() * Math.min(3, pool.length))]);
+  }
+
+  // cut (or hurt enough to let go): the tentacle dives, the Kraken loses a share of its health
+  #cut(e, killer) {
+    this.#release(e);
+    e.act = null;
+    e.diving = true;
+    e.diveT = rand(...e.owner.T.kraken.dive);
+    e.hp = e.maxHp;
+    this.sim.emit('tentacleCut', { id: e.id, pos: e.pos.clone() });
+    if (killer) this.sim.addScore(killer, 150, 'TENTACULE');
+    if (e.owner && this.list.includes(e.owner)) this.damage(e.owner, e.owner.maxHp * e.owner.T.kraken.cut, null, killer);
+  }
+
+  #release(e) {
+    const p = e.act?.kind === 'hold' ? e.act.player : null;
+    if (p) {
+      p.grabbed = null;
+      this.sim.emit('grab', { pid: p.id, id: e.id, released: true });
+    }
+    if (e.act?.kind === 'hold') e.act = null;
   }
 
   // back through a gate, rising from the ground again (see #think: out of the world, or trapped)
@@ -677,6 +861,7 @@ export class Enemies {
       this.projectiles.push({
         id: this.sim.nextId(), type: e.type, pos: from.clone(), vel: dir.multiplyScalar(R.speed),
         dmg: R.dmg * this.dmgMul, life: 5, from: e.pos.clone(), ownerId: e.id, reflected: false, reflectedBy: null,
+        ink: R.ink ?? 0, // the Kraken's: blinds the player it hits for that many seconds
       });
     }
   }
@@ -710,6 +895,7 @@ export class Enemies {
           const dx = p.pos.x - pc.x, dz = p.pos.z - pc.z, dyy = p.pos.y - py;
           if (dx * dx + dz * dz + dyy * dyy < 0.6 * 0.6) {
             const res = this.sim.hitPlayer(pl, p.dmg, p.from, 'projectile', null);
+            if (p.ink && res !== 'reflect' && res !== 'perfect') { pl.ink = Math.max(pl.ink, p.ink); this.sim.emit('inked', { pid: pl.id }); }
             if (res === 'reflect' || res === 'perfect') { this.reflect(p, pl, res === 'perfect'); done = false; } else done = true;
             break;
           }

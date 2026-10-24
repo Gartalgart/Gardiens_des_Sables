@@ -16,6 +16,7 @@ export const ENEMY_LOOK = {
   gunner: { color: new THREE.Color(0.4, 1, 0.9), dot: '#6af0e0' },
   siren: { color: new THREE.Color(1, 0.45, 0.85), dot: '#ff73d9' },
   bats: { color: new THREE.Color(0.9, 0.2, 0.2), dot: '#e64040' },
+  tentacle: { color: new THREE.Color(0.9, 0.2, 0.4), dot: '#d94080' },
 };
 const ELITE_GOLD = new THREE.Color(1, 0.78, 0.3);
 const REFLECTED = new THREE.Color(1, 0.85, 0.4); // orbs parried back by a player
@@ -28,6 +29,8 @@ const ACT_CLIPS = {
   melee: ['attack', 0.4], ranged: ['cast', 0.4], leap: ['leap', 0.5],
   'charge-wind': ['chargeWind', 0.65], charge: ['charge', 0], slam: ['slam', 0.8],
   prime: ['prime', 0], transform: ['transform', 0], sing: ['sing', 0],
+  // the Kraken's tentacles: the strike is warned by a red circle for its whole windup
+  strike: ['attack', 0.4], grab: ['grab', 0.4], hold: ['hold', 0],
 };
 // speed (m/s) at which the walk / run clips play at their authored pace
 const GAIT = {
@@ -41,6 +44,7 @@ const GAIT = {
   crab: { run: 99, walkRef: 2.2, runRef: 5 },
   gunner: { run: 99, walkRef: 1.2, runRef: 3 },
   siren: { run: 99, walkRef: 1, runRef: 3 },
+  tentacle: { run: 99, walkRef: 1, runRef: 3 },
 };
 // a swarm (the bats): this many copies of the one-bat model, flapping around the swarm's centre
 const SWARM = 12;
@@ -59,6 +63,7 @@ export class EnemyView {
     this.lobs = []; // the gunners' balls in flight, each with its shadow on the ground
     this.ballGeo = new THREE.IcosahedronGeometry(0.16, 1);
     this.ballMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, metalness: 0.7, roughness: 0.45, flatShading: true });
+    this.inkMat = new THREE.MeshStandardMaterial({ color: 0x14081c, emissive: 0x2a0a3a, roughness: 0.2, flatShading: true });
 
     this.orbGeo = new THREE.IcosahedronGeometry(0.16, 1);
     this.orbTex = makeGlowTexture('#ffffff', 0.0);
@@ -136,7 +141,7 @@ export class EnemyView {
         continue;
       }
       const a = mixer.clipAction(clip);
-      if (!['idle', 'walk', 'run', 'stun', 'charge', 'sing'].includes(clip.name)) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      if (!['idle', 'walk', 'run', 'stun', 'charge', 'sing', 'hold'].includes(clip.name)) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
       actions[clip.name] = a;
     }
     actions.idle.play();
@@ -195,7 +200,8 @@ export class EnemyView {
           shadow.position.copy(ev.pos).setY(ev.pos.y + 0.04);
           shadow.renderOrder = -1;
           this.scene.add(shadow);
-          const ball = new THREE.Mesh(this.ballGeo, this.ballMat);
+          const ball = new THREE.Mesh(this.ballGeo, ev.ink ? this.inkMat : this.ballMat);
+          if (ev.ink) ball.scale.setScalar(1.8); // the Kraken's blob of ink
           ball.castShadow = true;
           this.scene.add(ball);
           this.lobs.push({ id: ev.id, ball, shadow, from: ev.from.clone(), to: ev.pos.clone(), radius: ev.radius, t: 0, dur: ev.delay });
@@ -214,6 +220,10 @@ export class EnemyView {
         if (ev.kind === 'lob') {
           const i = this.lobs.findIndex((l) => l.id === ev.id);
           if (i >= 0) { this.#dropLob(this.lobs[i]); this.lobs.splice(i, 1); }
+          if (ev.ink) {
+            this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.3), UP, { count: 60, color: new THREE.Color(0.08, 0.03, 0.12), speed: 6, size: 0.35, life: 0.9, grav: 8, spread: 1.6 });
+            break;
+          }
           this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.2), UP, { count: 50, color: new THREE.Color(1, 0.6, 0.25), speed: 8, size: 0.22, life: 0.5, grav: 5, spread: 1.4 });
           this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.4), UP, { count: 30, color: new THREE.Color(0.18, 0.17, 0.16), speed: 3, size: 0.6, life: 1.3, grav: -0.5, spread: 2 });
           break;
@@ -463,6 +473,8 @@ export class EnemyView {
         if (b.wings[1]) b.wings[1].rotation.z = f;
       }
     }
+    // a cut tentacle sends up a spray as it goes under
+    if (e.diving && e.rise < 0.9 && Math.random() < 0.4) this.effects.emit(e.pos.clone().setY(0.4), new THREE.Vector3((Math.random() - 0.5) * 3, 4, (Math.random() - 0.5) * 3), new THREE.Color(0.6, 0.75, 0.8), 0.2, 0.6, 9);
     // a climbing scarab stands up against the wall
     v.mesh.rotation.order = 'YXZ';
     v.mesh.rotation.x += ((e.climbing ? -Math.PI / 2 : 0) - v.mesh.rotation.x) * Math.min(1, dt * 12);
