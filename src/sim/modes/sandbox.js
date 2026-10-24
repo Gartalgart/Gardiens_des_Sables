@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { GRENADES } from '../weapons.js';
 
 // "Exploration" mode: no waves and no end, for visiting the map and trying the weapons. Every weapon
@@ -33,7 +32,7 @@ export class SandboxMode {
       const at = sim.pickSpawn(type);
       for (let i = 0; i < n; i++) {
         if (post) sim.enemies.spawn(type, i ? sim.pickSpawn(type) : at);
-        else sim.enemies.spawn(type, at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3)));
+        else sim.enemies.spawn(type, i ? sim.spreadAround(at, type, 3) : at);
       }
     }
     for (const p of sim.players.values()) {

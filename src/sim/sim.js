@@ -356,7 +356,7 @@ export class Sim {
       if (d > cfg.radius || e.rise > 0.5) continue;
       const k = 1 - (d / cfg.radius) * 0.5;
       e.knock.copy(e.pos).sub(pos).setY(0).normalize().multiplyScalar(e.T.big ? 3 : 10);
-      this.enemies.damage(e, cfg.enemyDmg * k, e.pos.clone().sub(pos).normalize(), killer);
+      this.enemies.damage(e, cfg.enemyDmg * k * (e.T.blastMul ?? 1), e.pos.clone().sub(pos).normalize(), killer);
     }
   }
 
@@ -432,7 +432,8 @@ export class Sim {
       if (d > R + e.T.radius || !exposed(c)) continue;
       const k = 1 - Math.min(1, d / (R + e.T.radius)) * 0.6;
       e.knock.copy(e.pos).sub(pos).setY(0).normalize().multiplyScalar(e.T.big ? 3 : 10);
-      this.enemies.damage(e, cfg.dmg * k, e.pos.clone().sub(pos).normalize(), owner, kind);
+      // a blast scatters a swarm of bats (blastMul) much more than it hurts a single body
+      this.enemies.damage(e, cfg.dmg * k * (e.T.blastMul ?? 1), e.pos.clone().sub(pos).normalize(), owner, kind);
     }
     // the thrower is hurt by their own pot or ball, other players only in the arena; a keg hurts everyone near
     for (const p of this.alivePlayers()) {
@@ -628,6 +629,20 @@ export class Sim {
     this.emit('horn', { victory: false });
   }
 
+  // A spot a little way from `at` for another member of a group, on open ground of the playable world
+  // at about the same height (never in a wall, off a deck, or past the edge of the map); else `at`.
+  spreadAround(at, type, spread = 2.5) {
+    const nav = this.level.nav, T = this.world.enemies[type];
+    const layer = T.climber ? 'climb' : T.radius > 0.6 ? 'big' : 'small'; // big bodies keep clear of walls
+    for (let i = 0; i < 8; i++) {
+      const x = at.x + (Math.random() - 0.5) * spread, z = at.z + (Math.random() - 0.5) * spread;
+      if (!nav.inWorld(x, z, layer, 0) || this.level.occupied(x, z, T.radius)) continue;
+      if (Math.abs(nav.floorAt(x, z) - nav.floorAt(at.x, at.z)) > 0.3) continue;
+      return new THREE.Vector3(x, at.y, z);
+    }
+    return at.clone();
+  }
+
   // Most enemies rise from the sand inside the city, out of every player's sight; the rest come through the gates.
   // Some types have their own places: a post of the universe (the gunners on the galleon's deck), or
   // a stretch of shallow water (the crab comes out of the sea).
@@ -639,6 +654,12 @@ export class Sim {
       const free = this.world.posts.filter(([x, , z]) => !this.enemies.list.some((e) => e.T.post && Math.hypot(e.pos.x - x, e.pos.z - z) < 1.5));
       const pool = free.length ? free : this.world.posts;
       return new THREE.Vector3(...pool[Math.floor(Math.random() * pool.length)]);
+    }
+    // flyers come over the cliffs: a gate, high up
+    if (T.fly) {
+      const s = this.level.spawns[Math.floor(Math.random() * this.level.spawns.length)].clone();
+      s.y += 6;
+      return s;
     }
     if (T.fromWater) {
       const p = this.level.nav.ambushPoint(8, 80, (c) => this.level.inWater(c.x, c.z, 0) && players.every((pl) => c.distanceTo(pl.pos) > 9), T.fromWater);
@@ -660,8 +681,6 @@ export class Sim {
     const pool = far.length ? far : gates;
     const s = pool[Math.floor(Math.random() * pool.length)].clone();
     // a little spread around the gate, unless that would put the body in a wall
-    const x = s.x + (Math.random() - 0.5) * 3, z = s.z + (Math.random() - 0.5) * 3;
-    if (layer.dist[nav.index(x, z)] < Infinity) { s.x = x; s.z = z; }
-    return s;
+    return this.spreadAround(s, type, 3);
   }
 }

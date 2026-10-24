@@ -98,7 +98,7 @@ export class WaveBase {
         // the rest of its block (two blocks side by side in the queue still rise one after the other)
         for (let n = 1; n < sim.world.enemies[type].swarm && this.queue[0] === type; n++) {
           this.queue.shift();
-          sim.enemies.spawn(type, at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.5, 0, (Math.random() - 0.5) * 2.5)));
+          sim.enemies.spawn(type, sim.spreadAround(at, type));
         }
       } else {
         const elite = type !== 'boss' && Math.random() < this.eliteChance(this.wave);

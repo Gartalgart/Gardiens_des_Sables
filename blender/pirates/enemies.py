@@ -2,6 +2,9 @@
 #   skeleton  the cursed sailor (runner archetype): bones, a bandana, a cutlass; falls apart in bones
 #   crab      the giant crab (colossus archetype): a hard shell in front, it charges sideways
 #   gunner    the ghost gunner (shooter archetype): floats on the galleon's deck with a swivel gun
+#   siren     (phase 5) a siren in the shallows, her tail behind her, who sings with arms open
+#   bat       (phase 5) one giant bat, not rigged: the game flaps its wings (WingL, WingR) and
+#             draws a swarm of them
 # Models face -Y and stand at the origin. Each rigid part follows one bone (no deformation).
 # Built in the "Enemies" scene of port.blend, exported to public/models/pirates/<type>.glb.
 # Usage inside Blender, after helpers.py and rig.py: the MCP's safe mode allows no exec, no lambda,
@@ -28,6 +31,15 @@ mat("GhostCoat", (0.12, 0.35, 0.33), emit=(0.15, 0.5, 0.45), strength=0.6)
 mat("GhostSkin", (0.55, 0.9, 0.85), emit=(0.4, 0.9, 0.8), strength=1.2)
 mat("GhostHat", (0.03, 0.06, 0.06), emit=(0.05, 0.15, 0.13), strength=0.5)
 mat("GhostEye", (0.7, 1.0, 0.95), emit=(0.6, 1.0, 0.9), strength=12.0)
+mat("SirenSkin", (0.42, 0.55, 0.55), rough=0.6)
+mat("SirenScale", (0.05, 0.3, 0.3), rough=0.35, metal=0.3)
+mat("SirenFin", (0.1, 0.45, 0.4), rough=0.4)
+mat("SirenHair", (0.06, 0.18, 0.08), rough=0.9)
+mat("SirenShell", (0.85, 0.7, 0.75), rough=0.3, metal=0.2)
+mat("SirenEye", (1.0, 0.45, 0.85), emit=(1.0, 0.4, 0.8), strength=12.0)
+mat("BatFur", (0.06, 0.04, 0.04), rough=0.95)
+mat("BatWing", (0.14, 0.06, 0.06), rough=0.8)
+mat("BatEye", (1.0, 0.2, 0.15), emit=(1.0, 0.15, 0.1), strength=10.0)
 
 
 # ---------------------------------------------------------------- the cursed sailor
@@ -199,6 +211,78 @@ def build_gunner():
     return c, bones, parts
 
 
+# ---------------------------------------------------------------- the siren
+def build_siren():
+    M = bpy.data.materials
+    c = get_coll("Enemy_Siren", clear=True)
+    root = empty("Siren", c)
+    # a fish tail from the waist, curling back; its fin sticks out of the water behind her
+    box("STail0", c, (0.36, 0.3, 0.36), (0, 0.02, 0.7), M["SirenScale"], root, taper=1.1)
+    box("STail1", c, (0.3, 0.3, 0.3), (0, 0.18, 0.42), M["SirenScale"], root, rot=(25, 0, 0))
+    box("STail2", c, (0.22, 0.34, 0.2), (0, 0.45, 0.28), M["SirenScale"], root, rot=(10, 0, 0))
+    box("SFin", c, (0.56, 0.06, 0.3), (0, 0.72, 0.5), M["SirenFin"], root, rot=(55, 0, 0), taper=1.4)
+    box("SFinL", c, (0.05, 0.25, 0.12), (-0.2, 0.05, 0.85), M["SirenFin"], root, rot=(0, -30, 0))
+    box("SFinR", c, (0.05, 0.25, 0.12), (0.2, 0.05, 0.85), M["SirenFin"], root, rot=(0, 30, 0))
+    # pale body with two shells, a head of seaweed hair, a crown of shells, glowing pink eyes
+    box("STorso", c, (0.34, 0.22, 0.46), (0, 0.0, 1.15), M["SirenSkin"], root, taper=1.15)
+    box("SShellL", c, (0.12, 0.05, 0.1), (-0.08, -0.115, 1.27), M["SirenShell"], root)
+    box("SShellR", c, (0.12, 0.05, 0.1), (0.08, -0.115, 1.27), M["SirenShell"], root)
+    box("SNeck", c, (0.08, 0.08, 0.08), (0, 0.0, 1.43), M["SirenSkin"], root)
+    box("SHead", c, (0.2, 0.22, 0.25), (0, -0.01, 1.57), M["SirenSkin"], root)
+    box("SEyeL", c, (0.045, 0.02, 0.025), (-0.05, -0.125, 1.59), M["SirenEye"], root)
+    box("SEyeR", c, (0.045, 0.02, 0.025), (0.05, -0.125, 1.59), M["SirenEye"], root)
+    box("SHairTop", c, (0.24, 0.26, 0.06), (0, 0.0, 1.71), M["SirenHair"], root)
+    box("SHairBack", c, (0.28, 0.08, 0.7), (0, 0.13, 1.33), M["SirenHair"], root, taper=1.3)
+    box("SHairL", c, (0.05, 0.12, 0.5), (-0.13, 0.02, 1.4), M["SirenHair"], root)
+    box("SHairR", c, (0.05, 0.12, 0.5), (0.13, 0.02, 1.4), M["SirenHair"], root)
+    for i, x in enumerate((-0.07, 0, 0.07)):
+        box("SCrown%d" % i, c, (0.05, 0.03, 0.07), (x, -0.08, 1.76), M["SirenShell"], root, taper=0.3)
+    for side, x in (("L", -1), ("R", 1)):
+        box("SUpper" + side, c, (0.08, 0.08, 0.28), (0.24 * x, 0, 1.27), M["SirenSkin"], root)
+        box("SFore" + side, c, (0.07, 0.07, 0.26), (0.24 * x, 0, 1.01), M["SirenSkin"], root)
+        box("SHand" + side, c, (0.07, 0.05, 0.09), (0.24 * x, -0.01, 0.84), M["SirenSkin"], root)
+        box("SClaw" + side, c, (0.07, 0.04, 0.07), (0.24 * x, -0.02, 0.76), M["SirenShell"], root, taper=0.3)
+    bones = [
+        ("Hips", None, (0, 0, 0.85), (0, 0, 1.0)),
+        ("Spine", "Hips", (0, 0, 1.0), (0, 0, 1.45)),
+        ("Head", "Spine", (0, 0, 1.47), (0, 0, 1.78)),
+        ("UpperArm_L", "Spine", (-0.24, 0, 1.4), (-0.24, 0, 1.14)),
+        ("ForeArm_L", "UpperArm_L", (-0.24, 0, 1.14), (-0.24, 0, 0.8)),
+        ("UpperArm_R", "Spine", (0.24, 0, 1.4), (0.24, 0, 1.14)),
+        ("ForeArm_R", "UpperArm_R", (0.24, 0, 1.14), (0.24, 0, 0.8)),
+    ]
+    parts = {"STail0": "Hips", "STail1": "Hips", "STail2": "Hips", "SFin": "Hips", "SFinL": "Hips", "SFinR": "Hips",
+             "STorso": "Spine", "SShellL": "Spine", "SShellR": "Spine", "SNeck": "Spine",
+             "SHead": "Head", "SEyeL": "Head", "SEyeR": "Head", "SHairTop": "Head", "SHairBack": "Head",
+             "SHairL": "Head", "SHairR": "Head"}
+    for i in range(3):
+        parts["SCrown%d" % i] = "Head"
+    for s in "LR":
+        parts.update({"SUpper" + s: "UpperArm_" + s, "SFore" + s: "ForeArm_" + s, "SHand" + s: "ForeArm_" + s, "SClaw" + s: "ForeArm_" + s})
+    return c, bones, parts
+
+
+# ---------------------------------------------------------------- one giant bat
+def build_bat():
+    M = bpy.data.materials
+    c = get_coll("Enemy_Bat", clear=True)
+    root = empty("Bat", c)
+    box("BBody", c, (0.13, 0.22, 0.11), (0, 0.0, 0), M["BatFur"], root)
+    box("BHead", c, (0.1, 0.1, 0.09), (0, -0.14, 0.02), M["BatFur"], root)
+    box("BEarL", c, (0.03, 0.02, 0.07), (-0.03, -0.14, 0.09), M["BatFur"], root, taper=0.3)
+    box("BEarR", c, (0.03, 0.02, 0.07), (0.03, -0.14, 0.09), M["BatFur"], root, taper=0.3)
+    box("BEyeL", c, (0.02, 0.01, 0.015), (-0.025, -0.19, 0.03), M["BatEye"], root)
+    box("BEyeR", c, (0.02, 0.01, 0.015), (0.025, -0.19, 0.03), M["BatEye"], root)
+    box("BFeet", c, (0.06, 0.05, 0.03), (0, 0.12, -0.05), M["BatFur"], root)
+    # each wing on a pivot at the shoulder, its membrane in two pieces going out along X
+    for side, x in (("L", -1), ("R", 1)):
+        w = empty("Wing" + side, c, (0.06 * x, -0.02, 0.03), root)
+        box("BWingIn" + side, c, (0.26, 0.18, 0.012), (0.13 * x, 0.02, 0), M["BatWing"], w)
+        box("BWingOut" + side, c, (0.22, 0.14, 0.012), (0.36 * x, 0.06, 0), M["BatWing"], w)
+        box("BFinger" + side, c, (0.46, 0.02, 0.02), (0.25 * x, -0.06, 0.005), M["BatFur"], w)
+    return c
+
+
 # ---------------------------------------------------------------- animations
 def mirror(pose):
     out = {}
@@ -330,6 +414,33 @@ def gunner_actions(rig, p):
     add_action(rig, p + "hit", [(0, {}), (0.06, {"Spine": (-12, 0, 0), "Head": (-16, 0, 0)}), (0.25, {})], loop=False)
 
 
+def siren_actions(rig, p):
+    """the priest's set without walking: she sways in the water; the song is a loop, arms open"""
+    sway_a = {"Hips": (0, 0, 4), "Spine": (5, 0, -3), "Head": (-3, 5, 0), "UpperArm_L": (-8, 0, 8), "UpperArm_R": (-8, 0, -8),
+              "ForeArm_L": (-20, 0, 0), "ForeArm_R": (-20, 0, 0), "_loc_Hips": (0, 0, 0)}
+    sway_b = {"Hips": (0, 0, -4), "Spine": (5, 0, 3), "Head": (-3, -5, 0), "UpperArm_L": (-14, 0, 10), "UpperArm_R": (-14, 0, -10),
+              "ForeArm_L": (-25, 0, 0), "ForeArm_R": (-25, 0, 0), "_loc_Hips": (0, 0.04, 0)}
+    for name in ("idle", "walk", "run"):
+        add_action(rig, p + name, [(0, sway_a), (1.2, sway_b), (2.4, sway_a)])
+    open_a = {"UpperArm_L": (-60, 0, 40), "UpperArm_R": (-60, 0, -40), "ForeArm_L": (-25, 0, 0), "ForeArm_R": (-25, 0, 0),
+              "Spine": (-8, 0, 5), "Head": (-18, 8, 0), "_loc_Hips": (0, 0.05, 0)}
+    open_b = {"UpperArm_L": (-75, 0, 50), "UpperArm_R": (-75, 0, -50), "ForeArm_L": (-15, 0, 0), "ForeArm_R": (-15, 0, 0),
+              "Spine": (-12, 0, -5), "Head": (-24, -8, 0), "_loc_Hips": (0, 0.1, 0)}
+    add_action(rig, p + "sing", [(0, open_a), (1.0, open_b), (2.0, open_a)])
+    add_action(rig, p + "attack", [
+        (0, {}),
+        (0.4, {"UpperArm_R": (-150, 0, -20), "ForeArm_R": (-30, 0, 0), "Spine": (-12, 0, 0), "Head": (-10, 0, 0)}),
+        (0.48, {"UpperArm_R": (-30, 0, 10), "ForeArm_R": (-5, 0, 0), "Spine": (25, 0, 0), "Head": (10, 0, 0)}),
+        (0.75, {"Spine": (6, 0, 0)}),
+    ], loop=False)
+    add_action(rig, p + "stun", [
+        (0, {"Spine": (-12, 0, 8), "Head": (-10, 18, 0), "UpperArm_L": (10, 0, 0), "UpperArm_R": (10, 0, 0)}),
+        (0.5, {"Spine": (-8, 0, -8), "Head": (-6, -18, 0), "UpperArm_L": (6, 0, 0), "UpperArm_R": (6, 0, 0)}),
+        (1.0, {"Spine": (-12, 0, 8), "Head": (-10, 18, 0), "UpperArm_L": (10, 0, 0), "UpperArm_R": (10, 0, 0)}),
+    ])
+    add_action(rig, p + "hit", [(0, {}), (0.06, {"Spine": (-12, 0, 0), "Head": (-16, 0, 0)}), (0.25, {})], loop=False)
+
+
 def build_all(export=True):
     scene = bpy.data.scenes.get("Enemies") or bpy.data.scenes.new("Enemies")
     bpy.context.window.scene = scene
@@ -343,7 +454,13 @@ def build_all(export=True):
     c, bones, parts = build_gunner()
     rig = build_rig(c.name, "Gunner", "GunnerRig", bones, parts)
     gunner_actions(rig, "gunner_")
+    c, bones, parts = build_siren()
+    rig = build_rig(c.name, "Siren", "SirenRig", bones, parts)
+    siren_actions(rig, "siren_")
+    build_bat()
     if export:
         export_animated("Enemy_Skeleton", "SkeletonRig", "skeleton_", r"pirates\skeleton.glb")
         export_animated("Enemy_Crab", "CrabRig", "crab_", r"pirates\crab.glb")
         export_animated("Enemy_Gunner", "GunnerRig", "gunner_", r"pirates\gunner.glb")
+        export_animated("Enemy_Siren", "SirenRig", "siren_", r"pirates\siren.glb")
+        export_coll("Enemy_Bat", r"pirates\bat.glb")

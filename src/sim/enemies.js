@@ -41,13 +41,14 @@ export class Enemies {
       facing: Math.random() * Math.PI * 2,
       phase: Math.random() * 10,
       speed: 0,
-      rise: 1.0,
+      rise: T.fly ? 0 : 1.0, // flyers come in through the air instead of rising from the ground
       act: null, // current attack: { kind, t, dur, ... }
       attackCd: rand(0.3, 0.8),
       fireCd: rand(0.8, 1.6),
       leapCd: rand(0.5, 1.5),
       chargeCd: rand(1, 2.5),
       slamCd: 3,
+      songCd: rand(1, 2.5),
       losTimer: Math.random() * 0.2,
       hasLos: false,
       target: null,
@@ -68,6 +69,9 @@ export class Enemies {
       rainCd: 0,
       teleportCd: 0,
       exploded: false,
+      lost: 0, // seconds spent outside the playable world (see #think)
+      trapClock: 0, // and the check that it still gets somewhere: where it stood a few seconds ago
+      trapFrom: position.clone(),
     };
     this.list.push(e);
     this.sim.emit('enemySpawn', { id: e.id, enemyType: type, pos: position.clone(), elite });
@@ -180,7 +184,14 @@ export class Enemies {
     this.maxMelee = this.D.maxMelee(this.wave);
     this.meleeActive = this.list.filter((e) => !e.T.big && e.engagedUntil > this.clock).length;
 
+    // a siren's song: each one singing adds its pull; the charm grows while a song is heard and fades after
+    for (const p of players) { p.hearing = false; p.drift.set(0, 0, 0); }
     for (const e of this.list) this.#think(e, dt, players);
+    for (const p of players) {
+      const rise = p.hearing ? p.hearing.rise : 1;
+      p.charm = p.hearing ? Math.min(1, p.charm + dt / rise) : Math.max(0, p.charm - dt * 0.7);
+      p.drift.multiplyScalar(p.charm);
+    }
 
     this.#updateProjectiles(dt);
     this.#updatePickups(dt);
@@ -202,10 +213,31 @@ export class Enemies {
       e.speed = 0;
       return;
     }
+    // a body that ended up out of the map, in a wall, or somewhere too narrow for its size (a crab up
+    // the galleon's stairs) comes back through a gate after 2 s, so a wave can always be finished
+    // (flyers, the siren in the sea and the gunners at their posts aside); big bodies keep 1 m from
+    // walls on their layer, hence the wider reach
+    if (!T.fly && !T.stay && !T.post) {
+      const big = !T.climber && T.radius > 0.6;
+      const inWorld = this.level.nav.inWorld(e.pos.x, e.pos.z, T.climber ? 'climb' : big ? 'big' : 'small', big ? 3 : 1);
+      e.lost = inWorld ? 0 : e.lost + dt;
+      if (e.lost > 2) return this.#relocate(e);
+    }
     const player = this.#nearest(e, players);
     if (e.target !== player) { e.target = player; e.losTimer = 0; }
     const toPlayer = _v.subVectors(player.pos, e.pos).setY(0);
     const dist = toPlayer.length();
+    // caught in a trap of the scenery (the foot of a balustrade, a corner the nav grid gets wrong):
+    // far from every player and hardly moved in 6 s, it comes back through a gate too
+    if (!T.stay && !T.post) {
+      e.trapClock += dt;
+      if (e.trapClock >= 6) {
+        const moved = Math.hypot(e.pos.x - e.trapFrom.x, e.pos.z - e.trapFrom.z) + Math.abs(e.pos.y - e.trapFrom.y);
+        e.trapClock = 0;
+        e.trapFrom.copy(e.pos);
+        if (moved < 1.5 && dist > 6 && !e.act && e.stun <= 0) return this.#relocate(e);
+      }
+    }
     toPlayer.divideScalar(dist || 1);
     const dy = player.pos.y - e.pos.y;
 
@@ -215,7 +247,7 @@ export class Enemies {
       const eye = e.pos.clone().setY(e.pos.y + T.height * 0.85);
       e.hasLos = this.level.lineOfSight(eye, player.center);
     }
-    for (const k of ['attackCd', 'fireCd', 'leapCd', 'chargeCd', 'slamCd', 'rainCd', 'teleportCd']) e[k] -= dt;
+    for (const k of ['attackCd', 'fireCd', 'leapCd', 'chargeCd', 'slamCd', 'rainCd', 'teleportCd', 'songCd']) e[k] -= dt;
 
     // the pharaoh changes at half health: invulnerable while he rises, then the storm
     if (T.boss && !e.phase2 && e.hp / e.maxHp < 0.5) {
@@ -230,6 +262,8 @@ export class Enemies {
       this.level.moveBody(e.pos, e.knock.x * dt, e.knock.z * dt, T.radius, T.height);
       e.knock.multiplyScalar(Math.exp(-7 * dt));
     }
+
+    if (T.fly) return this.#fly(e, dt, player, toPlayer, dist);
 
     let move = null;
     let speed = T.speed * this.speedMul * (e.elite ? 1.15 : 1) * (T.early && this.wave <= 2 ? T.early : 1)
@@ -250,7 +284,7 @@ export class Enemies {
     // separation from other enemies
     const sep = _w.set(0, 0, 0);
     for (const o of this.list) {
-      if (o === e || o.rise > 0) continue;
+      if (o === e || o.rise > 0 || o.T.fly) continue; // a swarm flies over the others
       const ox = e.pos.x - o.pos.x, oz = e.pos.z - o.pos.z;
       const min = T.radius + o.T.radius + 0.25;
       const d2 = ox * ox + oz * oz;
@@ -312,6 +346,19 @@ export class Enemies {
 
     e.speed = moved;
     e.phase += dt * (2.5 + moved * 2.0); // drives the runners' weave
+  }
+
+  // back through a gate, rising from the ground again (see #think: out of the world, or trapped)
+  #relocate(e) {
+    e.pos.copy(this.sim.pickSpawn(e.type));
+    e.rise = e.T.fly ? 0 : 1;
+    e.lost = 0;
+    e.trapClock = 0;
+    e.trapFrom.copy(e.pos);
+    e.act = null;
+    e.lift = 0;
+    e.knock.set(0, 0, 0);
+    this.sim.emit('enemySpawn', { id: e.id, enemyType: e.type, pos: e.pos.clone(), elite: e.elite });
   }
 
   // Scarabs follow the climbing layer and ignore box collisions: facing a wall they crawl up it,
@@ -385,6 +432,11 @@ export class Enemies {
         e.rainCd = rand(5, 7);
       }
     }
+    if (T.song && e.songCd <= 0 && e.hasLos && dist < T.song.range) {
+      e.act = { kind: 'sing', t: 0, dur: T.song.dur };
+      this.sim.emit('song', { id: e.id, pos: e.pos.clone(), on: true });
+      return;
+    }
     if (T.prime && dist < T.prime.range && e.hasLos && Math.abs(dy) < 2) {
       e.act = { kind: 'prime', t: 0, dur: T.prime.dur };
       this.sim.emit('prime', { id: e.id, pos: e.pos.clone() });
@@ -433,6 +485,18 @@ export class Enemies {
     a.t += dt;
     const dmgMul = this.dmgMul * (e.elite ? 1.2 : 1);
     switch (a.kind) {
+      case 'sing':
+        // heard as long as she sees her target: the song pulls the player toward her
+        if (e.hasLos && dist < T.song.range) {
+          player.hearing = T.song;
+          player.drift.addScaledVector(toPlayer, -T.song.pull);
+        }
+        if (a.t >= a.dur || (dist < T.melee.range && e.attackCd <= 0)) {
+          e.act = null;
+          e.songCd = rand(...T.song.rest);
+          this.sim.emit('song', { id: e.id, pos: e.pos.clone(), on: false });
+        }
+        return { move: null };
       case 'prime':
         // blows up when the fuse ends (killing it earlier blows it up too, see #kill)
         if (a.t >= a.dur) { e.act = null; this.damage(e, Infinity, null, null, 'self'); }
@@ -516,6 +580,7 @@ export class Enemies {
     if (e.unstick > 0) return e.unstickDir.clone();
     const nav = this.level.nav.direction(e.pos, new THREE.Vector3(), T.climber ? 'climb' : T.radius > 0.6 ? 'big' : 'small');
     const path = dist < 2.5 || !nav ? toPlayer.clone() : nav;
+    if (T.stay) return null; // the siren keeps to her spot in the water
     // the ghost gunner keeps its post on the deck, unless a player comes aboard to fight it
     if (T.post) return dist < 6 && dist > T.melee.range * 0.8 ? path : null;
     if (T.ranged && !T.boss && e.hasLos && dist < T.ranged.max) {
@@ -538,6 +603,50 @@ export class Enemies {
       return path.add(new THREE.Vector3(-path.z * w, 0, path.x * w)).normalize();
     }
     return path;
+  }
+
+  // A flying swarm (the bats): when it sees the player it heads straight for them, turning aside or
+  // climbing when a wall is ahead; out of sight it follows the path on the ground, flying over it.
+  // Close enough, it nibbles a little damage again and again.
+  #fly(e, dt, player, toPlayer, dist) {
+    const T = e.T, F = T.fly;
+    if (e.stun > 0) { e.stun -= dt; e.speed = 0; return; }
+    const center = e.pos.clone().setY(e.pos.y + T.height / 2);
+    const target = player.center.setY(player.pos.y + 1.2);
+    const want = target.clone().sub(center);
+    const d3 = want.length();
+    if (!e.hasLos && d3 > F.reach) {
+      const ground = e.pos.clone().setY(this.level.groundAt(e.pos.x, e.pos.z, 0.2, e.pos.y + 0.5));
+      const path = this.level.nav.direction(ground, new THREE.Vector3(), 'small');
+      if (path) want.set(path.x * 6, THREE.MathUtils.clamp(target.y - center.y, -1, 1), path.z * 6);
+    }
+    if (d3 < F.reach) {
+      if (e.attackCd <= 0) {
+        e.attackCd = T.melee.cd;
+        this.sim.hitPlayer(player, T.melee.dmg * this.dmgMul * (e.elite ? 1.2 : 1), e.pos, 'melee', e);
+      }
+      want.set(Math.sin(e.phase * 2) * 0.6, Math.sin(e.phase * 3.1) * 0.3, Math.cos(e.phase * 2) * 0.6); // swirl around the head
+    }
+    want.normalize();
+    const speed = T.speed * this.speedMul * (d3 < F.reach ? 0.4 : 1);
+    const step = speed * dt;
+    // the first of these directions with nothing in the way: straight on, then turning aside, then up
+    let dir = null;
+    for (const [turn, up] of [[0, 0], [0.7, 0], [-0.7, 0], [1.4, 0], [-1.4, 0], [0, 1.2]]) {
+      const c = want.clone().applyAxisAngle(UP, turn);
+      c.y += up;
+      c.normalize();
+      if (!this.level.raycast(center, c, step + T.radius)) { dir = c; break; }
+    }
+    if (dir) {
+      e.pos.addScaledVector(dir, step);
+      // never below a little height over the ground under it
+      const floor = this.level.groundAt(e.pos.x, e.pos.z, 0.2, e.pos.y + 0.5) + F.height - T.height / 2;
+      if (e.pos.y < floor) e.pos.y += Math.min(floor - e.pos.y, 6 * dt);
+      e.facing = Math.atan2(dir.x, dir.z);
+    }
+    e.speed = dir ? speed : 0;
+    e.phase += dt * 4;
   }
 
   muzzleOf(e) {

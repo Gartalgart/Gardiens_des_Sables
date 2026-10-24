@@ -102,6 +102,27 @@ export class NavGrid {
     // kept for callers that only care about the normal layer
     this.open = open;
     this.dist = this.layers.small.dist;
+
+    // the playable world: every cell a body can walk to from the player's start, worked out once
+    // (a body anywhere else is out of the map, or in a wall)
+    const start = level.playerStart;
+    for (const layer of Object.values(this.layers)) {
+      this.#flow(layer, [this.index(start.x, start.z)], [start]);
+      layer.home = layer.dist.slice();
+      layer.dist.fill(Infinity);
+    }
+  }
+
+  // Is there a cell of the playable world within `reach` cells of this point? (a body pressed
+  // against a wall may stand on a closed cell, so by default the neighbours count too)
+  inWorld(x, z, layer = 'small', reach = 1) {
+    const home = this.layers[layer].home;
+    for (let dz = -reach; dz <= reach; dz++)
+      for (let dx = -reach; dx <= reach; dx++) {
+        const i = this.index(x + dx * this.size, z + dz * this.size);
+        if (i >= 0 && home[i] < Infinity) return true;
+      }
+    return false;
   }
 
   cx(i) { return -this.half + (i + 0.5) * this.size; }

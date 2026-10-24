@@ -13,7 +13,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song',
 ];
 let level;
 
@@ -914,7 +914,7 @@ describe('pirate weapons', () => {
     sim.start();
     expect(player.loadout.items.every((it) => it.unlocked)).toBe(true);
     sim.mode.callTargets();
-    expect(sim.enemies.list.length).toBe(6);
+    expect(sim.enemies.list.length).toBe(sim.world.targets.reduce((n, [, k]) => n + k, 0));
   });
 });
 
@@ -949,15 +949,31 @@ describe('pirate enemies', () => {
     }
     // and walks out of the sea to the player
     const walker = pacify(sim.enemies.spawn('crab', sim.pickSpawn('crab')));
-    run(sim, 30, () => emptyCommand());
-    expect(Math.hypot(walker.pos.x - player.pos.x, walker.pos.z - player.pos.z)).toBeLessThan(4);
+    // (standing right on the player, even a pacified crab lands the odd blow; caught on a corner
+    // for long, it is sent back through a gate and walks again)
+    let closest = Infinity;
+    run(sim, 40, () => {
+      player.health = 100;
+      closest = Math.min(closest, Math.hypot(walker.pos.x - player.pos.x, walker.pos.z - player.pos.z));
+      return emptyCommand();
+    });
+    expect(closest).toBeLessThan(4);
     sim.enemies.list.length = 0;
-    const crab = sim.enemies.spawn('crab', new THREE.Vector3(-6, 0, -8));
+    // a spot 12 m away on open ground, from where it sees the player (a charge needs a clear line)
+    let spot = null;
+    for (let a = 0; a < Math.PI * 2 && !spot; a += 0.2) {
+      const c = new THREE.Vector3(player.pos.x + Math.sin(a) * 12, 0, player.pos.z - Math.cos(a) * 12);
+      if (sim.level.nav.floorAt(c.x, c.z) < 0.05 && !sim.level.occupied(c.x, c.z, 1.2)
+        && sim.level.lineOfSight(c.clone().setY(1.1), player.center)) spot = c;
+    }
+    expect(spot).not.toBeNull();
+    const crab = sim.enemies.spawn('crab', spot);
     crab.rise = 0;
     crab.chargeCd = 0;
     let sideways = null;
-    run(sim, 4, () => {
-      if (crab.act?.kind === 'charge' && crab.act.t > 0.3 && sideways === null) {
+    run(sim, 5, () => {
+      // measured once it has turned (a charge cut short by a hit ends quickly)
+      if (crab.act?.kind === 'charge' && crab.act.t > 0.15 && sideways === null) {
         const toPlayer = Math.atan2(player.pos.x - crab.pos.x, player.pos.z - crab.pos.z);
         sideways = Math.abs(Math.cos(crab.facing - toPlayer));
       }
@@ -1044,6 +1060,85 @@ describe('pirate enemies', () => {
     }
     expect(sim.victory).toBe(true);
     expect(unlocked).toEqual([[2, 'blunderbuss'], [3, 'cannon'], [5, 'musket']]);
+  });
+
+  it('the siren stays in the water; her song charms the player and pulls them toward her, until she dies', () => {
+    const { sim, player } = pirateSim();
+    player.pos.set(-10, 1, 14.5); // on the quay
+    run(sim, 0.1);
+    const at = sim.pickSpawn('siren');
+    expect(sim.level.inWater(at.x, at.z, 0)).toBe(true);
+    const siren = sim.enemies.spawn('siren', new THREE.Vector3(-10, 0, 24));
+    siren.T = { ...siren.T, melee: { ...siren.T.melee, range: 0.01 } };
+    siren.songCd = 0;
+    const start = siren.pos.clone();
+    const d0 = Math.hypot(player.pos.x - siren.pos.x, player.pos.z - siren.pos.z);
+    let sang = false;
+    run(sim, 3, () => {
+      if (siren.act?.kind === 'sing') sang = true;
+      player.health = 100;
+      return emptyCommand();
+    });
+    expect(sang).toBe(true);
+    expect(player.charm).toBeGreaterThan(0.5);
+    expect(Math.hypot(player.pos.x - siren.pos.x, player.pos.z - siren.pos.z)).toBeLessThan(d0 - 1); // pulled closer
+    expect(siren.pos.distanceTo(start)).toBeLessThan(0.5); // she does not move
+    sim.enemies.damage(siren, 1e6, null, player);
+    run(sim, 2, () => emptyCommand());
+    expect(player.charm).toBe(0);
+    expect(player.drift.length()).toBe(0);
+  });
+
+  it('a swarm of bats flies straight in, nibbles the player again and again, and a blast scatters it', () => {
+    const { sim, player } = pirateSim();
+    player.pos.set(-6, 0, 4);
+    const bats = sim.enemies.spawn('bats', new THREE.Vector3(-6, 6, -22));
+    expect(bats.rise).toBe(0);
+    let hits = 0;
+    run(sim, 8, () => {
+      for (const ev of sim.drainEvents()) if (ev.type === 'playerHurt') hits++;
+      player.health = 100;
+      return emptyCommand();
+    });
+    expect(Math.hypot(bats.pos.x - player.pos.x, bats.pos.z - player.pos.z)).toBeLessThan(2.5);
+    expect(hits).toBeGreaterThan(3);
+    // a powder keg going off beside it kills the whole swarm
+    const keg = sim.kegs[0];
+    keg.pos.set(bats.pos.x + 1, sim.level.groundAt(bats.pos.x + 1, bats.pos.z, 0.4, bats.pos.y), bats.pos.z);
+    sim.blowKeg(keg, player);
+    expect(sim.enemies.list).not.toContain(bats);
+  });
+
+  it('an enemy out of the map, or trapped far from the player, comes back through a gate', () => {
+    const { sim, player } = pirateSim();
+    player.pos.set(-6, 0, 4);
+    const out = sim.enemies.spawn('skeleton', new THREE.Vector3(-48, 0, 19)); // past the western cliffs
+    out.rise = 0;
+    const trapped = pacify(sim.enemies.spawn('skeleton', new THREE.Vector3(-6, 0, -12)));
+    trapped.T = { ...trapped.T, speed: 0 }; // stands still, 16 m away
+    run(sim, 7, () => { player.health = 100; return emptyCommand(); });
+    expect(sim.level.nav.inWorld(out.pos.x, out.pos.z)).toBe(true);
+    expect(trapped.pos.distanceTo(new THREE.Vector3(-6, 0, -12))).toBeGreaterThan(3);
+  });
+
+  it('the waves always end, even for a player who only kills what comes near', () => {
+    const { sim, player } = pirateSim('waves');
+    sim.start();
+    let last = 0;
+    for (let i = 0; i < 60 * 400 && !sim.over && i - last < 60 * 60; i++) {
+      player.pos.set(0, 0, -40); // in the canyon, far from the sea and the galleon
+      player.health = 100;
+      sim.mode.breakTimer = Math.min(sim.mode.breakTimer, 0.1);
+      if (player.cardOffer) sim.pickCard(player, 0);
+      sim.step(DT, new Map([['p1', emptyCommand()]]));
+      sim.drainEvents();
+      for (const e of [...sim.enemies.list]) {
+        if (e.rise > 0) continue;
+        const near = Math.hypot(e.pos.x - player.pos.x, e.pos.z - player.pos.z) < 6;
+        if (near || e.T.stay || e.T.post) { sim.enemies.damage(e, e.T.boss ? 40 : 1e6, null, player); last = i; }
+      }
+    }
+    expect(sim.victory).toBe(true);
   });
 
   it('skeletons rise in groups of three in the waves', () => {

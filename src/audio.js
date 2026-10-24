@@ -9,6 +9,8 @@ const SAMPLE_URLS = Object.fromEntries(
 );
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
+// the siren's melody, in hertz (A minor, rising and falling)
+const SONG_NOTES = [440, 523, 494, 392, 440, 659, 587, 523, 494, 440, 392, 330];
 
 // the enemies' cries, by type
 const GROWLS = {
@@ -21,9 +23,11 @@ const GROWLS = {
   // the pirates' (the skeleton rattles its bones: procedural)
   crab: 'enemies/scarab_skitter',
   gunner: 'enemies/mummy_groan',
+  bats: 'enemies/scarab_skitter',
+  siren: 'enemies/mummy_groan', // a breath before the song
 };
 // played slower than recorded: the crab's clicks heavier, the ghost's moan deeper
-const GROWL_RATE = { crab: 0.6, gunner: 0.7 };
+const GROWL_RATE = { crab: 0.6, gunner: 0.7, bats: 1.6, siren: 1.5 };
 
 export class Sound {
   constructor() {
@@ -397,6 +401,41 @@ export class Sound {
     this.#clack(duration * 0.72, 0.5, 0.9);
     this.click(0.6, duration * 0.72);
     if (weapon !== 'rifle') this.#clack(duration * 0.86, 0.8, 0.6);
+  }
+
+  // A siren's song: a slow, wavering melody (a voice and its fifth), as loud as `level` (0..1).
+  // Called every frame; a note changes every half second while it is heard.
+  setSong(level, pan = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (!this.song) {
+      const out = this.ctx.createGain();
+      out.gain.value = 0;
+      const panner = this.ctx.createStereoPanner();
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = 2200;
+      const voice = this.ctx.createOscillator(), fifth = this.ctx.createOscillator();
+      voice.type = 'sine'; fifth.type = 'triangle';
+      const fifthGain = this.ctx.createGain();
+      fifthGain.gain.value = 0.25;
+      // vibrato
+      const lfo = this.ctx.createOscillator(), depth = this.ctx.createGain();
+      lfo.frequency.value = 5.2; depth.gain.value = 7;
+      lfo.connect(depth); depth.connect(voice.frequency); depth.connect(fifth.frequency);
+      voice.connect(f); fifth.connect(fifthGain).connect(f);
+      f.connect(out).connect(panner).connect(this.sfx);
+      voice.start(); fifth.start(); lfo.start();
+      this.song = { out, panner, voice, fifth, next: 0, i: 0 };
+    }
+    const s = this.song;
+    s.out.gain.setTargetAtTime(level * 0.22, t, 0.25);
+    s.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.1);
+    if (level > 0.01 && t >= s.next) {
+      const note = SONG_NOTES[s.i++ % SONG_NOTES.length];
+      s.voice.frequency.setTargetAtTime(note, t, 0.09);
+      s.fifth.frequency.setTargetAtTime(note * 1.5, t, 0.09);
+      s.next = t + 0.55;
+    }
   }
 
   // a muzzle-loader, timed with the view model: the charge goes down the mouth, the rod is drawn,

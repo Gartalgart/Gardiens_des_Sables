@@ -129,6 +129,11 @@ html, body {
 #scope .reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: #ff3b2f; box-shadow: 0 0 6px #ff3b2f; }
 #ads-vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0;
   background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.55) 100%); }
+/* a siren's song: pink haze closing in from the edges, breathing */
+#charm { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(255, 90, 200, 0.35) 75%, rgba(120, 20, 110, 0.7) 100%);
+  animation: charm-breathe 2.2s ease-in-out infinite; }
+@keyframes charm-breathe { 50% { transform: scale(1.06); filter: hue-rotate(-25deg); } }
 
 /* ---------- Screens ---------- */
 .screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;

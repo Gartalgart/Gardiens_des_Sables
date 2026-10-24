@@ -382,7 +382,16 @@ function startGame() {
 }
 game.start = () => startGame();
 
+// the siren's charm off: no blur, no haze, no song
+function clearCharm() {
+  game.shownCharm = 0;
+  canvas.style.filter = '';
+  $('charm').style.opacity = 0;
+  sound.setSong(0);
+}
+
 function resetViews() {
+  clearCharm();
   enemyView.clear();
   playerView.clear();
   hud.team([]);
@@ -647,6 +656,7 @@ function handleEvents() {
         enemyView.onEvent(ev);
         break;
       case 'prime': primes.set(ev.id, 0); break;
+      case 'song': if (ev.on) sound.growl(pan(ev.pos), vol(ev.pos, 50), false, 'siren'); break;
       case 'explosion':
         // fire pots, cannon balls and powder kegs burst into flames; a mummy's blast is green
         if (ev.kind === 'grenade' || ev.kind === 'keg' || ev.kind === 'ball') grenadeView.explode(ev.pos);
@@ -683,7 +693,7 @@ function handleEvents() {
         if (mine) { hud.pickup('RELEVÉ !'); sound.pickup(); }
         else if (ev.by === game.localId) { hud.pickup(`${nameOf(ev.pid)} RELEVÉ  +200`); sound.pickup(); }
         break;
-      case 'gameOver': endGame(ev.victory, ev.winner); break;
+      case 'gameOver': clearCharm(); endGame(ev.victory, ev.winner); break;
     }
   }
   // Call of Duty: a kill to the head has its own crack and ring, instead of the plain hit sound
@@ -745,6 +755,8 @@ function tick(dt, now = (tickClock += dt)) {
     camera.rotation.set(p.pitch + p.recoil.pitch, p.yaw + p.recoil.yaw, 0, 'YXZ');
     if (p.dead) { camera.position.y = p.pos.y + 0.45; camera.rotation.z = 0.35; } // down on the sand
     applyShake(dt, now);
+    // a siren's song: the view sways while it holds
+    if (p.charm > 0) camera.rotation.z += Math.sin(now * 1.7) * 0.05 * p.charm;
     camera.updateMatrixWorld();
 
     handleEvents();
@@ -807,6 +819,20 @@ function tick(dt, now = (tickClock += dt)) {
       hud.scoreboard(game.state === 'playing' && input.down('Tab') ? ranked.map((o) => ({ name: o.name, frags: o.stats.frags, deaths: o.stats.deaths, kills: o.stats.kills, me: o === p })) : null,
         `Premier à ${sim.mode.scoreLimit} · ${fmtTime(Math.ceil(sim.mode.timeLeft))} restantes`);
     } else hud.drawMinimap(p, sim.enemies, game.net ? [...sim.players.values()].filter((o) => o !== p) : []);
+    // the siren's song: blurred, tinted view; the loudest singer is heard
+    const charm = p.charm ?? 0;
+    if (Math.abs(charm - (game.shownCharm ?? 0)) > 0.01) {
+      game.shownCharm = charm;
+      canvas.style.filter = charm > 0.02 ? `blur(${(charm * 2.5).toFixed(2)}px) saturate(${(1 + charm * 0.6).toFixed(2)})` : '';
+      $('charm').style.opacity = (charm * 0.9).toFixed(2);
+    }
+    let singer = null, loud = 0;
+    for (const e of sim.enemies.list) {
+      if (e.act?.kind !== 'sing') continue;
+      const v = vol(e.pos, 50);
+      if (v > loud) { loud = v; singer = e; }
+    }
+    sound.setSong(singer ? Math.max(loud, charm) : 0, singer ? pan(singer.pos) : 0);
     // the music follows the fight: calm between waves, louder in combat, fiercer against the pharaoh
     sound.setMusicIntensity(sim.over ? 0 : ranked ? 1 : sim.enemies.boss ? 2 : sim.mode.waveActive && sim.enemies.alive ? 1 : 0);
   } else if (game.state === 'menu') {

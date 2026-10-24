@@ -24,6 +24,8 @@ export const PIRATES = {
       musket: 'models/pirates/musket.glb',
       grenade: 'models/pirates/bomb.glb',
       skeleton: 'models/pirates/skeleton.glb',
+      siren: 'models/pirates/siren.glb',
+      bats: 'models/pirates/bat.glb', // one bat: the client draws a swarm of them
       crab: 'models/pirates/crab.glb',
       gunner: 'models/pirates/gunner.glb',
     },
@@ -91,6 +93,22 @@ export const PIRATES = {
       muzzle: [0.31, 1.9, 0.75], // the swivel gun's mouth, raised to fire, hover included
       post: true,
     },
+    // the siren: rises in the shallows and stays there; while she sees you she sings for a few
+    // seconds, and the song (charm, blurred screen) pulls you toward her; cover or her death breaks it
+    siren: {
+      hp: 170, speed: 0, radius: 0.5, height: 1.7, headY: 1.35,
+      melee: { range: 2.3, dmg: 18, windup: 0.4, cd: 1.2 },
+      song: { range: 34, dur: 5, rest: [3, 5], rise: 2.5, pull: 2.8 }, // rise: seconds to full charm, pull: m/s at full charm
+      stay: true,
+      fromWater: { minX: -40, minZ: 19.5, maxX: 12, maxZ: 28 },
+    },
+    // a swarm of bats: one flying body that heads straight for you and nibbles; a blast scatters it
+    bats: {
+      hp: 45, speed: 7.5, radius: 0.7, height: 1.0, headY: 99,
+      melee: { range: 1.4, dmg: 4, windup: 0, cd: 0.35 },
+      fly: { height: 1.6, reach: 1.5 }, // cruising height over the ground, distance it bites from
+      blastMul: 5, load: 0.5,
+    },
     // the pharaoh stands in for the Kraken until phase 6
     boss: { ...SABLES.enemies.boss, summon: 'skeleton' },
   },
@@ -98,18 +116,20 @@ export const PIRATES = {
   posts: [[24, 4, 21.5], [25.5, 4, 17.5], [18, 4, 22.3], [34.5, 6.6, 18], [34.5, 6.6, 22]],
   waves: [
     { skeleton: 9 },
-    { skeleton: 9, gunner: 3 },
-    { skeleton: 9, gunner: 3, crab: 2 },
-    { skeleton: 12, gunner: 4, crab: 3 },
-    { skeleton: 6, gunner: 3, crab: 2, boss: 1 },
+    { skeleton: 9, gunner: 3, bats: 2 },
+    { skeleton: 9, gunner: 3, crab: 2, siren: 1, bats: 2 },
+    { skeleton: 12, gunner: 4, crab: 3, siren: 2, bats: 3 },
+    { skeleton: 6, gunner: 3, crab: 2, siren: 1, bats: 2, boss: 1 },
   ],
   survival: [
     { type: 'skeleton', cost: 2.5, from: 1, count: 3 }, // a whole group
     { type: 'gunner', cost: 2, from: 2 },
     { type: 'crab', cost: 4, from: 3 },
+    { type: 'bats', cost: 1.5, from: 2 },
+    { type: 'siren', cost: 4, from: 3 },
   ],
   arenaGuards: ['skeleton', 'skeleton', 'gunner'],
-  targets: [['skeleton', 3], ['gunner', 2], ['crab', 1]],
+  targets: [['skeleton', 3], ['gunner', 2], ['crab', 1], ['siren', 1], ['bats', 1]],
   props: {
     inside: 40, // the cliffs stand at ±42 m
     list: [

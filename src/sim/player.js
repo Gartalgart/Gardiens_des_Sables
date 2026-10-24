@@ -20,6 +20,8 @@ export class PlayerSim {
     this.pos = sim.level.playerStart.clone();
     this.vel = new THREE.Vector3();
     this.push = new THREE.Vector3(); // knockback / lunge, decays on its own
+    this.drift = new THREE.Vector3(); // a siren's song pulling the player toward her, set by the enemies each step
+    this.charm = 0; // 0..1, how far the song has taken hold (the client blurs the screen)
     this.recoil = { pitch: 0, yaw: 0 };
     this.yaw = 0; // looking north (-Z), towards the temple
     this.pitch = 0;
@@ -93,7 +95,7 @@ export class PlayerSim {
     this.vel.y -= GRAVITY * dt;
 
     const beforeY = this.pos.y;
-    level.moveBody(this.pos, (this.vel.x + this.push.x) * dt, (this.vel.z + this.push.z) * dt, PLAYER_RADIUS, PLAYER_HEIGHT);
+    level.moveBody(this.pos, (this.vel.x + this.push.x + this.drift.x) * dt, (this.vel.z + this.push.z + this.drift.z) * dt, PLAYER_RADIUS, PLAYER_HEIGHT);
     this.push.multiplyScalar(Math.exp(-6 * dt));
     this.pos.y += this.vel.y * dt;
     const ground = level.groundAt(this.pos.x, this.pos.z, PLAYER_RADIUS, Math.max(this.pos.y, beforeY));

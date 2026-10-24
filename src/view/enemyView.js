@@ -14,6 +14,8 @@ export const ENEMY_LOOK = {
   skeleton: { color: new THREE.Color(0.45, 1, 0.55), dot: '#7dff8c' },
   crab: { color: new THREE.Color(1, 0.4, 0.15), dot: '#ff6a2a' },
   gunner: { color: new THREE.Color(0.4, 1, 0.9), dot: '#6af0e0' },
+  siren: { color: new THREE.Color(1, 0.45, 0.85), dot: '#ff73d9' },
+  bats: { color: new THREE.Color(0.9, 0.2, 0.2), dot: '#e64040' },
 };
 const ELITE_GOLD = new THREE.Color(1, 0.78, 0.3);
 const REFLECTED = new THREE.Color(1, 0.85, 0.4); // orbs parried back by a player
@@ -25,7 +27,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const ACT_CLIPS = {
   melee: ['attack', 0.4], ranged: ['cast', 0.4], leap: ['leap', 0.5],
   'charge-wind': ['chargeWind', 0.65], charge: ['charge', 0], slam: ['slam', 0.8],
-  prime: ['prime', 0], transform: ['transform', 0],
+  prime: ['prime', 0], transform: ['transform', 0], sing: ['sing', 0],
 };
 // speed (m/s) at which the walk / run clips play at their authored pace
 const GAIT = {
@@ -38,7 +40,10 @@ const GAIT = {
   skeleton: { run: 3.5, walkRef: 2.4, runRef: 7 },
   crab: { run: 99, walkRef: 2.2, runRef: 5 },
   gunner: { run: 99, walkRef: 1.2, runRef: 3 },
+  siren: { run: 99, walkRef: 1, runRef: 3 },
 };
+// a swarm (the bats): this many copies of the one-bat model, flapping around the swarm's centre
+const SWARM = 12;
 
 // Draws what the simulation's enemies, orbs and pickups are doing, and plays their deaths.
 export class EnemyView {
@@ -82,7 +87,7 @@ export class EnemyView {
 
   #createView(e) {
     const look = ENEMY_LOOK[e.type];
-    const mesh = SkeletonUtils.clone(this.assets[e.type]);
+    const mesh = e.T.fly ? this.#swarm(e) : SkeletonUtils.clone(this.assets[e.type]);
     const mats = [];
     // small variations so that a crowd is not made of copies: shade and hue drift, picked from the id
     const vary = e.T.boss ? 0 : ((e.id * 2654435761) % 1000) / 1000;
@@ -112,6 +117,11 @@ export class EnemyView {
     const blob = new THREE.Mesh(this.blobGeo, this.blobMat);
     blob.renderOrder = -1;
     this.scene.add(blob);
+    if (e.T.fly) {
+      const v = { mesh, mats, blob, phase: Math.random() * 10, flash: 0, last: e, mixer: null, actions: {}, current: null, actRef: null };
+      this.views.set(e.id, v);
+      return v;
+    }
     // animations authored in Blender (blender/anims.py): one action per clip name
     const mixer = new THREE.AnimationMixer(mesh);
     const actions = {};
@@ -126,13 +136,30 @@ export class EnemyView {
         continue;
       }
       const a = mixer.clipAction(clip);
-      if (!['idle', 'walk', 'run', 'stun', 'charge'].includes(clip.name)) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      if (!['idle', 'walk', 'run', 'stun', 'charge', 'sing'].includes(clip.name)) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
       actions[clip.name] = a;
     }
     actions.idle.play();
     const v = { mesh, mats, blob, phase: Math.random() * 10, flash: 0, last: e, mixer, actions, current: 'idle', actRef: null };
     this.views.set(e.id, v);
     return v;
+  }
+
+  // The bats: copies of the bat model, each at its own place in the swarm, wings on pivots
+  #swarm(e) {
+    const group = new THREE.Group();
+    group.userData.bats = [];
+    for (let i = 0; i < SWARM; i++) {
+      const bat = this.assets[e.type].clone(true);
+      bat.scale.setScalar(0.8 + Math.random() * 0.5);
+      group.add(bat);
+      group.userData.bats.push({
+        bat, wings: [bat.getObjectByName('WingL'), bat.getObjectByName('WingR')],
+        orbit: 0.3 + Math.random() * 0.6, speed: 1.5 + Math.random() * 2, angle: Math.random() * Math.PI * 2,
+        lift: (Math.random() - 0.5) * 0.7, flap: 18 + Math.random() * 8, seed: Math.random() * 10,
+      });
+    }
+    return group;
   }
 
   onEvent(ev) {
@@ -377,6 +404,7 @@ export class EnemyView {
 
   // pick the clip that matches what the simulation says the enemy is doing
   #animate(v, e, dt) {
+    if (!v.mixer) return;
     const a = e.act;
     const gait = GAIT[e.type];
     let name, timeScale = 1;
@@ -423,11 +451,23 @@ export class EnemyView {
     const hover = T.hover ?? (T.boss ? 0.4 : 0);
     v.mesh.position.set(e.pos.x + shake, e.pos.y + e.lift + hover - e.rise * T.height, e.pos.z);
     v.mesh.rotation.y = e.facing;
+    if (T.fly) {
+      // each bat circles the swarm's centre, bobbing, its wings beating
+      v.mesh.position.y += T.height / 2;
+      for (const b of v.mesh.userData.bats) {
+        b.angle += dt * b.speed;
+        b.bat.position.set(Math.cos(b.angle) * b.orbit, b.lift + Math.sin(v.phase * 3 + b.seed) * 0.15, Math.sin(b.angle) * b.orbit);
+        b.bat.rotation.y = -b.angle;
+        const f = Math.sin(v.phase * b.flap + b.seed) * 0.9;
+        if (b.wings[0]) b.wings[0].rotation.z = -f;
+        if (b.wings[1]) b.wings[1].rotation.z = f;
+      }
+    }
     // a climbing scarab stands up against the wall
     v.mesh.rotation.order = 'YXZ';
     v.mesh.rotation.x += ((e.climbing ? -Math.PI / 2 : 0) - v.mesh.rotation.x) * Math.min(1, dt * 12);
     v.mesh.visible = !e.hidden;
-    v.blob.visible = !e.hidden;
+    v.blob.visible = !e.hidden && !T.fly;
     const shadowSize = T.radius * 2.6 * (1 - Math.min(0.5, e.lift * 0.3)) * (1 - e.rise);
     v.blob.position.set(e.pos.x, e.pos.y + 0.03, e.pos.z);
     v.blob.scale.setScalar(Math.max(0.01, shadowSize));

@@ -215,6 +215,19 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 70 tests automatisés, dont 7 nouveaux : la carapace du crabe, son apparition dans l'eau, sa marche jusqu'au joueur et sa charge de côté ; les postes des artilleurs et leurs tirs en cloche, l'abri d'un toit ; les squelettes par trois ; le boss par une porte praticable ; les déblocages des vagues jusqu'au mousquet.
 - **Validation :** jouer des vagues avec ces trois ennemis (ou les appeler avec N en Exploration), jusqu'au boss de la vague 5. Validée le 24/10/2026.
 
+### U1 Phase 5 — Ennemis spéciaux `[x]`
+- [x] **Sirène** (`enemies.py`, `siren.glb`, avec squelette et animations) : elle sort de l'eau dans la crique et y reste. Quand elle voit le joueur, elle chante 5 s, bras ouverts, puis se tait 3 à 5 s. Le chant charme : l'écran se brouille, une brume rose se referme sur les bords, la vue tangue, et le joueur est tiré vers elle (jusqu'à 2,8 m/s quand le charme est complet, en 2,5 s). Trop près, elle griffe. Se mettre à couvert ou la tuer coupe le chant, et le charme retombe en un peu plus d'une seconde. Le chant est une mélodie procédurale qui vient de sa direction.
+- [x] **Nuée de chauves-souris** (`bat.glb`, une chauve-souris dont le jeu bat les ailes, douze par nuée) : premier ennemi volant. Elle ne suit pas la grille de navigation : elle arrive par-dessus les falaises, fonce droit sur le joueur, contourne un mur en virant ou en montant, et tourne autour de sa tête en mordillant (4 dégâts toutes les 0,35 s). Une explosion (bombe, boulet, baril) la disperse d'un coup (dégâts des explosions ×5).
+- [x] **Vagues des pirates** : nuées dès la vague 2, sirènes dès la vague 3 ; en Exploration, N appelle aussi une sirène et une nuée.
+- [x] **Correction : des ennemis coincés bloquaient les vagues.** Un ennemi pouvait naître hors de la carte (le point d'apparition ouest en mer est près du bord, et les membres d'un groupe étaient dispersés sans vérification), dans un mur, ou rester pris dans un piège du décor (le pied de l'escalier du galion, où la grille de navigation n'a qu'un sol par case), alors qu'une vague attend que tous soient morts. Maintenant :
+  - les membres d'un groupe et l'écart autour d'une porte ne tombent que sur du sol praticable de la carte, à la même hauteur ;
+  - un ennemi hors de la zone jouable pour sa taille (hors carte, dans un mur, un crabe sur le pont du galion) revient par une porte au bout de 2 s ;
+  - un ennemi loin des joueurs (plus de 6 m) qui a bougé de moins de 1,5 m en 6 s revient aussi par une porte ;
+  - une nuée qui ne voit pas le joueur suit le chemin au sol, en vol, au lieu de foncer dans un mur.
+  Douze parties simulées, le joueur immobile à divers endroits et ne tuant que ce qui l'approche, vont toutes au bout des cinq vagues.
+- [x] 74 tests automatisés, dont 4 nouveaux : le chant de la sirène (charme, attirance, elle ne bouge pas, tout s'arrête à sa mort) ; la nuée qui arrive en vol, mord à répétition et meurt dans l'explosion d'un baril ; un ennemi hors carte ou piégé qui revient par une porte ; des vagues qui finissent toujours, même pour un joueur qui ne tue que ce qui s'approche. Le test de la charge du crabe ne dépend plus du hasard.
+- **Validation :** jouer des vagues qui mélangent les cinq ennemis (ou les appeler avec N en Exploration). Validée le 24/10/2026.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).
