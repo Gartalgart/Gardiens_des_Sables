@@ -10,6 +10,9 @@ export class Level {
     this.spawns = data.spawns.map((p) => new THREE.Vector3(...p));
     this.braziers = data.braziers.map((p) => new THREE.Vector3(...p));
     this.playerStart = new THREE.Vector3(...data.playerStart);
+    // optional (the pirate port): shallow water rectangles and powder kegs
+    this.water = (data.water ?? []).map(([minX, minZ, maxX, maxZ]) => ({ minX, minZ, maxX, maxZ }));
+    this.kegs = (data.kegs ?? []).map((p) => new THREE.Vector3(...p));
     this.#buildBoxGrid();
     this.nav = new NavGrid(this);
   }
@@ -55,6 +58,13 @@ export class Level {
       if (b.max.y <= y + STEP && b.max.y > g) g = b.max.y;
     }
     return g;
+  }
+
+  // Feet in shallow water: inside a water zone and down at the sea floor (a quay or a deck is dry).
+  inWater(x, z, y) {
+    if (y > 0.3) return false;
+    for (const w of this.water) if (x >= w.minX && x <= w.maxX && z >= w.minZ && z <= w.maxZ) return true;
+    return false;
   }
 
   // True when any box overlaps the square footprint.

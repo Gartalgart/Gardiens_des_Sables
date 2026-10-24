@@ -57,6 +57,7 @@ export class Sound {
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.#wind();
+    if (this.surfOn) this.setSurf(true);
     this.musicPlayer = new Music(this.ctx, this.music, this.noise);
     this.musicPlayer.start();
     this.samplesReady = this.#loadSamples();
@@ -289,6 +290,49 @@ export class Sound {
   transform() {
     if (!this.ctx) return;
     this.#play('enemies/pharaoh_transform', { vol: 0.85 });
+  }
+
+  // a foot in the shallows: a short hiss of spray over a low slosh (no recording yet)
+  #splash(vol) {
+    const t = this.ctx.currentTime;
+    const n = this.#noiseSrc();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 1400 + Math.random() * 600; f.Q.value = 0.8;
+    const g = this.ctx.createGain();
+    this.#env(g, t, 0.01, vol * 0.5, 0.22);
+    n.connect(f).connect(g).connect(this.#out(0, 1));
+    n.start(t); n.stop(t + 0.3);
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(220, t);
+    o.frequency.exponentialRampToValueAtTime(90, t + 0.12);
+    const og = this.ctx.createGain();
+    this.#env(og, t, 0.005, vol * 0.35, 0.12);
+    o.connect(og).connect(this.#out(0, 1));
+    o.start(t); o.stop(t + 0.2);
+  }
+
+  // Surf on the beach (pirate port): low noise swelling and ebbing like waves breaking, every 7 s
+  // or so. Asked for before the first click, it starts with the audio.
+  setSurf(on) {
+    this.surfOn = on;
+    if (!this.ctx || !on || this.surf) return;
+    const src = this.#noiseSrc();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = 650;
+    const g = this.ctx.createGain();
+    g.gain.value = 0.07;
+    const lfo = this.ctx.createOscillator();
+    lfo.frequency.value = 0.14;
+    const lg = this.ctx.createGain();
+    lg.gain.value = 0.06;
+    lfo.connect(lg).connect(g.gain);
+    const lf = this.ctx.createGain();
+    lf.gain.value = 300;
+    lfo.connect(lf).connect(f.frequency);
+    src.connect(f).connect(g).connect(this.sfx);
+    src.start(); lfo.start();
+    this.surf = g;
   }
 
   // stronger wind during the sandstorm (k: 0..1)
@@ -571,9 +615,10 @@ export class Sound {
     });
   }
 
-  // land: the end of a fall
-  step(sprint, land = false) {
+  // land: the end of a fall; water: wading through the shallows
+  step(sprint, land = false, water = false) {
     if (!this.ctx) return;
+    if (water) return this.#splash(sprint ? 0.5 : 0.35);
     const name = land ? 'footsteps/sand_land'
       : sprint ? pick(['footsteps/sand_run_1', 'footsteps/sand_run_2'])
       : pick(['footsteps/sand_walk_1', 'footsteps/sand_walk_2', 'footsteps/sand_walk_3']);

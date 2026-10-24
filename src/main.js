@@ -11,6 +11,7 @@ import { DIFFICULTIES } from './sim/difficulty.js';
 import { PropsView } from './view/propsView.js';
 import { PlayerView } from './view/playerView.js';
 import { GrenadeView } from './view/grenadeView.js';
+import { KegView } from './view/kegView.js';
 import { multiKillName, spreeName } from './medals.js';
 import { NetSession, defaultServer } from './net/session.js';
 import { MULTIPLAYER } from './features.js';
@@ -125,12 +126,14 @@ const [assets, levelData] = await Promise.all([
 ]);
 const level = new Level(levelData);
 const worldView = new WorldView(scene, assets.level, level, world.ambiance);
-const propsView = assets.props ? new PropsView(scene, assets.props, level) : null;
+const propsView = assets.props ? new PropsView(scene, assets.props, level, world.props) : null;
 const effects = new Effects(scene);
 const weaponView = new WeaponView(assets, vmScene, effects, worldFlash, world.weapons);
 const enemyView = new EnemyView(scene, assets, effects);
 const playerView = new PlayerView(scene, assets, effects);
 const grenadeView = new GrenadeView(scene, assets, effects);
+const kegView = new KegView(scene);
+sound.setSurf(!!world.ambiance.surf);
 const hud = new Hud(level, world.texts.bossName);
 Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects, hud });
 
@@ -216,7 +219,7 @@ function pickMode(key) {
 modeButtons.forEach((b) => b.addEventListener('click', () => pickMode(b.dataset.mode)));
 let savedMode = 'waves';
 try { savedMode = localStorage.getItem('gds-mode') || 'waves'; } catch {}
-pickMode(savedMode === 'survival' ? 'survival' : 'waves');
+pickMode(['survival', 'sandbox'].includes(savedMode) ? savedMode : 'waves');
 
 // ---------- leaderboard ----------
 const MODE_LABEL = { waves: 'Vagues', survival: 'Survie' };
@@ -598,7 +601,7 @@ function handleEvents() {
       case 'dry': if (mine) sound.dry(); break;
       case 'switch': if (mine) sound.weaponSwitch(); break;
       case 'kick': if (mine) input.addPitch(ev.pitch); break;
-      case 'step': if (mine) sound.step(ev.sprint, ev.land); break;
+      case 'step': if (mine) sound.step(ev.sprint, ev.land, ev.water); break;
       case 'reflectHit': if (mine) { hud.hit(false); sound.hit(false); } break;
       case 'blocked': if (mine) { sound.clang(); weaponView.onBlocked(); parrySparks(14); addShake(0.2); } break;
       case 'perfectParry':
@@ -637,9 +640,10 @@ function handleEvents() {
         break;
       case 'prime': primes.set(ev.id, 0); break;
       case 'explosion':
-        if (ev.kind === 'grenade') grenadeView.explode(ev.pos);
+        // fire pots and powder kegs burst into flames; a mummy's blast is green
+        if (ev.kind === 'grenade' || ev.kind === 'keg') grenadeView.explode(ev.pos);
         else { enemyView.onEvent(ev); primes.clear(); }
-        blastLight.color.setHex(ev.kind === 'grenade' ? 0xff8a3a : 0x9dff6a);
+        blastLight.color.setHex(ev.kind === 'grenade' ? 0xff8a3a : ev.kind === 'keg' ? 0xffa040 : 0x9dff6a);
         sound.explosion(pan(ev.pos), Math.max(0.3, vol(ev.pos, 70)));
         addShake(0.8 * vol(ev.pos, 22));
         blastLight.position.copy(ev.pos);
@@ -744,6 +748,7 @@ function tick(dt, now = (tickClock += dt)) {
     const viewDt = dt * sim.timeScale;
     enemyView.sync(sim.enemies, viewDt, sim.time);
     grenadeView.sync(sim.grenades, viewDt);
+    kegView.sync(sim.kegs);
     if (game.net) coopHud(p, dt);
     const ranked = sim.mode.pvp ? arenaRanking() : null;
 

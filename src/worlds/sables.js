@@ -12,6 +12,20 @@ export const SABLES = {
     levelData: 'models/level.json',
     props: 'models/props.glb',
   },
+  // ground clutter scattered over the open sand by src/view/propsView.js (pure decoration):
+  // the props.glb root to instance, how many, how much free ground around (cells), whether it
+  // casts a shadow, its scale, and edge: along the walls rather than anywhere
+  props: {
+    inside: 43, // the city walls stand at ±45 m
+    list: [
+      { name: 'Prop_Bones', count: 16, clear: 1, shadow: false, scale: 1.4 },
+      { name: 'Prop_Skull', count: 10, clear: 1, shadow: false, scale: 1.4 },
+      { name: 'Prop_Shards', count: 16, clear: 1, shadow: false, scale: 1.5 },
+      { name: 'Prop_BrokenJar', count: 12, clear: 1, shadow: true },
+      { name: 'Prop_Drum', count: 8, clear: 2, shadow: true },
+      { name: 'Prop_Palm', count: 10, clear: 2, shadow: true, edge: true },
+    ],
+  },
 
   // ---------- weapons (rules; poses and models live in src/view/weaponView.js) ----------
   weapons: [

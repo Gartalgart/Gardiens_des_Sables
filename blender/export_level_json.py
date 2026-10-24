@@ -1,16 +1,29 @@
 # Export the level collision data (boxes, spawns, braziers, player start) to public/models/level.json.
 # The simulation (browser or Node server) reads this instead of parsing level.glb.
 # Run inside Blender after changing the Level collection, alongside the level.glb export.
+# Another universe sets LEVEL_JSON first (a path relative to its .blend), e.g. the pirate port:
+#   LEVEL_JSON = "//../../public/models/pirates/level.json"
+# Optional, used by the pirate port: Z_Water* meshes (shallow water rectangles, no collision)
+# and KEG_n empties (powder kegs).
 import bpy
 import json
 
 coll = bpy.data.collections["Level"]
 dg = bpy.context.evaluated_depsgraph_get()
-boxes, spawns, braziers, start = [], [], [], None
+boxes, spawns, braziers, kegs, water, start = [], [], [], [], [], None
 
 
 def to3(v):  # Blender Z-up -> glTF / three.js Y-up
     return [round(v.x, 4), round(v.z, 4), round(-v.y, 4)]
+
+
+def bounds(o):
+    me = o.evaluated_get(dg).to_mesh()
+    ws = [o.matrix_world @ v.co for v in me.vertices]
+    o.evaluated_get(dg).to_mesh_clear()
+    mn = [min(w.x for w in ws), min(w.z for w in ws), min(-w.y for w in ws)]
+    mx = [max(w.x for w in ws), max(w.z for w in ws), max(-w.y for w in ws)]
+    return mn, mx
 
 
 for o in coll.all_objects:
@@ -20,17 +33,19 @@ for o in coll.all_objects:
             spawns.append((o.name, p))
         elif o.name.startswith("BRAZIER_"):
             braziers.append((o.name, p))
+        elif o.name.startswith("KEG_"):
+            kegs.append((o.name, p))
         elif o.name == "PLAYER_START":
             start = p
+        continue
+    if o.type == 'MESH' and o.name.startswith("Z_Water"):
+        mn, mx = bounds(o)
+        water.append([round(c, 4) for c in (mn[0], mn[2], mx[0], mx[2])])  # minX, minZ, maxX, maxZ
         continue
     # same rule as the client: the ground plane and L_Deco* meshes have no collision
     if o.type != 'MESH' or o.name == "Ground" or o.name.startswith("L_Deco"):
         continue
-    me = o.evaluated_get(dg).to_mesh()
-    ws = [o.matrix_world @ v.co for v in me.vertices]
-    o.evaluated_get(dg).to_mesh_clear()
-    mn = [min(w.x for w in ws), min(w.z for w in ws), min(-w.y for w in ws)]
-    mx = [max(w.x for w in ws), max(w.z for w in ws), max(-w.y for w in ws)]
+    mn, mx = bounds(o)
     boxes.append([round(c, 4) for c in mn + mx])
 
 
@@ -44,7 +59,12 @@ data = {
     "braziers": [p for _, p in sorted(braziers, key=key)],
     "playerStart": start,
 }
-path = bpy.path.abspath("//../public/models/level.json")
+if water:
+    data["water"] = water
+if kegs:
+    data["kegs"] = [p for _, p in sorted(kegs, key=key)]
+path = bpy.path.abspath(globals().get("LEVEL_JSON", "//../public/models/level.json"))
 with open(path, "w") as f:
     json.dump(data, f, separators=(",", ":"))
-print("level.json:", len(boxes), "boxes,", len(data["spawns"]), "spawns,", len(data["braziers"]), "braziers")
+print(path, ":", len(boxes), "boxes,", len(data["spawns"]), "spawns,", len(data["braziers"]), "braziers,",
+      len(water), "water zones,", len(kegs), "kegs")

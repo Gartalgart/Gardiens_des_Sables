@@ -17,6 +17,28 @@ export class WorldView {
     this.#buildSky();
     this.#buildLights();
     this.#buildStorm();
+    if (look.sea) this.#buildSea(look.sea);
+  }
+
+  // The sea (pirate port): a wide sheet from the shore to the horizon, its swell moved in the
+  // vertex shader; flat shading turns the swell into facets that catch the moonlight. The sand
+  // shows through it in the shallows.
+  #buildSea(sea) {
+    this.seaTime = { value: 0 };
+    const geo = new THREE.PlaneGeometry(600, 420, 160, 110).rotateX(-Math.PI / 2).translate(0, sea.level, sea.shore + 210);
+    const mat = new THREE.MeshStandardMaterial({ color: sea.color, roughness: 0.4, metalness: 0, transparent: true, opacity: 0.8, flatShading: true });
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.time = this.seaTime;
+      sh.uniforms.shore = { value: sea.shore };
+      sh.vertexShader = 'uniform float time;\nuniform float shore;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        // calmer against the shore, longer swell out at sea
+        float swell = mix(0.35, 1.0, smoothstep(shore, shore + 25.0, position.z));
+        transformed.y += swell * (sin(position.x * 0.31 + time * 1.1) * 0.09 + sin(position.z * 0.47 - time * 1.6) * 0.07)
+          + sin((position.x + position.z) * 0.93 + time * 2.4) * 0.025;`);
+    };
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
   }
 
   // Sandstorm of the pharaoh's second phase: thick ochre fog and sand blowing past the camera.
@@ -67,6 +89,8 @@ export class WorldView {
 
     root.traverse((o) => {
       if (!o.isMesh) return;
+      // C_*: collision only (under the quay planks, the barrier along the deep water); Z_*: zones
+      if (o.name.startsWith('C_') || o.name.startsWith('Z_')) return;
       if (o.name.startsWith('L_DecoFire')) {
         fires.push(o);
         return;
@@ -246,6 +270,7 @@ export class WorldView {
 
   update(t, dt = 0.016, view = null) {
     this.#updateStorm(dt, view);
+    if (this.seaTime) this.seaTime.value = t;
     if (view) {
       this.lightTimer -= dt;
       if (this.lightTimer <= 0) { this.lightTimer = 0.3; this.#assignFireLights(view); }

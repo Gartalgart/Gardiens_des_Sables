@@ -758,14 +758,81 @@ describe('universes', () => {
     expect(new Sim(level).world.id).toBe('sables');
   });
 
-  it('the pirate port: its own map, enemies find their way from every spawn to the player', () => {
+  it('the pirate port: enemies find their way from every spawn to the player', () => {
     const port = levelOf('pirates');
     const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' });
     const player = sim.addPlayer('p1');
-    expect(player.pos.toArray()).toEqual([0, 0, 2]);
+    expect(player.pos.toArray()).toEqual([-6, 0, 4]);
+    expect(port.spawns.length).toBe(6);
     const runners = port.spawns.map((s) => pacify(sim.enemies.spawn('runner', s)));
-    run(sim, 14, () => emptyCommand());
+    run(sim, 25, () => emptyCommand());
     for (const e of runners) expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
+  });
+
+  // every place of the port a player can stand on, and a jackal walking there from the village
+  const SPOTS = {
+    'pier end': [-22.5, 1, 36],
+    'galleon deck': [24, 4, 20],
+    sterncastle: [35, 6.6, 18],
+    'tavern roof': [14, 3.9, -22],
+    'treasure cave': [-35, 0, -36],
+    canyon: [10, 0, -50],
+  };
+  for (const [name, [x, y, z]] of Object.entries(SPOTS)) {
+    it(`the pirate port: a jackal reaches a player on the ${name}`, () => {
+      const port = levelOf('pirates');
+      const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' });
+      const player = sim.addPlayer('p1');
+      player.pos.set(x, y + 0.05, z);
+      run(sim, 0.5, () => emptyCommand());
+      expect(player.pos.y).toBeCloseTo(y, 1); // standing on it, not inside a wall
+      const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(-6, 0, -8)));
+      run(sim, 25, () => emptyCommand());
+      expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
+    });
+  }
+
+  it('shallow water slows players and enemies; the quay and the deck are dry', () => {
+    const port = levelOf('pirates');
+    expect(port.inWater(-30, 24, 0)).toBe(true);
+    expect(port.inWater(-6, 15, 1)).toBe(false); // on the quay
+    expect(port.inWater(24, 20, 4)).toBe(false); // on the galleon's deck
+    const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' });
+    const p = sim.addPlayer('p1');
+    const walk = (x, z) => {
+      p.pos.set(x, 0, z);
+      p.vel.set(0, 0, 0);
+      run(sim, 1, () => ({ ...emptyCommand(), moveX: 1, yaw: 0 }));
+      return p.pos.x - x;
+    };
+    const dry = walk(-36, 8), wet = walk(-32, 21);
+    expect(wet / dry).toBeCloseTo(0.6, 1);
+  });
+
+  it('a shot sets off a powder keg: it kills the enemies around, chains to the next keg, and is back next wave', () => {
+    const port = levelOf('pirates');
+    expect(port.kegs.length).toBe(10);
+    const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' });
+    const player = sim.addPlayer('p1');
+    const keg = sim.kegs[0];
+    keg.pos.set(0, 0, -5); // out on the open sand
+    player.pos.set(12, 0, -5);
+    const near = sim.enemies.spawn('runner', keg.pos.clone().add(new THREE.Vector3(0, 0, -1.5))); // beside, not in front
+    near.rise = 0;
+    near.stun = 5; // stays by the keg instead of running into the line of fire
+    const other = sim.kegs.find((k) => k !== keg);
+    other.pos.copy(keg.pos).add(new THREE.Vector3(0, 0, 3)); // a second keg close by
+    player.loadout.switchTo(1);
+    run(sim, 0.4, (p) => aimAt(p, keg.pos.clone().setY(keg.pos.y + 0.5), { fire: true }));
+    expect(keg.alive).toBe(false);
+    expect(sim.enemies.list).not.toContain(near);
+    expect(player.score).toBeGreaterThan(0);
+    run(sim, 0.5, () => emptyCommand());
+    expect(other.alive).toBe(false);
+    const events = sim.drainEvents();
+    expect(events.filter((e) => e.type === 'explosion' && e.kind === 'keg').length).toBe(2);
+    sim.resetKegs();
+    expect(sim.kegs.every((k) => k.alive)).toBe(true);
   });
 
   it('the pirate universe runs its waves to victory', () => {

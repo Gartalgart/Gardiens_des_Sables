@@ -40,6 +40,7 @@ export class WaveBase {
     const sim = this.sim;
     this.wave = n;
     sim.enemies.setWave(n);
+    sim.resetKegs(); // the powder kegs of the map stand again
     const q = [];
     const types = sim.world.enemies;
     const swarms = []; // [type, count] of the types that come as a swarm (scarabs)

@@ -1,18 +1,10 @@
 import * as THREE from 'three';
 
-// Ground clutter scattered over the sand: bones, skulls, pottery shards, broken jars, fallen column
-// drums and dead palms. Pure decoration (no collision): one InstancedMesh per part of each prop.
-// Positions come from a seeded random walk over the navigation grid so every client gets the same
-// layout, on open ground (floor 0, not under a roof) inside the city walls.
-const PROPS = [
-  { name: 'Prop_Bones', count: 16, clear: 1, shadow: false, scale: 1.4 },
-  { name: 'Prop_Skull', count: 10, clear: 1, shadow: false, scale: 1.4 },
-  { name: 'Prop_Shards', count: 16, clear: 1, shadow: false, scale: 1.5 },
-  { name: 'Prop_BrokenJar', count: 12, clear: 1, shadow: true },
-  { name: 'Prop_Drum', count: 8, clear: 2, shadow: true },
-  { name: 'Prop_Palm', count: 10, clear: 2, shadow: true, edge: true },
-];
-const INSIDE = 43; // the city walls stand at ±45 m
+// Ground clutter scattered over the sand (the universe's props: bones and jars in the desert, ropes,
+// bottles and crab shells on the pirate beach). Pure decoration (no collision): one InstancedMesh
+// per part of each prop. Positions come from a seeded random walk over the navigation grid so every
+// client gets the same layout, on open dry ground (floor 0, not under a roof, not in the water)
+// inside the map's walls.
 const SPACING = 2.2;
 
 function rng(seed) {
@@ -25,7 +17,9 @@ function rng(seed) {
 }
 
 export class PropsView {
-  constructor(scene, propsRoot, level, seed = 7) {
+  // props: the universe's { inside, list } (see src/worlds/)
+  constructor(scene, propsRoot, level, props, seed = 7) {
+    const INSIDE = props.inside;
     propsRoot.updateMatrixWorld(true);
     const nav = level.nav;
     const rand = rng(seed);
@@ -41,11 +35,12 @@ export class PropsView {
         for (let dx = -clear; dx <= clear; dx++) {
           const j = (iz + dz) * nav.n + ix + dx;
           if (!nav.open[j] || nav.floor[j] !== 0 || nav.covered[j]) return false;
+          if (level.inWater(nav.cx(ix + dx), nav.cx(iz + dz), 0)) return false;
         }
       return true;
     };
 
-    for (const def of PROPS) {
+    for (const def of props.list) {
       const root = propsRoot.getObjectByName(def.name);
       if (!root) continue;
       const spots = [];

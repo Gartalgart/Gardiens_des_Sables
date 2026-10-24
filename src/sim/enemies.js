@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WATER_SLOW } from './constants.js';
 
 // Enemy rules. Each universe gives its enemy types (src/worlds/); colours and models are the
 // client's business (see src/view/enemyView.js).
@@ -227,7 +228,8 @@ export class Enemies {
     }
 
     let move = null;
-    let speed = T.speed * this.speedMul * (e.elite ? 1.15 : 1) * (T.early && this.wave <= 2 ? T.early : 1);
+    let speed = T.speed * this.speedMul * (e.elite ? 1.15 : 1) * (T.early && this.wave <= 2 ? T.early : 1)
+      * (this.level.inWater(e.pos.x, e.pos.z, e.pos.y) ? WATER_SLOW : 1);
     let moved = 0;
 
     if (e.stun > 0) {

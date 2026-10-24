@@ -18,6 +18,8 @@ const REVIVE_RANGE = 2.2;
 // fire pots: thrown in an arc, they bounce and blow up after a fuse
 const GRAVITY_GRENADE = 18;
 const GRENADE = { speed: 15, lift: 3.5, fuse: 2, radius: 5, dmg: 170, playerDmg: 95, size: 0.12 };
+// powder kegs of the map (pirate port): a standing cylinder; a shot or a blast nearby sets one off
+export const KEG = { radius: 0.42, height: 1.0, blast: 5.5, dmg: 220, playerDmg: 70, chain: [0.12, 0.3] };
 // Halo: kills less than 4 s apart chain into a multi-kill
 export const MULTI_WINDOW = 4;
 const REVIVE_TIME = 3;
@@ -44,6 +46,8 @@ export class Sim {
     this.weather = 'clear'; // 'sandstorm' once the pharaoh enters his second phase
     this.strikes = []; // orb rain about to land: { id, pos, radius, dmg, t }
     this.grenades = []; // fire pots in flight: { id, pos, vel, fuse, owner }
+    // the map's powder kegs; fuse: seconds before a keg caught in a blast goes off too
+    this.kegs = level.kegs.map((pos, id) => ({ id, pos: pos.clone(), alive: true, fuse: null, by: null }));
     // the nav grid belongs to the shared Level: forget the previous game's targets
     level.nav.lastCell = null;
     level.nav.timer = 0;
@@ -103,6 +107,7 @@ export class Sim {
     this.enemies.update(dt * this.timeScale);
     this.#updateStrikes(dt * this.timeScale);
     this.#updateGrenades(dt * this.timeScale);
+    this.#updateKegs(dt * this.timeScale);
     if (!this.over) this.mode.update(dt);
   }
 
@@ -167,6 +172,7 @@ export class Sim {
     this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1), enemy.T.boss ? this.world.texts.bossKill : enemy.elite ? 'ÉLITE ABATTU' : 'ÉLIMINATION');
     if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, 'KHÉPESH');
     if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, 'GRENADE');
+    if (cause === 'keg') this.addScore(killer, BONUS.grenadeKill, 'BARIL');
   }
 
   // Every kill goes through here for the medals: multi-kills (kills less than MULTI_WINDOW apart)
@@ -217,6 +223,12 @@ export class Sim {
     const maxD = wh ? wh.dist : 250;
     const eh = this.enemies.raycast(origin, dir, maxD);
     const ph = this.pvp ? this.#raycastPlayers(origin, dir, eh ? eh.dist : maxD, player) : null;
+    // a keg in the way blows up (players come first: the arena has no kegs)
+    const kh = ph ? null : this.#raycastKegs(origin, dir, eh ? eh.dist : maxD);
+    if (kh) {
+      this.blowKeg(kh.keg, player);
+      return { point: kh.point };
+    }
     if (ph) {
       const falloff = def.id === 'shotgun' ? THREE.MathUtils.clamp(1 - (ph.dist - 7) / 25, 0.25, 1) : ph.dist > 45 ? 0.75 : 1;
       const dmg = def.dmg * (PVP_DMG[def.id] ?? 1) * (ph.head ? 2 : 1) * falloff;
@@ -239,6 +251,49 @@ export class Sim {
       return { point: wh.point };
     }
     return { point: origin.clone().addScaledVector(dir, 250) };
+  }
+
+  #raycastKegs(origin, dir, maxDist) {
+    let best = null;
+    for (const k of this.kegs) {
+      if (!k.alive) continue;
+      const t = rayCylinder(origin, dir, k.pos, KEG.radius, k.pos.y, k.pos.y + KEG.height);
+      if (t !== null && t < maxDist && (!best || t < best.dist)) best = { keg: k, dist: t, point: origin.clone().addScaledVector(dir, t) };
+    }
+    return best;
+  }
+
+  // ---------- powder kegs ----------
+  blowKeg(k, by = null) {
+    if (!k.alive) return;
+    k.alive = false;
+    k.fuse = null;
+    const owner = by && this.players.has(by.id) ? by : null;
+    this.#blast(k.pos.clone().setY(k.pos.y + 0.5), { radius: KEG.blast, dmg: KEG.dmg, playerDmg: KEG.playerDmg }, owner, 'keg');
+  }
+
+  // the kegs stand again (at each wave)
+  resetKegs() {
+    for (const k of this.kegs) { k.alive = true; k.fuse = null; k.by = null; }
+  }
+
+  // kegs caught in a blast go off a moment later, one after the other
+  #lightKegs(pos, radius, by) {
+    for (const k of this.kegs) {
+      if (!k.alive || k.fuse !== null) continue;
+      if (k.pos.clone().setY(k.pos.y + 0.5).distanceTo(pos) > radius) continue;
+      const [a, b] = KEG.chain;
+      k.fuse = a + Math.random() * (b - a);
+      k.by = by;
+    }
+  }
+
+  #updateKegs(dt) {
+    for (const k of this.kegs) {
+      if (k.fuse === null) continue;
+      k.fuse -= dt;
+      if (k.fuse <= 0) this.blowKeg(k, k.by);
+    }
   }
 
   // the other players, as standing cylinders with the head on top
@@ -271,6 +326,7 @@ export class Sim {
   // A mummy blowing up: hurts the players and the other enemies around, with knockback.
   explode(pos, cfg, killer) {
     this.emit('explosion', { pos: pos.clone(), radius: cfg.radius });
+    this.#lightKegs(pos, cfg.radius, killer);
     for (const p of this.alivePlayers()) {
       const d = p.center.distanceTo(pos);
       if (d > cfg.radius) continue;
@@ -323,10 +379,15 @@ export class Sim {
   }
 
   #grenadeBlast(g) {
-    const pos = g.pos.clone();
-    const R = GRENADE.radius;
     const owner = this.players.has(g.owner.id) ? g.owner : null;
-    this.emit('explosion', { pos: pos.clone(), radius: R, kind: 'grenade' });
+    this.#blast(g.pos.clone(), { radius: GRENADE.radius, dmg: GRENADE.dmg, playerDmg: GRENADE.playerDmg }, owner, 'grenade');
+  }
+
+  // A fire pot or a powder keg going off (kind 'grenade' or 'keg'): walls shelter from it.
+  #blast(pos, cfg, owner, kind) {
+    const R = cfg.radius;
+    this.emit('explosion', { pos: pos.clone(), radius: R, kind });
+    this.#lightKegs(pos, R, owner);
     const from = pos.clone().setY(pos.y + 0.3);
     const exposed = (p) => this.level.lineOfSight(from, p);
     for (const e of [...this.enemies.list]) {
@@ -336,15 +397,15 @@ export class Sim {
       if (d > R + e.T.radius || !exposed(c)) continue;
       const k = 1 - Math.min(1, d / (R + e.T.radius)) * 0.6;
       e.knock.copy(e.pos).sub(pos).setY(0).normalize().multiplyScalar(e.T.big ? 3 : 10);
-      this.enemies.damage(e, GRENADE.dmg * k, e.pos.clone().sub(pos).normalize(), owner, 'grenade');
+      this.enemies.damage(e, cfg.dmg * k, e.pos.clone().sub(pos).normalize(), owner, kind);
     }
-    // the thrower is hurt by their own pot; other players only in the arena
+    // the thrower is hurt by their own pot, other players only in the arena; a keg hurts everyone near
     for (const p of this.alivePlayers()) {
-      if (p !== owner && !this.pvp) continue;
+      if (kind === 'grenade' && p !== owner && !this.pvp) continue;
       const d = p.center.distanceTo(pos);
       if (d > R || !exposed(p.center)) continue;
       const k = 1 - (d / R) * 0.6;
-      this.hitPlayer(p, GRENADE.playerDmg * k, pos, 'explosion', null, owner ? { by: owner, weapon: 'grenade' } : null);
+      this.hitPlayer(p, cfg.playerDmg * k, pos, 'explosion', null, owner ? { by: owner, weapon: kind } : null);
       p.impulse(p.pos.clone().sub(pos).setY(0).normalize().multiplyScalar(8 * k).add(new THREE.Vector3(0, 3.5 * k, 0)));
     }
   }

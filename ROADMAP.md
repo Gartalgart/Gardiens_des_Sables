@@ -172,6 +172,22 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 51 tests automatisés, dont 4 nouveaux : fiches complètes, univers inconnu, navigation sur le port, cinq vagues des pirates jusqu'à la victoire.
 - **Validation :** Gardiens des Sables se joue exactement comme avant ; l'univers Pirates apparaît au menu. Validée le 24/10/2026.
 
+### U1 Phase 2 — La carte du port et son ambiance `[~]`
+- [x] **Le port modélisé dans Blender** (`blender/pirates/port.py`, fichier `blender/pirates/port.blend`) :
+  - falaises tout autour de la crique, un canyon d'où arrivent les ennemis, la grotte au trésor (coffre, tas d'or, crânes) ;
+  - un village en ruine : quatre maisons où l'on entre (une sans toit, une au toit effondré), un puits, des étals, et une taverne pleine avec une terrasse sur le toit ;
+  - le quai en planches et deux pontons au-dessus de l'eau, avec garde-corps au-dessus de l'eau profonde ;
+  - le galion échoué : escalier depuis la plage, pont principal avec mâts, voiles et canons, gaillard arrière surélevé avec la barre ;
+  - 17 lanternes de navire (les lumières de feu), 6 points d'apparition.
+- [x] **Une seule hauteur de sol par endroit :** la grille de navigation ne connaît qu'un sol par case. Une cale sous le pont ou une salle sous la terrasse cacheraient ces étages aux ennemis : la coque, le gaillard et la taverne sont donc pleins. Rampes latérales sur les escaliers (comme au temple du désert), pour qu'on n'y monte que par la première marche.
+- [x] **L'eau :** une zone d'eau peu profonde (`Z_Water`) ralentit joueurs et ennemis (×0,6) et fait des éclaboussures aux pas ; au-delà, l'eau profonde est fermée par un mur invisible (`C_*`). La mer est dessinée jusqu'à l'horizon, avec une houle et le reflet de la lune.
+- [x] **Les barils de poudre** (10 sur la carte, `KEG_n`) : un tir les fait exploser (dégâts aux ennemis et aux joueurs proches), une explosion voisine les fait sauter en chaîne, et ils reviennent à chaque vague. Points « BARIL » pour les ennemis tués ainsi.
+- [x] **Ambiance :** ressac sur la plage, lanternes chaudes, objets éparpillés sur le sable (cordages, bouteilles, planches, crânes, carapaces de crabe, palmiers), choisis par l'univers.
+- [x] **Mode Exploration** sur l'écran titre : la carte sans ennemis, pour la visiter.
+- [x] **Export :** la sécurité de Blender interdit d'écrire des fichiers depuis Python ; la carte est exportée en `level.glb` et `scripts/level-json-from-glb.mjs` en tire `level.json` (même règle que `blender/export_level_json.py`, vérifiée identique sur le désert).
+- [x] 59 tests automatisés, dont 11 nouveaux : un chacal rejoint le joueur depuis chaque apparition et sur chaque hauteur (ponton, pont, gaillard, terrasse, grotte, canyon), l'eau ralentit, les barils explosent en chaîne et reviennent.
+- **Validation :** se promener sur le port en mode Exploration (eau, barils, ambiance), puis une partie en Vagues.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).

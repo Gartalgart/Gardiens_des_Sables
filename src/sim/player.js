@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STEP, EYE, PLAYER_RADIUS, PLAYER_HEIGHT, GRAVITY } from './constants.js';
+import { STEP, EYE, PLAYER_RADIUS, PLAYER_HEIGHT, GRAVITY, WATER_SLOW } from './constants.js';
 import { Loadout } from './weapons.js';
 import { baseMods, freshWaveStats } from './progression.js';
 
@@ -76,7 +76,8 @@ export class PlayerSim {
     if (len > 1) { fx /= len; fz /= len; }
 
     this.sprinting = cmd.sprint && fz < 0 && !aiming && this.onGround;
-    const speed = (aiming ? 3.2 : this.sprinting ? 8.8 : 5.6) * this.mods.speed;
+    this.wading = level.inWater(this.pos.x, this.pos.z, this.pos.y);
+    const speed = (aiming ? 3.2 : this.sprinting ? 8.8 : 5.6) * this.mods.speed * (this.wading ? WATER_SLOW : 1);
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wx = (fx * cos + fz * sin) * speed;
     const wz = (-fx * sin + fz * cos) * speed;
@@ -116,7 +117,7 @@ export class PlayerSim {
     if (this.moving) {
       this.stepDist += hv * dt;
       const stride = this.sprinting ? 2.6 : 2.1;
-      if (this.stepDist > stride) { this.stepDist = 0; this.sim.emit('step', { pid: this.id, sprint: this.sprinting }); }
+      if (this.stepDist > stride) { this.stepDist = 0; this.sim.emit('step', { pid: this.id, sprint: this.sprinting, water: this.wading }); }
     }
 
     // recoil recovers over time
