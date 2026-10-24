@@ -65,8 +65,9 @@ export class Level {
   }
 
   // Move a body (feet position) horizontally with axis-separated box resolution.
+  // blocked.xBox / zBox: the box that stopped the move on that axis
   moveBody(pos, dx, dz, r, h) {
-    const blocked = { x: false, z: false };
+    const blocked = { x: false, z: false, xBox: null, zBox: null };
     for (const axis of ['x', 'z']) {
       const d = axis === 'x' ? dx : dz;
       if (d === 0) continue;
@@ -76,6 +77,7 @@ export class Level {
         if (pos.x + r <= b.min.x || pos.x - r >= b.max.x || pos.z + r <= b.min.z || pos.z - r >= b.max.z) continue;
         pos[axis] = d > 0 ? b.min[axis] - r - 1e-4 : b.max[axis] + r + 1e-4;
         blocked[axis] = true;
+        blocked[axis + 'Box'] = b;
       }
     }
     pos.x = THREE.MathUtils.clamp(pos.x, -WORLD_LIMIT, WORLD_LIMIT);

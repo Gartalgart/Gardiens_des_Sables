@@ -143,6 +143,19 @@ describe('houses', () => {
     expect(e.pos.distanceTo(player.pos)).toBeLessThan(2.5);
   });
 
+  it('slower walkers (priest, mummy) get past the parapet at the top of those stairs', () => {
+    for (const type of ['shooter', 'mummy']) {
+      const { sim, player } = newGame();
+      player.pos.set(20.5, 4.99, 8.7);
+      player.health = player.maxHealth = 1e9;
+      const e = pacify(sim.enemies.spawn(type, new THREE.Vector3(28, 0, 16)));
+      e.T = { ...e.T, prime: null };
+      run(sim, 15);
+      expect(e.pos.y).toBeGreaterThan(4.5);
+      expect(e.pos.distanceTo(player.pos)).toBeLessThan(2.5);
+    }
+  });
+
   it('scarabs do not climb onto a roof to reach a player inside', () => {
     const { sim, player } = newGame();
     player.pos.set(H1.x + 1, 0, H1.z);

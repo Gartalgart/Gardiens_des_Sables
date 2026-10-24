@@ -303,6 +303,7 @@ export class Enemies {
         const mz = (move ? move.z * speed : 0) * dt + sep.z * 5 * dt;
         const bx = e.pos.x, bz = e.pos.z;
         const blocked = this.level.moveBody(e.pos, mx, mz, T.radius, T.height);
+        this.#roundCorner(e, blocked, mx, mz, speed * dt);
         e.lastBlocked = blocked.x || blocked.z;
         moved = Math.hypot(e.pos.x - bx, e.pos.z - bz) / dt;
       }
@@ -347,6 +348,22 @@ export class Enemies {
 
   // Scarabs follow the climbing layer and ignore box collisions: facing a wall they crawl up it,
   // past a roof edge they drop down.
+  // Stopped by a wall the body only grazes on the other axis (the end of a parapet beside a doorway):
+  // slip sideways past its edge rather than stay pressed against it. Only when that wall stands across
+  // the way: sliding along a wall is the move itself.
+  #roundCorner(e, blocked, mx, mz, step) {
+    const r = e.T.radius;
+    for (const [axis, other] of [['x', 'z'], ['z', 'x']]) {
+      const b = blocked[axis + 'Box'];
+      if (!b || blocked[other] || Math.abs(axis === 'x' ? mx : mz) < Math.abs(axis === 'x' ? mz : mx)) continue;
+      const pastMin = e.pos[other] + r - b.min[other], pastMax = b.max[other] - (e.pos[other] - r);
+      const graze = Math.min(pastMin, pastMax);
+      if (graze <= 0 || graze > 0.2) continue;
+      const d = Math.min(graze + 1e-3, step) * (pastMin < pastMax ? -1 : 1);
+      this.level.moveBody(e.pos, other === 'x' ? d : 0, other === 'z' ? d : 0, r, e.T.height);
+    }
+  }
+
   #climb(e, move, speed, sep, dt) {
     const nav = this.level.nav;
     const mx = (move ? move.x * speed : 0) * dt + sep.x * 5 * dt;
