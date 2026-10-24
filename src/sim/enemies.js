@@ -1,47 +1,7 @@
 import * as THREE from 'three';
 
-// Enemy rules. Colours and models are the client's business (see src/view/enemyView.js).
-export const TYPES = {
-  runner: {
-    hp: 70, speed: 7.2, radius: 0.4, height: 1.75, headY: 1.3,
-    early: 0.75, // speed factor in waves 1-2, so a new player has time to learn
-    melee: { range: 1.7, dmg: 11, windup: 0.18, cd: 0.75 },
-    leap: { min: 3.5, max: 8, dur: 0.5, dmg: 15, cd: [2.2, 3.8] },
-  },
-  shooter: {
-    hp: 95, speed: 4.2, radius: 0.45, height: 1.95, headY: 1.55,
-    melee: { range: 1.7, dmg: 9, windup: 0.25, cd: 1.0 },
-    ranged: { min: 8, max: 28, cd: 1.7, windup: 0.35, speed: 22, dmg: 13, count: 1, spread: 0 },
-    muzzle: [0.36, 2.2, 0.3], // staff orb, in model space (model faces +Z)
-  },
-  tank: {
-    hp: 480, speed: 2.9, radius: 0.95, height: 2.75, headY: 2.25,
-    melee: { range: 2.8, dmg: 30, windup: 0.45, cd: 1.5 },
-    charge: { min: 6, max: 22, wind: 0.65, speed: 11, dur: 1.4, dmg: 26, cd: [5, 7] },
-    big: true,
-  },
-  mummy: {
-    hp: 110, speed: 4.6, radius: 0.42, height: 1.8, headY: 1.38,
-    melee: { range: 1.6, dmg: 8, windup: 0.3, cd: 1.2 },
-    // kamikaze: primes near a player, then blows up; it also blows up however it dies
-    prime: { range: 3.2, dur: 1.0 },
-    explode: { radius: 4.5, dmg: 42, enemyDmg: 160 },
-  },
-  scarab: {
-    hp: 18, speed: 7.8, radius: 0.3, height: 0.5, headY: 0.35,
-    melee: { range: 1.1, dmg: 4, windup: 0.12, cd: 0.55 },
-    climber: true, // goes over walls and roofs
-    load: 0.25, // a swarm of four counts as one enemy for the spawn limit
-  },
-  boss: {
-    hp: 3400, speed: 2.7, radius: 1.3, height: 4.5, headY: 3.4,
-    melee: { range: 3.8, dmg: 38, windup: 0.55, cd: 1.8 },
-    ranged: { min: 0, max: 50, cd: 1.9, windup: 0.55, speed: 18, dmg: 15, count: 5, spread: 0.16 },
-    slam: { range: 7, dmg: 30, windup: 0.8, cd: 5 },
-    muzzle: [1.0, 4.6, 0.15], // scepter orb, including the boss's hover
-    big: true, boss: true,
-  },
-};
+// Enemy rules. Each universe gives its enemy types (src/worlds/); colours and models are the
+// client's business (see src/view/enemyView.js).
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -69,7 +29,7 @@ export class Enemies {
 
   // opts.elite: golden elite — twice the health, faster, harder hitting, always drops something
   spawn(type, position, opts = {}) {
-    const T = TYPES[type];
+    const T = this.sim.world.enemies[type];
     const elite = !!opts.elite;
     const hp = T.hp * this.hpMul * (elite ? 2 : 1) * (T.boss ? this.sim.playerScale : 1);
     const e = {

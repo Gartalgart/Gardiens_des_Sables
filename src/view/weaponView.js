@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { findPart, baseName } from '../assets.js';
 import { makeGlowTexture } from './worldView.js';
-import { WEAPONS } from '../sim/weapons.js';
 
 // How each weapon sits on screen. Rules (damage, ammo...) are in src/sim/weapons.js.
 const VIEW = {
@@ -34,14 +33,15 @@ const pulse = (x, a, b) => {
 
 // First-person view model of the local player's loadout.
 export class WeaponView {
-  constructor(assets, vmScene, effects, flashLight) {
+  // weapons: the universe's weapon rules (src/worlds/), in slot order
+  constructor(assets, vmScene, effects, flashLight, weapons) {
     this.effects = effects;
     this.flashLight = flashLight;
     this.root = new THREE.Group();
     vmScene.add(this.root);
 
     const flashTex = makeGlowTexture('#ffd27a', 0.0);
-    this.items = WEAPONS.map((def) => {
+    this.items = weapons.map((def) => {
       const view = VIEW[def.id];
       const model = assets[def.id].clone(true);
       model.scale.setScalar(view.scale);

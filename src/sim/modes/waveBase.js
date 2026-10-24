@@ -1,11 +1,8 @@
 import * as THREE from 'three';
 import { drawCards, pickObjective, freshWaveStats, objectiveDone, BONUS } from '../progression.js';
 
-const SWARM = 5; // scarabs come out of the sand together
 const ELITE_FROM_WAVE = 3;
 const ELITE_CHANCE = 0.1;
-// weapon unlocked when a wave is cleared, ready for the next one
-export const UNLOCKS = { 2: 'rifle', 3: 'shotgun', 5: 'sniper' };
 const CARD_TIMEOUT = 45; // a player who never picks gets a random card (keeps co-op games moving)
 
 // Everything the wave modes share: spawning a wave's queue, the break between waves, weapon
@@ -33,7 +30,7 @@ export class WaveBase {
   nextWaveTitle(n) { return `Vague ${n}`; }
 
   start() {
-    this.sim.emit('banner', { title: 'Vague 1', sub: 'Khépesh [1] et pistolet [2] — survivez aux gardiens', duration: 3 });
+    this.sim.emit('banner', { title: 'Vague 1', sub: this.sim.world.texts.start, duration: 3 });
     this.sim.emit('horn', { victory: false });
   }
 
@@ -44,19 +41,22 @@ export class WaveBase {
     this.wave = n;
     sim.enemies.setWave(n);
     const q = [];
-    let scarabs = 0;
+    const types = sim.world.enemies;
+    const swarms = []; // [type, count] of the types that come as a swarm (scarabs)
     for (let [type, count] of Object.entries(this.composition(n))) {
       // co-op: more enemies for more players (still a single pharaoh)
       if (type !== 'boss') count = Math.round(count * sim.playerScale);
-      if (type === 'scarab') { scarabs = count; continue; }
+      if (types[type].swarm) { swarms.push([type, count]); continue; }
       for (let i = 0; i < count; i++) q.push(type);
     }
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
-    // scarabs are inserted as blocks: a swarm rises together
-    while (scarabs > 0) {
-      const k = Math.min(SWARM, scarabs);
-      q.splice(1 + Math.floor(Math.random() * q.length), 0, ...Array(k).fill('scarab'));
-      scarabs -= k;
+    // swarms are inserted as blocks: a swarm rises together
+    for (let [type, left] of swarms) {
+      while (left > 0) {
+        const k = Math.min(types[type].swarm, left);
+        q.splice(1 + Math.floor(Math.random() * q.length), 0, ...Array(k).fill(type));
+        left -= k;
+      }
     }
     // the boss arrives first so the fight is about him
     const bi = q.indexOf('boss');
@@ -92,11 +92,11 @@ export class WaveBase {
     if (this.queue.length && this.spawnTimer <= 0 && sim.enemies.load < (D.maxAlive + this.extraAlive(this.wave)) * sim.playerScale) {
       const type = this.queue.shift();
       const at = sim.pickSpawn(type);
-      if (type === 'scarab') {
+      if (sim.world.enemies[type].swarm) {
         sim.enemies.spawn(type, at);
-        while (this.queue[0] === 'scarab') {
+        while (this.queue[0] === type) {
           this.queue.shift();
-          sim.enemies.spawn('scarab', at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.5, 0, (Math.random() - 0.5) * 2.5)));
+          sim.enemies.spawn(type, at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.5, 0, (Math.random() - 0.5) * 2.5)));
         }
       } else {
         const elite = type !== 'boss' && Math.random() < this.eliteChance(this.wave);
@@ -133,7 +133,7 @@ export class WaveBase {
     const next = n + 1;
     let unlocked = null;
     for (const p of sim.players.values()) {
-      const u = UNLOCKS[next] && p.loadout.unlock(UNLOCKS[next]);
+      const u = sim.world.unlocks[next] && p.loadout.unlock(sim.world.unlocks[next]);
       unlocked = unlocked || u;
       p.loadout.addAmmo(0.5);
       p.loadout.addGrenades(1);
@@ -145,7 +145,7 @@ export class WaveBase {
       }
     }
     const sub = unlocked ? `Nouvelle arme : ${unlocked.def.name} [${unlocked.slot}]`
-      : this.composition(next).boss ? 'Le pharaon s\'éveille…' : 'Munitions réapprovisionnées';
+      : this.composition(next).boss ? sim.world.texts.bossWakes : 'Munitions réapprovisionnées';
     sim.emit('banner', { title: this.nextWaveTitle(next), sub, duration: 4.5 });
     if (unlocked) sim.emit('unlock', { weapon: unlocked.def.id });
     sim.emit('horn', { victory: false });

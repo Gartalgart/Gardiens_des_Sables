@@ -8,6 +8,7 @@ import { SandboxMode } from './modes/sandbox.js';
 import { SurvivalMode } from './modes/survival.js';
 import { ArenaMode } from './modes/arena.js';
 import { applyUpgrade, KILL_POINTS, DIFFICULTY_SCORE, BONUS } from './progression.js';
+import { getWorld } from '../worlds/index.js';
 
 const MODES = { waves: WaveMode, survival: SurvivalMode, sandbox: SandboxMode, arena: ArenaMode };
 // weapon damage against players (arena), as a share of the damage against guardians:
@@ -25,8 +26,10 @@ const REVIVE_TIME = 3;
 // (solo) and in a Node server (multiplayer). Input: one command per player per step.
 // Output: state that clients read, plus a list of events (sounds, effects, HUD messages).
 export class Sim {
-  constructor(level, { difficulty = 'normal', mode = 'waves', arena = {} } = {}) {
+  // world: the universe's id (src/worlds/); the level given must be that universe's map
+  constructor(level, { difficulty = 'normal', mode = 'waves', arena = {}, world } = {}) {
     this.level = level;
+    this.world = getWorld(world);
     this.difficulty = makeDifficulty(difficulty);
     this.players = new Map();
     this.enemies = new Enemies(this);
@@ -161,7 +164,7 @@ export class Sim {
   }
 
   scoreKill(killer, enemy, cause) {
-    this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1), enemy.T.boss ? 'PHARAON ABATTU' : enemy.elite ? 'ÉLITE ABATTU' : 'ÉLIMINATION');
+    this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1), enemy.T.boss ? this.world.texts.bossKill : enemy.elite ? 'ÉLITE ABATTU' : 'ÉLIMINATION');
     if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, 'KHÉPESH');
     if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, 'GRENADE');
   }
@@ -351,7 +354,7 @@ export class Sim {
     this.weather = 'sandstorm';
     this.emit('bossPhase2', { id: boss.id, pos: boss.pos.clone() });
     this.emit('weather', { kind: 'sandstorm' });
-    this.emit('banner', { title: '', sub: 'Le pharaon déchaîne la tempête !', duration: 2.5 });
+    this.emit('banner', { title: '', sub: this.world.texts.bossStorm, duration: 2.5 });
     this.emit('horn', { victory: false });
   }
 
@@ -505,15 +508,15 @@ export class Sim {
     return true;
   }
 
-  // the boss calls four jackals around him
+  // the boss calls four of his minions around him
   summon(boss) {
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2;
       const p = boss.pos.clone().add(new THREE.Vector3(Math.cos(a) * 3.5, 0, Math.sin(a) * 3.5));
       p.y = this.level.groundAt(p.x, p.z, 0.4, boss.pos.y + 0.5);
-      this.enemies.spawn('runner', p);
+      this.enemies.spawn(boss.T.summon, p);
     }
-    this.emit('banner', { title: '', sub: 'Le pharaon appelle ses chacals !', duration: 2 });
+    this.emit('banner', { title: '', sub: this.world.texts.bossSummon, duration: 2 });
     this.emit('horn', { victory: false });
   }
 

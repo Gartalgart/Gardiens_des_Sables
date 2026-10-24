@@ -22,7 +22,7 @@ describe('protocol', () => {
     for (let i = 0; i < 90; i++) cmds.push({ ...emptyCommand(), moveZ: -1, moveX: i > 40 ? 1 : 0, sprint: i < 30, jump: i === 50, yaw: i * 0.01, fire: i % 20 === 0 });
     // the server runs the first 60 commands, the client the same 60 and then 30 more
     for (const c of cmds.slice(0, 60)) { sim.stepPlayer(server, c, 1 / 60); sim.stepWorld(1 / 60); }
-    const ctx = { level, difficulty: sim.difficulty, time: sim.time, emit() {}, fireWeapon() {}, meleeAttack: () => 0 };
+    const ctx = { level, world: sim.world, difficulty: sim.difficulty, time: sim.time, emit() {}, fireWeapon() {}, meleeAttack: () => 0 };
     const client = new PlayerSim('p1', ctx);
     readPlayer(client, JSON.parse(JSON.stringify(writePlayer(server))));
     for (const c of cmds.slice(60)) { client.move(1 / 60, c, client.loadout.adsT > 0.5); client.loadout.update(1 / 60, c); }

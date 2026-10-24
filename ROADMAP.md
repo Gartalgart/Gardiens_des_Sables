@@ -160,6 +160,18 @@ Choix validés : médailles en anglais comme dans Halo, séries d'éliminations 
 - [x] 45 tests automatisés, dont 5 nouveaux : trajectoire et explosion des grenades, points, éliminations multiples, séries, et la balle du fusil de précision qui traverse.
 - **Validation :** une partie solo et une partie dans l'arène. Validée le 16/10/2026.
 
+## Nouveaux univers — U1 · L'Île des pirates maudits
+Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le document « Univers du FPS — idées et plan U1 » (https://claude.ai/artifact/WWpyYvVv1c2J47Cwv3isxe).
+
+### U1 Phase 1 — Socle multi-univers `[x]`
+- [x] **Une fiche par univers** dans `src/worlds/` (`sables.js`, `pirates.js`, `index.js`) : fichiers de la carte, armes et déblocages, types d'ennemis, vagues, survie, gardiens de l'arène, textes, ambiance de la nuit, caméra du menu.
+- [x] **La simulation lit l'univers** (`sim.world`) au lieu de tables écrites en dur. Le comportement d'un ennemi vient de ses champs (mêlée, tir, bond, charge, explosion, grimpeur, essaim, boss) : un nouvel univers habille les mêmes comportements avec ses modèles et ses chiffres. Le boss s'appelle toujours `boss`.
+- [x] **Choix de l'univers sur l'écran titre**, enregistré dans le navigateur ; en changer recharge la page. Titre, texte d'accroche, ciel, brouillard, lune et lanternes suivent l'univers. Classement séparé par univers (le désert garde ses anciens scores).
+- [x] **Pirates jouable avec une carte provisoire** (`scripts/pirates-stub-level.mjs` → `public/models/pirates/level.json`, dessinée à partir des boîtes de collision) et, en attendant les phases 3 à 6, les armes et les ennemis du désert.
+- [x] Le multijoueur reste réservé au désert (le serveur ne connaît que sa carte).
+- [x] 51 tests automatisés, dont 4 nouveaux : fiches complètes, univers inconnu, navigation sur le port, cinq vagues des pirates jusqu'à la victoire.
+- **Validation :** Gardiens des Sables se joue exactement comme avant ; l'univers Pirates apparaît au menu. Validée le 24/10/2026.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).

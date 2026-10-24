@@ -3,13 +3,17 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // What the level looks like: merged meshes, sky, moon, braziers and their lights.
 // Collisions and navigation live in the simulation (src/sim/level.js).
+// look: the universe's ambiance (fog, sky, moon, fire colours; see src/worlds/).
 export class WorldView {
-  constructor(scene, levelRoot, level) {
+  constructor(scene, levelRoot, level, look) {
     this.scene = scene;
+    this.look = look;
     this.braziers = level.braziers;
     this.flames = [];
 
-    this.#buildLevel(levelRoot);
+    // a universe whose map is not modelled yet is drawn from its collision boxes
+    if (levelRoot) this.#buildLevel(levelRoot);
+    else this.#buildFromBoxes(level);
     this.#buildSky();
     this.#buildLights();
     this.#buildStorm();
@@ -102,31 +106,54 @@ export class WorldView {
     }
   }
 
+  // Stand-in for a map still to be modelled: sand under everything and plain wooden blocks.
+  #buildFromBoxes(level) {
+    const ground = new THREE.MeshStandardMaterial({ map: makeSandTexture(), color: 0x6a6a6a, roughness: 1, flatShading: true });
+    const plane = new THREE.PlaneGeometry(120, 120).rotateX(-Math.PI / 2);
+    addPlanarUVs(plane, 6);
+    const floor = new THREE.Mesh(plane, ground);
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5b4330, roughness: 0.95, flatShading: true });
+    const geos = level.boxes.map((b) => {
+      const size = b.getSize(new THREE.Vector3()), mid = b.getCenter(new THREE.Vector3());
+      return new THREE.BoxGeometry(size.x, size.y, size.z).translate(mid.x, mid.y, mid.z).deleteAttribute('uv');
+    });
+    const mesh = new THREE.Mesh(mergeGeometries(geos, false), wood);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+  }
+
   #buildSky() {
-    this.scene.fog = new THREE.FogExp2(0x0c1124, 0.016);
+    const L = this.look;
+    this.scene.fog = new THREE.FogExp2(L.fog.color, L.fog.density);
     const skyGeo = new THREE.SphereGeometry(450, 32, 16);
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
       fog: false,
       uniforms: {
-        moonDir: { value: new THREE.Vector3(-0.45, 0.55, -0.7).normalize() },
+        moonDir: { value: new THREE.Vector3(...L.moon.dir).normalize() },
+        zenith: { value: new THREE.Vector3(...L.sky.zenith) },
+        horizon: { value: new THREE.Vector3(...L.sky.horizon) },
+        haze: { value: new THREE.Vector3(...L.sky.haze) },
+        glow: { value: new THREE.Vector3(...L.sky.glow) },
         storm: { value: 0 },
         stormColor: { value: new THREE.Color(0x4a3522) },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `
         varying vec3 vDir; uniform vec3 moonDir; uniform float storm; uniform vec3 stormColor;
+        uniform vec3 zenith; uniform vec3 horizon; uniform vec3 haze; uniform vec3 glow;
         void main(){
           float h = max(vDir.y, 0.0);
-          vec3 zenith = vec3(0.008, 0.012, 0.035);
-          vec3 horizon = vec3(0.07, 0.085, 0.16);
           vec3 col = mix(horizon, zenith, pow(h, 0.45));
           // faint warm haze opposite to the moon, like a dying sunset
           float warm = pow(max(dot(normalize(vec3(vDir.x, 0.0, vDir.z)), vec3(0.6, 0.0, 0.8)), 0.0), 6.0) * (1.0 - smoothstep(0.0, 0.25, h));
-          col += vec3(0.16, 0.06, 0.02) * warm;
+          col += haze * warm;
           float m = max(dot(vDir, moonDir), 0.0);
-          col += vec3(0.25, 0.3, 0.45) * pow(m, 60.0) * 0.6;
+          col += glow * pow(m, 60.0) * 0.6;
           if (vDir.y < 0.0) col = horizon * 0.9;
           // the sandstorm swallows the sky, a little lighter towards the zenith
           col = mix(col, stormColor * (0.8 + 0.25 * h), storm);
@@ -146,12 +173,12 @@ export class WorldView {
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xcfd8ff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85 }));
+    const stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: L.stars, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85 }));
     this.scene.add(stars);
     this.stars = stars;
 
     // moon disc
-    const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowTexture('#f4f1e6', 0.42), fog: false, depthWrite: false }));
+    const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowTexture(L.moon.disc, 0.42), fog: false, depthWrite: false }));
     moon.position.copy(skyMat.uniforms.moonDir.value).multiplyScalar(400);
     moon.scale.setScalar(34);
     this.scene.add(moon);
@@ -159,10 +186,11 @@ export class WorldView {
   }
 
   #buildLights() {
-    this.scene.add(new THREE.HemisphereLight(0x4a5c9a, 0x161420, 1.1));
+    const L = this.look;
+    this.scene.add(new THREE.HemisphereLight(L.hemi.sky, L.hemi.ground, L.hemi.intensity));
 
-    const moon = new THREE.DirectionalLight(0xa8bcff, 1.5);
-    moon.position.set(-45, 55, -70);
+    const moon = new THREE.DirectionalLight(L.moon.light, L.moon.intensity);
+    moon.position.set(...L.moon.dir).multiplyScalar(100);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
     this.moon = moon;
@@ -173,12 +201,12 @@ export class WorldView {
     this.scene.add(moon);
     this.scene.add(moon.target);
 
-    const glow = makeGlowTexture('#ffb35a', 0.0);
+    const glow = makeGlowTexture(L.fire.glow, 0.0);
     this.fireLights = [];
     this.lightTimer = 0;
     this.setFireLightCount(6);
     for (const p of this.braziers) {
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xff9a40, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.22 }));
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: L.fire.halo, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.22 }));
       halo.position.copy(p).add(new THREE.Vector3(0, -0.2, 0));
       halo.scale.setScalar(2.4);
       this.scene.add(halo);
@@ -191,7 +219,7 @@ export class WorldView {
     for (const l of this.fireLights) this.scene.remove(l);
     this.fireLights = [];
     for (let i = 0; i < Math.min(n, this.braziers.length); i++) {
-      const light = new THREE.PointLight(0xff8a3a, 0, 20, 1.8);
+      const light = new THREE.PointLight(this.look.fire.light, 0, 20, 1.8);
       light.userData = { brazier: -1, fade: 0, phase: Math.random() * 10 };
       this.scene.add(light);
       this.fireLights.push(light);

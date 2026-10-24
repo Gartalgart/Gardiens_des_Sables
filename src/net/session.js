@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PlayerSim } from '../sim/player.js';
-import { Enemies, TYPES, rayCylinder } from '../sim/enemies.js';
+import { Enemies, rayCylinder } from '../sim/enemies.js';
+import { getWorld } from '../worlds/index.js';
 import { PLAYER_RADIUS, PLAYER_HEIGHT } from '../sim/constants.js';
 import { makeDifficulty } from '../sim/difficulty.js';
 import { readPlayer, reviveVectors, PORT } from './protocol.js';
@@ -23,8 +24,10 @@ export function defaultServer() {
 //   server's state is taken and the commands the server has not run yet are replayed on top;
 // - the other players and the enemies are drawn a little in the past, between two snapshots.
 export class NetSession {
+  // co-op is desert-only for now: the server only knows Gardiens des Sables' map
   constructor(level) {
     this.level = level;
+    this.world = getWorld('sables');
     this.ws = null;
     this.id = null;
     this.room = null;
@@ -98,6 +101,7 @@ export class NetSession {
     const self = this;
     this.ctx = {
       level: this.level,
+      world: this.world,
       difficulty: this.difficulty,
       time: 0,
       emit(type, data = {}) { if (!self.replaying) self.events.push({ ...data, type }); },
@@ -213,7 +217,7 @@ export class NetSession {
       live.add(es.i);
       let e = this.byId.get(es.i);
       if (!e) {
-        e = { id: es.i, type: es.ty, T: TYPES[es.ty], elite: !!es.el, pos: new THREE.Vector3(...es.p), facing: es.f, act: null };
+        e = { id: es.i, type: es.ty, T: this.world.enemies[es.ty], elite: !!es.el, pos: new THREE.Vector3(...es.p), facing: es.f, act: null };
         this.byId.set(es.i, e);
       }
       Object.assign(e, { lift: es.l, rise: es.r, hidden: !!es.h, climbing: !!es.c, speed: es.s, stun: es.st, hp: es.hp, maxHp: es.mh });

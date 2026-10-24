@@ -5,6 +5,7 @@ import { Level } from '../src/sim/level.js';
 import { Sim } from '../src/sim/sim.js';
 import { emptyCommand } from '../src/sim/player.js';
 import { applyUpgrade, drawCards, UPGRADES } from '../src/sim/progression.js';
+import { WORLDS, getWorld } from '../src/worlds/index.js';
 
 const DT = 1 / 60;
 // every event type handled by the client (src/main.js, handleEvents)
@@ -733,5 +734,53 @@ describe('precision rifle', () => {
     expect(sim.enemies.list).not.toContain(front); // 150 damage: a jackal in one shot
     expect(back.hp).toBeLessThan(back.maxHp);
     expect(lo.current.mag).toBe(4);
+  });
+});
+
+describe('universes', () => {
+  const levelOf = (w) => new Level(JSON.parse(readFileSync(new URL(`../public/${getWorld(w).files.levelData}`, import.meta.url), 'utf8')));
+
+  it('every universe has the tables the engine reads', () => {
+    for (const w of Object.values(WORLDS)) {
+      const ids = w.weapons.map((d) => d.id);
+      for (const id of [...w.startUnlocked, ...Object.values(w.unlocks)]) expect(ids).toContain(id);
+      const types = Object.keys(w.enemies);
+      for (const wave of w.waves) for (const t of Object.keys(wave)) expect(types).toContain(t);
+      for (const r of w.survival) expect(types).toContain(r.type);
+      for (const t of w.arenaGuards) expect(types).toContain(t);
+      expect(w.enemies.boss?.boss).toBe(true); // the boss type is always called 'boss'
+      expect(types).toContain(w.enemies.boss.summon);
+    }
+  });
+
+  it('an unknown universe falls back to the desert', () => {
+    expect(getWorld('nowhere')).toBe(WORLDS.sables);
+    expect(new Sim(level).world.id).toBe('sables');
+  });
+
+  it('the pirate port: its own map, enemies find their way from every spawn to the player', () => {
+    const port = levelOf('pirates');
+    const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' });
+    const player = sim.addPlayer('p1');
+    expect(player.pos.toArray()).toEqual([0, 0, 2]);
+    const runners = port.spawns.map((s) => pacify(sim.enemies.spawn('runner', s)));
+    run(sim, 14, () => emptyCommand());
+    for (const e of runners) expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
+  });
+
+  it('the pirate universe runs its waves to victory', () => {
+    const sim = new Sim(levelOf('pirates'), { mode: 'waves', world: 'pirates' });
+    const player = sim.addPlayer('p1');
+    sim.start();
+    for (let i = 0; i < 20000 && !sim.over; i++) {
+      sim.mode.breakTimer = Math.min(sim.mode.breakTimer, 0.1);
+      sim.mode.spawnTimer = Math.min(sim.mode.spawnTimer, 0.05);
+      player.health = 100;
+      if (player.cardOffer) sim.pickCard(player, 0);
+      for (const e of [...sim.enemies.list]) if (e.rise === 0) sim.enemies.damage(e, e.T.boss ? 600 : 1e6, null, player);
+      sim.step(DT, new Map([['p1', emptyCommand()]]));
+      sim.drainEvents();
+    }
+    expect(sim.victory).toBe(true);
   });
 });

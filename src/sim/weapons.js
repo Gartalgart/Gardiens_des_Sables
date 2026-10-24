@@ -1,40 +1,14 @@
-// Weapon rules and the per-player loadout state. Display (view model poses, flashes) lives in the client.
-export const WEAPONS = [
-  {
-    id: 'sword', name: 'KHÉPESH', melee: true, dmg: 85, range: 3.0, swing: 0.34, hitAt: 0.1, cooldown: 0.42,
-    spread: 0, adsSpread: 0, adsFov: 75,
-  },
-  {
-    id: 'pistol', name: 'PISTOLET', dmg: 34, rpm: 330, auto: false, mag: 12, reserve: Infinity, pellets: 1,
-    spread: 0.014, adsSpread: 0.002, reload: 1.25, recoil: 0.028, adsFov: 58,
-  },
-  {
-    id: 'rifle', name: "FUSIL D'ASSAUT", dmg: 23, rpm: 640, auto: true, mag: 30, reserve: 210, pellets: 1,
-    spread: 0.034, adsSpread: 0.004, reload: 2.1, recoil: 0.013, adsFov: 50,
-  },
-  {
-    id: 'shotgun', name: 'FUSIL À POMPE', dmg: 14, rpm: 78, auto: false, mag: 6, reserve: 42, pellets: 9,
-    spread: 0.085, adsSpread: 0.055, reload: 2.4, recoil: 0.07, adsFov: 62,
-    // loaded one shell at a time (open, a shell each, then the pump); firing stops the reload
-    shells: { open: 0.35, each: 0.34, close: 0.4 },
-  },
-  {
-    // unlocked for the last wave: a bolt-action with a scope; wild from the hip, dead on when aiming,
-    // and its bullet goes on through a first target
-    id: 'sniper', name: 'FUSIL DE PRÉCISION', dmg: 150, rpm: 46, auto: false, mag: 5, reserve: 25, pellets: 1,
-    spread: 0.07, adsSpread: 0, reload: 2.7, recoil: 0.09, adsFov: 16, pierce: true, scope: true,
-  },
-];
-
-const START_UNLOCKED = ['sword', 'pistol'];
+// The per-player loadout state. Weapon rules come from the universe (src/worlds/); display (view model
+// poses, flashes) lives in the client.
 export const GRENADES = { start: 2, max: 4, cooldown: 0.9, lower: 0.45 };
 
 export class Loadout {
   constructor(player, sim) {
     this.player = player;
     this.sim = sim;
-    this.items = WEAPONS.map((def) => ({
-      def, mag: def.mag, reserve: def.reserve, unlocked: START_UNLOCKED.includes(def.id),
+    // the weapons and the ones held from the start belong to the universe (src/worlds/)
+    this.items = sim.world.weapons.map((def) => ({
+      def, mag: def.mag, reserve: def.reserve, unlocked: sim.world.startUnlocked.includes(def.id),
     }));
     this.index = 1;
     this.cooldown = 0;

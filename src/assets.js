@@ -1,8 +1,7 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+// models shared by every universe for now (the map and its props come from the universe)
 const FILES = {
-  level: 'models/level.glb',
-  props: 'models/props.glb',
   player: 'models/player.glb',
   runner: 'models/runner.glb',
   shooter: 'models/shooter.glb',
@@ -18,13 +17,17 @@ const FILES = {
   grenade: 'models/grenade.glb',
 };
 
-export async function loadAssets(onProgress) {
+// world: the universe (src/worlds/); a map or props file it does not have yet is left null
+export async function loadAssets(world, onProgress) {
   const loader = new GLTFLoader();
-  const out = { clips: {} }; // clips: animations of each model, by file key
+  const out = { clips: {}, level: null, props: null }; // clips: animations of each model, by file key
+  const files = { ...FILES };
+  if (world.files.level) files.level = world.files.level;
+  if (world.files.props) files.props = world.files.props;
   let done = 0;
-  const keys = Object.keys(FILES);
+  const keys = Object.keys(files);
   await Promise.all(keys.map(async (k) => {
-    const gltf = await loader.loadAsync(FILES[k]);
+    const gltf = await loader.loadAsync(files[k]);
     out[k] = gltf.scene;
     out.clips[k] = gltf.animations;
     done++;

@@ -25,6 +25,7 @@ import { Sound } from './audio.js';
 import { settings, updateSettings, onSettingsChange, DEFAULTS, QUALITY } from './settings.js';
 import { topScores, recordScore } from './leaderboard.js';
 import { upgradeInfo } from './sim/progression.js';
+import { WORLDS, getWorld } from './worlds/index.js';
 
 const SOLO_ID = 'local';
 
@@ -100,20 +101,37 @@ const game = {
 };
 window.__game = game; // handy for debugging from the console
 
+// ---------- universe ----------
+// The universe is picked on the title screen and loaded with the page: changing it reloads.
+let savedWorld = null;
+try { savedWorld = localStorage.getItem('gds-world'); } catch {}
+const world = getWorld(savedWorld);
+game.world = world;
+$('menu-title').innerHTML = `${world.title[0]}<br /><span>${world.title[1]}</span>`;
+$('menu-lede').textContent = world.lede;
+document.title = world.name;
+$('world').innerHTML = Object.values(WORLDS).map((w) => `<button data-world="${w.id}" class="${w === world ? 'active' : ''}">${w.name}</button>`).join('');
+$('world').addEventListener('click', (e) => {
+  const id = e.target.closest('button[data-world]')?.dataset.world;
+  if (!id || id === world.id) return;
+  try { localStorage.setItem('gds-world', id); } catch {}
+  location.reload();
+});
+
 const btnPlay = $('btn-play');
 const [assets, levelData] = await Promise.all([
-  loadAssets((p) => (btnPlay.textContent = `Chargement… ${Math.round(p * 100)}%`)),
-  fetch('models/level.json').then((r) => r.json()),
+  loadAssets(world, (p) => (btnPlay.textContent = `Chargement… ${Math.round(p * 100)}%`)),
+  fetch(world.files.levelData).then((r) => r.json()),
 ]);
 const level = new Level(levelData);
-const worldView = new WorldView(scene, assets.level, level);
-const propsView = new PropsView(scene, assets.props, level);
+const worldView = new WorldView(scene, assets.level, level, world.ambiance);
+const propsView = assets.props ? new PropsView(scene, assets.props, level) : null;
 const effects = new Effects(scene);
-const weaponView = new WeaponView(assets, vmScene, effects, worldFlash);
+const weaponView = new WeaponView(assets, vmScene, effects, worldFlash, world.weapons);
 const enemyView = new EnemyView(scene, assets, effects);
 const playerView = new PlayerView(scene, assets, effects);
 const grenadeView = new GrenadeView(scene, assets, effects);
-const hud = new Hud(level);
+const hud = new Hud(level, world.texts.bossName);
 Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects, hud });
 
 // ---------- settings ----------
@@ -203,7 +221,7 @@ pickMode(savedMode === 'survival' ? 'survival' : 'waves');
 // ---------- leaderboard ----------
 const MODE_LABEL = { waves: 'Vagues', survival: 'Survie' };
 function boardTable(mode, difficulty, highlight = -1) {
-  const rows = topScores(mode, difficulty);
+  const rows = topScores(world.id, mode, difficulty);
   if (!rows.length) return '<table class="board"><tr><td class="empty">Aucun score pour l\'instant.</td></tr></table>';
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   return `<table class="board"><tr><th>#</th><th>Pseudo</th><th class="num">Score</th><th class="num">Vague</th><th class="num">Temps</th></tr>${
@@ -224,7 +242,8 @@ $('btn-board-back').addEventListener('click', () => { boardOpen = false; refresh
 
 // ---------- co-op: connection, rooms and lobby ----------
 // Hidden unless built in multiplayer mode (src/features.js); the code stays wired up.
-if (!MULTIPLAYER) document.querySelectorAll('.mp-only').forEach((el) => el.classList.add('hidden'));
+// The server only knows the desert's map, so the other universes are solo only.
+if (!MULTIPLAYER || world.id !== 'sables') document.querySelectorAll('.mp-only').forEach((el) => el.classList.add('hidden'));
 const net = new NetSession(level);
 let coopScreen = null; // null, 'coop' (connect / join) or 'lobby'
 let configureOnJoin = false;
@@ -296,11 +315,7 @@ $('btn-coop-join').addEventListener('click', async () => {
   if (!/^[A-Z]{4}$/.test(code)) return coopStatus('coop-status', 'Le code d\'un salon a 4 lettres.');
   if (await connectCoop()) net.join(code);
 });
-const MODE_HELP = {
-  waves: 'Cinq vagues de gardiens à repousser ensemble.',
-  survival: 'Des vagues sans fin, le pharaon toutes les cinq vagues.',
-  arena: 'Chacun pour soi, avec quelques gardiens qui rôdent. La difficulté règle les gardiens.',
-};
+const MODE_HELP = world.texts.modes;
 const configure = (change) => { const r = net.room; net.configure(change.mode ?? r.mode, change.difficulty ?? r.difficulty, { ...r.arena, ...change.arena }); };
 document.querySelectorAll('#lobby-mode button').forEach((b) => b.addEventListener('click', () => configure({ mode: b.dataset.mode })));
 document.querySelectorAll('#lobby-diff button').forEach((b) => b.addEventListener('click', () => configure({ difficulty: b.dataset.diff })));
@@ -356,7 +371,7 @@ game.state = 'menu';
 function startGame() {
   leaveCoop();
   game.localId = SOLO_ID;
-  game.sim = new Sim(level, { difficulty: game.difficulty, mode: game.mode });
+  game.sim = new Sim(level, { difficulty: game.difficulty, mode: game.mode, world: world.id });
   game.sim.addPlayer(SOLO_ID);
   resetViews();
   game.sim.start();
@@ -441,10 +456,10 @@ function endGame(victory, winner) {
   $('end-title').textContent = survival ? 'Fin de la survie' : victory ? 'Victoire' : 'Défaite';
   $('end-sub').textContent = survival
     ? `Tu as tenu jusqu'à la vague ${sim.mode.wave}.`
-    : victory ? 'La cité-temple retrouve son silence. Les gardiens sont retournés au sable.'
+    : victory ? world.texts.victory
       : `Tombé pendant la vague ${sim.mode.wave}.`;
   // score and local leaderboard
-  const rank = recordScore(sim.mode.id, sim.difficulty.key, { name: settings.playerName + (game.net ? ' (coop)' : ''), score: p.score, wave: sim.mode.wave, time: sim.time });
+  const rank = recordScore(world.id, sim.mode.id, sim.difficulty.key, { name: settings.playerName + (game.net ? ' (coop)' : ''), score: p.score, wave: sim.mode.wave, time: sim.time });
   $('btn-again').textContent = game.net ? 'Retour au salon' : 'Rejouer';
   $('end-score').innerHTML = `${p.score.toLocaleString('fr-FR')} pts${rank === 0 ? '<small>NOUVEAU RECORD !</small>' : rank > 0 ? `<small>${rank + 1}e du classement</small>` : ''}`;
   $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">CLASSEMENT — ${MODE_LABEL[sim.mode.id]} · ${sim.difficulty.label}</div>${boardTable(sim.mode.id, sim.difficulty.key, rank)}`;
@@ -781,10 +796,11 @@ function tick(dt, now = (tickClock += dt)) {
   } else if (game.state === 'menu') {
     sound.setMusicIntensity(0);
     if (Math.abs(camera.fov - settings.fov) > 0.01) { camera.fov = settings.fov; camera.updateProjectionMatrix(); }
-    // slow fly-around of the temple city behind the title screen
+    // slow fly-around of the map behind the title screen
+    const mc = world.menuCamera;
     menuAngle += dt * 0.05;
-    camera.position.set(Math.sin(menuAngle) * 34, 13, Math.cos(menuAngle) * 34 - 4);
-    camera.lookAt(0, 3, 12);
+    camera.position.set(mc.orbit[0] + Math.sin(menuAngle) * mc.radius, mc.height, mc.orbit[1] + Math.cos(menuAngle) * mc.radius);
+    camera.lookAt(...mc.look);
   }
 
   effects.update(game.state === 'paused' && !game.net ? 0 : dt);

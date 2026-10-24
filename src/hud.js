@@ -8,7 +8,8 @@ const HALF = 60;
 
 export class Hud {
   // level: collision data of the level (boxes and braziers are drawn on the minimap)
-  constructor(level) {
+  // bossName: over the boss health bar, from the universe's texts
+  constructor(level, bossName) {
     this.el = $('hud');
     this.mm = $('minimap');
     this.ctx = this.mm.getContext('2d');
@@ -21,7 +22,7 @@ export class Hud {
 
     this.bossBar = document.createElement('div');
     this.bossBar.id = 'boss-bar';
-    this.bossBar.innerHTML = '<div class="boss-name">LE PHARAON ÉVEILLÉ</div><div class="boss-track"><div class="boss-fill"></div></div>';
+    this.bossBar.innerHTML = `<div class="boss-name">${bossName}</div><div class="boss-track"><div class="boss-fill"></div></div>`;
     this.bossBar.style.cssText = 'position:absolute;top:92px;left:50%;transform:translateX(-50%);width:min(520px,60vw);text-align:center;display:none';
     this.el.appendChild(this.bossBar);
     const st = document.createElement('style');

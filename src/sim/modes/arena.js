@@ -10,7 +10,6 @@ export const ARENA_TIMES = [5 * 60, 8 * 60, 12 * 60];
 
 const RESPAWN_TIME = 4;
 const SPAWN_PROTECT = 2;
-const GUARD_TYPES = ['runner', 'runner', 'shooter'];
 const GUARD_GAP = 9; // seconds between two guardians rising
 
 export class ArenaMode {
@@ -117,7 +116,8 @@ export class ArenaMode {
     if (this.guardTimer <= 0) {
       this.guardTimer = GUARD_GAP;
       if (sim.enemies.alive < this.maxGuards) {
-        const type = GUARD_TYPES[Math.floor(Math.random() * GUARD_TYPES.length)];
+        const guards = this.sim.world.arenaGuards;
+        const type = guards[Math.floor(Math.random() * guards.length)];
         sim.enemies.spawn(type, sim.pickSpawn(type));
       }
     }
