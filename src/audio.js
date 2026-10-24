@@ -18,7 +18,12 @@ const GROWLS = {
   mummy: 'enemies/mummy_groan',
   scarab: 'enemies/scarab_skitter',
   boss: 'enemies/pharaoh_laugh',
+  // the pirates' (the skeleton rattles its bones: procedural)
+  crab: 'enemies/scarab_skitter',
+  gunner: 'enemies/mummy_groan',
 };
+// played slower than recorded: the crab's clicks heavier, the ghost's moan deeper
+const GROWL_RATE = { crab: 0.6, gunner: 0.7 };
 
 export class Sound {
   constructor() {
@@ -137,7 +142,7 @@ export class Sound {
   // pan / gain: a teammate's shot is placed in space and quieter
   shot(kind, pan = 0, gain = 1) {
     if (!this.ctx) return;
-    const level = { pistol: 0.55, rifle: 0.45, shotgun: 0.7, sniper: 0.75, flintlock: 0.7, blunderbuss: 0.8, cannon: 0.9 }[kind];
+    const level = { pistol: 0.55, rifle: 0.45, shotgun: 0.7, sniper: 0.75, flintlock: 0.7, blunderbuss: 0.8, cannon: 0.9, musket: 0.8 }[kind];
     if (this.#play(`weapons/${kind}_fire`, { pan, vol: level * gain, rate: 0.97 + Math.random() * 0.06 })) return;
     const t = this.ctx.currentTime;
     const cfg = {
@@ -148,6 +153,7 @@ export class Sound {
       // black powder: a dull, long boom; the flintlock's lock snaps just before
       flintlock: { f: 1100, dec: 0.5, thump: 70, tail: 0.32, vol: 1.0, lock: true },
       blunderbuss: { f: 950, dec: 0.6, thump: 58, tail: 0.35, vol: 1.15, lock: true },
+      musket: { f: 1300, dec: 0.7, thump: 55, tail: 0.4, vol: 1.15, lock: true },
       cannon: { f: 650, dec: 1.0, thump: 42, tail: 0.7, vol: 1.3 },
     }[kind];
     if (cfg.lock && gain === 1) this.#clack(0, 1.3, 0.5);
@@ -377,7 +383,7 @@ export class Sound {
   // timed with the view model: magazine out, seated, slide or bolt racked
   reload(duration, weapon) {
     if (!this.ctx) return;
-    if (weapon === 'flintlock' || weapon === 'blunderbuss' || weapon === 'cannon') { this.#ram(duration, weapon); return; }
+    if (['flintlock', 'blunderbuss', 'cannon', 'musket'].includes(weapon)) { this.#ram(duration, weapon); return; }
     if (weapon === 'shotgun') { this.click(0.7, 0.05); return; } // then a sound per shell
     // the sample is laid so it ends with the reload; the sniper's bolt is racked on its own
     const name = weapon === 'pistol' ? 'weapons/pistol_reload' : 'weapons/rifle_reload';
@@ -498,10 +504,27 @@ export class Sound {
     n.start(t); n.stop(t + dec + 0.1);
   }
 
-  // an enemy turning to sand; the pharaoh has his own death
+  // a skeleton's bones knocking together: a quick run of dry clicks
+  #rattle(pan, vol, count = 7) {
+    const t = this.ctx.currentTime;
+    for (let i = 0; i < count; i++) {
+      const at = t + i * (0.035 + Math.random() * 0.03);
+      const n = this.#noiseSrc();
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.Q.value = 6;
+      f.frequency.value = 1400 + Math.random() * 1600;
+      const g = this.ctx.createGain();
+      this.#env(g, at, 0.001, 0.5, 0.03);
+      n.connect(f).connect(g).connect(this.#out(pan, vol));
+      n.start(at); n.stop(at + 0.06);
+    }
+  }
+
+  // an enemy turning to sand (a skeleton falls apart in bones); the pharaoh has his own death
   kill(pan, vol, type) {
     if (!this.ctx) return;
-    const big = type === 'tank' || type === 'boss';
+    if (type === 'skeleton') this.#rattle(pan, vol, 12);
+    const big = type === 'tank' || type === 'boss' || type === 'crab';
     if (type === 'boss' && this.#play('enemies/pharaoh_death', { pan, vol: 0.9 })) return;
     if (this.#play('enemies/enemy_death_crumble', { pan, vol: 0.6 * vol, rate: big ? 0.8 : 0.95 + Math.random() * 0.1 })) return;
     this.crumble(pan, vol, big);
@@ -537,8 +560,9 @@ export class Sound {
       if (t - this.lastLaugh < 6) return; // the laugh is long: not on every swing
       this.lastLaugh = t;
     }
+    if (type === 'skeleton') { this.#rattle(pan, vol); return; }
     const name = GROWLS[type];
-    if (name && this.#play(name, { pan, vol: 0.6 * vol, rate: 0.93 + Math.random() * 0.14 })) return;
+    if (name && this.#play(name, { pan, vol: 0.6 * vol, rate: (GROWL_RATE[type] ?? 1) * (0.93 + Math.random() * 0.14) })) return;
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';
     const base = low ? 55 : 110;

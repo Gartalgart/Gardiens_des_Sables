@@ -764,12 +764,12 @@ describe('universes', () => {
     const player = sim.addPlayer('p1');
     expect(player.pos.toArray()).toEqual([-6, 0, 4]);
     expect(port.spawns.length).toBe(6);
-    const runners = port.spawns.map((s) => pacify(sim.enemies.spawn('runner', s)));
+    const runners = port.spawns.map((s) => pacify(sim.enemies.spawn('skeleton', s)));
     run(sim, 25, () => emptyCommand());
     for (const e of runners) expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
   });
 
-  // every place of the port a player can stand on, and a jackal walking there from the village
+  // every place of the port a player can stand on, and a skeleton walking there from the village
   const SPOTS = {
     'pier end': [-22.5, 1, 36],
     'galleon deck': [24, 4, 20],
@@ -779,14 +779,14 @@ describe('universes', () => {
     canyon: [10, 0, -50],
   };
   for (const [name, [x, y, z]] of Object.entries(SPOTS)) {
-    it(`the pirate port: a jackal reaches a player on the ${name}`, () => {
+    it(`the pirate port: a skeleton reaches a player on the ${name}`, () => {
       const port = levelOf('pirates');
       const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' });
       const player = sim.addPlayer('p1');
       player.pos.set(x, y + 0.05, z);
       run(sim, 0.5, () => emptyCommand());
       expect(player.pos.y).toBeCloseTo(y, 1); // standing on it, not inside a wall
-      const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(-6, 0, -8)));
+      const e = pacify(sim.enemies.spawn('skeleton', new THREE.Vector3(-6, 0, -8)));
       run(sim, 25, () => emptyCommand());
       expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
     });
@@ -817,7 +817,7 @@ describe('universes', () => {
     const keg = sim.kegs[0];
     keg.pos.set(0, 0, -5); // out on the open sand
     player.pos.set(12, 0, -5);
-    const near = sim.enemies.spawn('runner', keg.pos.clone().add(new THREE.Vector3(0, 0, -1.5))); // beside, not in front
+    const near = sim.enemies.spawn('skeleton', keg.pos.clone().add(new THREE.Vector3(0, 0, -1.5))); // beside, not in front
     near.rise = 0;
     near.stun = 5; // stays by the keg instead of running into the line of fire
     const other = sim.kegs.find((k) => k !== keg);
@@ -859,12 +859,12 @@ describe('pirate weapons', () => {
 
   it('the flintlock fires one heavy ball, then reloads by itself', () => {
     const { sim, player } = pirateGame();
-    const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 28)));
+    const e = pacify(sim.enemies.spawn('skeleton', new THREE.Vector3(0, 0, 28)));
     e.T = { ...e.T, speed: 0 };
     const lo = player.loadout;
     expect(lo.current.def.id).toBe('flintlock');
     run(sim, 0.3, (p, i) => aimAt(p, e.pos.clone().setY(1.0), { fire: i === 0 }));
-    expect(sim.enemies.list).not.toContain(e); // one ball is enough for a jackal
+    expect(sim.enemies.list).not.toContain(e); // one ball is enough for a skeleton
     expect(lo.current.mag).toBe(0);
     expect(lo.reloading).toBeGreaterThan(1.2);
     run(sim, 1.8);
@@ -890,9 +890,9 @@ describe('pirate weapons', () => {
     const lo = player.loadout;
     lo.unlock('cannon');
     expect(lo.index).toBe(slot(player, 'cannon'));
-    const tank = pacify(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 18)));
-    tank.T = { ...tank.T, speed: 0 };
-    const runner = pacify(sim.enemies.spawn('runner', new THREE.Vector3(2, 0, 17)));
+    const tank = pacify(sim.enemies.spawn('crab', new THREE.Vector3(0, 0, 18)));
+    tank.T = { ...tank.T, speed: 0, armor: null }; // the shell would stop most of it (tested below)
+    const runner = pacify(sim.enemies.spawn('skeleton', new THREE.Vector3(2, 0, 17)));
     runner.T = { ...runner.T, speed: 0 };
     run(sim, 0.5);
     const z0 = player.pos.z;
@@ -915,5 +915,146 @@ describe('pirate weapons', () => {
     expect(player.loadout.items.every((it) => it.unlocked)).toBe(true);
     sim.mode.callTargets();
     expect(sim.enemies.list.length).toBe(6);
+  });
+});
+
+describe('pirate enemies', () => {
+  const port = () => new Level(JSON.parse(readFileSync(new URL(`../public/${getWorld('pirates').files.levelData}`, import.meta.url), 'utf8')));
+  const pirateSim = (mode = 'sandbox') => {
+    const sim = new Sim(port(), { mode, world: 'pirates' });
+    const player = sim.addPlayer('p1');
+    return { sim, player };
+  };
+
+  it('the crab shell stops most of a blow from the front, not from behind', () => {
+    const { sim } = pirateSim();
+    const crab = sim.enemies.spawn('crab', new THREE.Vector3(-6, 0, 0));
+    crab.facing = 0; // looks toward +Z
+    sim.enemies.damage(crab, 100, new THREE.Vector3(0, 0, -1)); // shot from in front
+    expect(crab.maxHp - crab.hp).toBeCloseTo(30);
+    sim.enemies.damage(crab, 100, new THREE.Vector3(0, 0, 1)); // from behind
+    expect(crab.maxHp - crab.hp).toBeCloseTo(130);
+    const hits = sim.drainEvents().filter((e) => e.type === 'enemyHit');
+    expect(hits.map((e) => e.armored)).toEqual([true, false]);
+  });
+
+  it('the crab comes out of the sea and charges sideways, its flank toward the player', () => {
+    const { sim, player } = pirateSim();
+    player.pos.set(-6, 0, 4);
+    run(sim, 0.1); // the paths to the player are worked out on the first step
+    for (let i = 0; i < 5; i++) {
+      const at = sim.pickSpawn('crab');
+      expect(sim.level.inWater(at.x, at.z, 0)).toBe(true);
+      expect(at.x).toBeLessThan(-31.5); // off the west beach, not behind the quay or the galleon
+    }
+    // and walks out of the sea to the player
+    const walker = pacify(sim.enemies.spawn('crab', sim.pickSpawn('crab')));
+    run(sim, 30, () => emptyCommand());
+    expect(Math.hypot(walker.pos.x - player.pos.x, walker.pos.z - player.pos.z)).toBeLessThan(4);
+    sim.enemies.list.length = 0;
+    const crab = sim.enemies.spawn('crab', new THREE.Vector3(-6, 0, -8));
+    crab.rise = 0;
+    crab.chargeCd = 0;
+    let sideways = null;
+    run(sim, 4, () => {
+      if (crab.act?.kind === 'charge' && crab.act.t > 0.3 && sideways === null) {
+        const toPlayer = Math.atan2(player.pos.x - crab.pos.x, player.pos.z - crab.pos.z);
+        sideways = Math.abs(Math.cos(crab.facing - toPlayer));
+      }
+      return emptyCommand();
+    });
+    expect(sideways).not.toBeNull();
+    expect(sideways).toBeLessThan(0.3); // about 90 degrees off
+  });
+
+  it('ghost gunners take a post on the galleon, stay there, and lob balls that land under a shadow', () => {
+    const { sim, player } = pirateSim();
+    player.pos.set(-6, 0, 4);
+    const posts = sim.world.posts;
+    const a = sim.enemies.spawn('gunner', sim.pickSpawn('gunner'));
+    const b = sim.enemies.spawn('gunner', sim.pickSpawn('gunner'));
+    expect(posts.some(([x, , z]) => x === a.pos.x && z === a.pos.z)).toBe(true);
+    expect(a.pos.distanceTo(b.pos)).toBeGreaterThan(1); // two different posts
+    const start = a.pos.clone();
+    let mark = null, strike = null;
+    run(sim, 6, () => {
+      for (const ev of sim.drainEvents()) {
+        if (ev.type === 'rainMark' && ev.kind === 'lob' && !mark) mark = ev;
+        if (ev.type === 'rainStrike' && mark && ev.id === mark.id) strike = ev;
+      }
+      player.health = 100;
+      return emptyCommand();
+    });
+    expect(Math.hypot(a.pos.x - start.x, a.pos.z - start.z)).toBeLessThan(1);
+    expect(mark).not.toBeNull();
+    expect(mark.from.y).toBeGreaterThan(4); // from the deck
+    expect(Math.hypot(mark.pos.x - player.pos.x, mark.pos.z - player.pos.z)).toBeLessThan(3);
+    expect(strike).not.toBeNull();
+  });
+
+  it('a lobbed ball hurts a player in the open; a roof shelters from the gunners', () => {
+    const { sim, player } = pirateSim();
+    player.pos.set(-6, 0, 4);
+    sim.lob(new THREE.Vector3(24, 6, 21), player, sim.world.enemies.gunner.ranged, 1);
+    run(sim, 3, () => emptyCommand());
+    expect(player.health).toBeLessThan(100);
+    sim.drainEvents();
+    // inside a house, under its roof, no gunner fires
+    const nav = sim.level.nav;
+    let inside = null;
+    for (let x = -40; x < 40 && !inside; x += 0.5) for (let z = -40; z < 10 && !inside; z += 0.5) {
+      if (nav.coveredAt(x, z) && nav.floorAt(x, z) < 0.3) inside = new THREE.Vector3(x, nav.floorAt(x, z), z);
+    }
+    expect(inside).not.toBeNull();
+    player.pos.copy(inside);
+    player.health = 100;
+    const g = sim.enemies.spawn('gunner', sim.pickSpawn('gunner'));
+    g.rise = 0;
+    g.fireCd = 0;
+    run(sim, 4, () => emptyCommand());
+    expect(sim.strikes.length).toBe(0);
+    expect(sim.drainEvents().some((e) => e.type === 'rainMark')).toBe(false);
+  });
+
+  it('the boss and the crabs only come through gates a big body can walk out of', () => {
+    const { sim, player } = pirateSim();
+    player.pos.set(-6, 0, 4);
+    run(sim, 0.1);
+    const nav = sim.level.nav;
+    for (let i = 0; i < 30; i++) {
+      const at = sim.pickSpawn('boss');
+      expect(nav.layers.big.dist[nav.index(at.x, at.z)]).toBeLessThan(Infinity);
+    }
+    // every gate lets a small body out
+    for (const s of sim.level.spawns) expect(nav.layers.small.dist[nav.index(s.x, s.z)]).toBeLessThan(Infinity);
+  });
+
+  it('the waves unlock the blunderbuss, the cannon, then the scoped musket for the last wave', () => {
+    const { sim, player } = pirateSim('waves');
+    sim.start();
+    const unlocked = [];
+    for (let i = 0; i < 40000 && !sim.over; i++) {
+      sim.mode.breakTimer = Math.min(sim.mode.breakTimer, 0.1);
+      sim.mode.spawnTimer = Math.min(sim.mode.spawnTimer, 0.05);
+      player.health = 100;
+      if (player.cardOffer) sim.pickCard(player, 0);
+      for (const e of [...sim.enemies.list]) if (e.rise === 0) sim.enemies.damage(e, e.T.boss ? 600 : 1e6, null, player);
+      sim.step(DT, new Map([['p1', emptyCommand()]]));
+      for (const ev of sim.drainEvents()) if (ev.type === 'unlock') unlocked.push([sim.mode.wave + 1, ev.weapon]);
+    }
+    expect(sim.victory).toBe(true);
+    expect(unlocked).toEqual([[2, 'blunderbuss'], [3, 'cannon'], [5, 'musket']]);
+  });
+
+  it('skeletons rise in groups of three in the waves', () => {
+    const { sim } = pirateSim('waves');
+    sim.start();
+    let group = 0;
+    for (let i = 0; i < 400 && !group; i++) {
+      sim.step(DT, new Map([['p1', emptyCommand()]]));
+      const spawns = sim.drainEvents().filter((e) => e.type === 'enemySpawn');
+      if (spawns.length) group = spawns.length;
+    }
+    expect(group).toBe(3);
   });
 });

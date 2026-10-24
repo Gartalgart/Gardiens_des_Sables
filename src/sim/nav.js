@@ -244,11 +244,15 @@ export class NavGrid {
 
   // A ground-level cell reachable by path, between minD and maxD of walking distance from the target,
   // and passing the visibility test (so enemies rise from the sand out of the player's sight).
-  ambushPoint(minD, maxD, accept) {
+  // area: an optional rectangle { minX, minZ, maxX, maxZ } to look in (the shallow water).
+  ambushPoint(minD, maxD, accept, area = null) {
     const { n, floor } = this;
     const dist = this.layers.big.dist; // roomy spots, so any enemy type fits
     for (let tries = 0; tries < 80; tries++) {
-      const j = Math.floor(Math.random() * n * n);
+      const j = area
+        ? this.index(area.minX + Math.random() * (area.maxX - area.minX), area.minZ + Math.random() * (area.maxZ - area.minZ))
+        : Math.floor(Math.random() * n * n);
+      if (j < 0) continue;
       if (dist[j] < minD || dist[j] > maxD || floor[j] > 0.01) continue;
       const p = new THREE.Vector3(this.cx(j % n), 0, this.cx((j / n) | 0));
       if (Math.abs(p.x) > 44 || Math.abs(p.z) > 44) continue;

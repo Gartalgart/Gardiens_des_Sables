@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import { GRENADES } from '../weapons.js';
 
-// a group called as targets: the universe's first enemy types, a few of each
-const TARGETS = [['runner', 3], ['shooter', 2], ['tank', 1]];
-
 // "Exploration" mode: no waves and no end, for visiting the map and trying the weapons. Every weapon
 // is in hand from the start, and callTargets() (key N on the client) brings a group of enemies.
 export class SandboxMode {
@@ -29,12 +26,14 @@ export class SandboxMode {
   // a group of enemies, each type from its own spawn point; ammo and grenades are refilled with it
   callTargets() {
     const sim = this.sim;
-    const types = TARGETS.filter(([type]) => sim.world.enemies[type]);
-    if (!types.length) return;
-    for (const [type, n] of types) {
+    // the universe's basic enemies, a few of each
+    for (const [type, n] of sim.world.targets) {
+      // a group rises together, but gunners each take their own post
+      const post = sim.world.enemies[type].post;
       const at = sim.pickSpawn(type);
       for (let i = 0; i < n; i++) {
-        sim.enemies.spawn(type, at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3)));
+        if (post) sim.enemies.spawn(type, i ? sim.pickSpawn(type) : at);
+        else sim.enemies.spawn(type, at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3)));
       }
     }
     for (const p of sim.players.values()) {

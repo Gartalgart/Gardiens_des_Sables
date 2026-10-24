@@ -3,10 +3,11 @@
 #   Flintlock   (slot 2) a long single-shot pistol: hammer (F_Hammer, pivots), ramrod (F_Rod)
 #   Blunderbuss (slot 3) two bell-mouthed barrels side by side, ramrod (B_Rod)
 #   Cannon      (slot 4) a short bronze hand cannon on a wooden tiller
+#   Musket      (slot 5) a long musket with a brass spyglass, ramrod (M_Rod)
 #   Bomb        (G)      an iron ball with a burning fuse ("Spark")
 # Axes as for the desert's weapons: the barrel points to +Y, up is +Z, the root at the right hand;
 # "Sight" is on the eye line when aiming, "Muzzle" at the mouth. The left arm's objects share a
-# prefix (FL_, BL_, CL_) so the game can move it as one piece.
+# prefix (FL_, BL_, CL_, ML_) so the game can move it as one piece.
 # Built in its own scene and exported to public/models/pirates/<name>.glb.
 # Usage inside Blender, after helpers.py and hands.py (the MCP's safe mode: send all three inline).
 import bpy
@@ -162,6 +163,40 @@ def build_cannon():
     return coll
 
 
+def build_musket():
+    """[5] the long musket with a brass spyglass on top, for the last wave"""
+    coll = get_coll("Musket", clear=True)
+    M = bpy.data.materials
+    root = empty("Musket", coll)
+    # a long iron barrel held to the stock by brass bands, the mouth ringed in brass
+    cyl("M_Barrel", coll, 0.014, 0.9, (0, 0.62, 0.06), M["Iron"], root, rot=(90, 0, 0), verts=8)
+    cyl("M_Mouth", coll, 0.018, 0.025, (0, 1.07, 0.06), M["Brass"], root, rot=(90, 0, 0), verts=8)
+    box("M_Forend", coll, (0.04, 0.72, 0.035), (0, 0.5, 0.035), M["Wood"], root)
+    for i, y in enumerate((0.3, 0.6, 0.85)):
+        box("M_Band%d" % i, coll, (0.046, 0.018, 0.06), (0, y, 0.045), M["Brass"], root)
+    box("M_Breech", coll, (0.05, 0.12, 0.06), (0, 0.06, 0.045), M["Wood"], root)
+    box("M_Wrist", coll, (0.036, 0.12, 0.05), (0, -0.07, 0.015), M["Wood"], root, rot=(-12, 0, 0))
+    box("M_Butt", coll, (0.044, 0.26, 0.1), (0, -0.25, -0.015), M["Wood"], root, taper=0.8)
+    box("M_ButtPlate", coll, (0.046, 0.012, 0.105), (0, -0.382, -0.015), M["Brass"], root)
+    box("M_Guard", coll, (0.008, 0.08, 0.008), (0, 0.0, -0.022), M["Brass"], root)
+    box("M_Trigger", coll, (0.006, 0.01, 0.024), (0, 0.0, -0.004), M["Iron"], root, rot=(15, 0, 0))
+    box("M_Lock", coll, (0.006, 0.08, 0.03), (0.026, 0.06, 0.05), M["Iron"], root)
+    box("M_Hammer", coll, (0.008, 0.014, 0.034), (0.03, 0.03, 0.075), M["Iron"], root, rot=(-25, 0, 0))
+    # the spyglass: a brass tube on two mounts, wider at the front, a lens at each end
+    Z = 0.125
+    cyl("M_Glass", coll, 0.018, 0.34, (0, 0.2, Z), M["Brass"], root, rot=(90, 0, 0), verts=12)
+    cyl("M_GlassFront", coll, 0.026, 0.07, (0, 0.4, Z), M["Brass"], root, rot=(-90, 0, 0), verts=12, radius_top=0.03)
+    cyl("M_GlassEye", coll, 0.022, 0.04, (0, 0.01, Z), M["DarkWood"], root, rot=(90, 0, 0), verts=12)
+    for i, y in enumerate((0.12, 0.3)):
+        box("M_Mount%d" % i, coll, (0.016, 0.02, 0.05), (0, y, 0.09), M["Iron"], root)
+    cyl("M_Rod", coll, 0.004, 0.7, (0, 0.5, 0.012), M["DarkWood"], root, rot=(90, 0, 0), verts=6)
+    empty("Sight", coll, (0, 0, Z), root)
+    empty("Muzzle", coll, (0, 1.09, 0.06), root)
+    make_hand("MR_", coll, root, (0, -0.03, -0.02), (-20, 0, 0), 1, (0.1, -0.166, -0.49), GLOVED)
+    make_hand("ML_", coll, root, (0, 0.42, 0.015), (-90, 0, -90), -1, (-0.45, -0.2, -0.43), GLOVED)
+    return coll
+
+
 def build_bomb():
     coll = get_coll("Bomb", clear=True)
     M = bpy.data.materials
@@ -189,7 +224,8 @@ def build_all(export=True):
     scene = bpy.data.scenes.get("Weapons") or bpy.data.scenes.new("Weapons")
     bpy.context.window.scene = scene
     built = [(build_cutlass(), "cutlass.glb"), (build_flintlock(), "flintlock.glb"),
-             (build_blunderbuss(), "blunderbuss.glb"), (build_cannon(), "cannon.glb"), (build_bomb(), "bomb.glb")]
+             (build_blunderbuss(), "blunderbuss.glb"), (build_cannon(), "cannon.glb"), (build_musket(), "musket.glb"),
+             (build_bomb(), "bomb.glb")]
     # side by side for a look
     for i, (c, _) in enumerate(built):
         bpy.data.objects[c.name if c.name != "Bomb" else "Grenade"].location.x = i * 0.6

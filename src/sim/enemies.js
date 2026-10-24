@@ -98,8 +98,12 @@ export class Enemies {
   // cause: 'ranged' (bullets, reflected orbs) or 'melee' (khépesh) — only melee kills drop health
   damage(e, amount, dir, killer, cause = 'ranged') {
     if (e.hidden || e.act?.kind === 'transform') return; // the pharaoh cannot be hurt while changing or teleporting
+    // a shell in front (the crab): blows that come at its face lose most of their force
+    const A = e.T.armor;
+    const armored = !!(A && dir && -(Math.sin(e.facing) * dir.x + Math.cos(e.facing) * dir.z) / (Math.hypot(dir.x, dir.z) || 1) > A.arc);
+    if (armored) amount *= A.mul;
     e.hp -= amount;
-    this.sim.emit('enemyHit', { id: e.id });
+    this.sim.emit('enemyHit', { id: e.id, armored, pos: armored ? e.pos.clone() : undefined });
     if (e.hp <= 0) this.#kill(e, dir, killer, cause);
   }
 
@@ -291,7 +295,9 @@ export class Enemies {
     // facing
     const charging = e.act?.kind === 'charge' || e.act?.kind === 'leap';
     const faceDir = charging ? e.act.dir : (e.hasLos && dist < 35) || !move ? toPlayer : move;
-    let dA = Math.atan2(faceDir.x, faceDir.z) - e.facing;
+    // the crab runs at you sideways, its flank (without the shell) turned toward you
+    const side = e.act?.kind === 'charge' && T.charge.side ? Math.PI / 2 : 0;
+    let dA = Math.atan2(faceDir.x, faceDir.z) + side - e.facing;
     dA = Math.atan2(Math.sin(dA), Math.cos(dA));
     e.facing += dA * Math.min(1, dt * 10);
 
@@ -414,7 +420,9 @@ export class Enemies {
       this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true });
       return;
     }
-    if (T.ranged && e.hasLos && dist < T.ranged.max && e.fireCd <= 0) {
+    // a lobbed ball needs no line of sight, only open sky over the player (a roof shelters)
+    const sight = T.ranged?.lob ? !this.level.nav.coveredAt(player.pos.x, player.pos.z) : e.hasLos;
+    if (T.ranged && sight && dist < T.ranged.max && e.fireCd <= 0) {
       e.act = { kind: 'ranged', t: 0, dur: T.ranged.windup };
       e.fireCd = T.ranged.cd * D.fireCd * rand(0.75, 1.15) / Math.sqrt(this.speedMul);
     }
@@ -508,6 +516,8 @@ export class Enemies {
     if (e.unstick > 0) return e.unstickDir.clone();
     const nav = this.level.nav.direction(e.pos, new THREE.Vector3(), T.climber ? 'climb' : T.radius > 0.6 ? 'big' : 'small');
     const path = dist < 2.5 || !nav ? toPlayer.clone() : nav;
+    // the ghost gunner keeps its post on the deck, unless a player comes aboard to fight it
+    if (T.post) return dist < 6 && dist > T.melee.range * 0.8 ? path : null;
     if (T.ranged && !T.boss && e.hasLos && dist < T.ranged.max) {
       e.strafeTimer -= dt;
       if (e.strafeTimer <= 0) { e.strafe *= -1; e.strafeTimer = rand(1, 2.2); }
@@ -523,7 +533,7 @@ export class Enemies {
     }
     if (dist <= T.melee.range * 0.8) return null;
     // runners weave a little on the way in, which makes them harder to hit
-    if (e.type === 'runner' && dist > 5 && e.hasLos) {
+    if (T.weave && dist > 5 && e.hasLos) {
       const w = Math.sin(e.phase * 0.35) * 0.45;
       return path.add(new THREE.Vector3(-path.z * w, 0, path.x * w)).normalize();
     }
@@ -540,13 +550,18 @@ export class Enemies {
   #fire(e, player) {
     const R = e.T.ranged;
     const from = this.muzzleOf(e);
+    if (R.lob) {
+      this.sim.emit('enemyFire', { pos: from.clone(), enemyType: e.type });
+      this.sim.lob(from, player, R, this.dmgMul * (e.elite ? 1.2 : 1));
+      return;
+    }
     const flight = from.distanceTo(player.center) / R.speed;
     const aim = player.center.addScaledVector(player.vel, flight * 0.6);
     const base = aim.sub(from).normalize();
-    this.sim.emit('enemyFire', { pos: from.clone() });
+    this.sim.emit('enemyFire', { pos: from.clone(), enemyType: e.type });
     // shooters fire a three-orb burst from a given wave on
-    const count = e.type === 'shooter' && this.wave >= this.D.shooterBurstWave ? 3 : R.count;
-    const spread = e.type === 'shooter' ? 0.05 : R.spread;
+    const count = R.burst && this.wave >= this.D.shooterBurstWave ? 3 : R.count;
+    const spread = R.burst ? 0.05 : R.spread;
     for (let i = 0; i < count; i++) {
       const off = count > 1 ? (i / (count - 1) - 0.5) * 2 : 0;
       const dir = base.clone().applyAxisAngle(UP, off * spread * 2).normalize();

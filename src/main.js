@@ -548,7 +548,7 @@ function parrySparks(count) {
   effects.burst(pos, _fwd.clone().negate(), { count, color: new THREE.Color(1, 0.78, 0.35), speed: 4.5, size: 0.035, life: 0.32, grav: 5 });
 }
 
-const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3, flintlock: 0.25, blunderbuss: 0.45, cannon: 0.7 };
+const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3, flintlock: 0.25, blunderbuss: 0.45, cannon: 0.7, musket: 0.3 };
 const PLAYER_HIT_COLOR = new THREE.Color(0.75, 0.15, 0.1);
 const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? 'Un allié').toUpperCase();
 
@@ -623,7 +623,7 @@ function handleEvents() {
       case 'enemyKill':
         enemyView.onEvent(ev);
         sound.kill(0, Math.max(0.15, vol(ev.pos, 50)), ev.enemyType);
-        if (ev.enemyType === 'tank' || ev.enemyType === 'boss') addShake(0.3 * vol(ev.pos, 25));
+        if (world.enemies[ev.enemyType]?.big) addShake(0.3 * vol(ev.pos, 25));
         break;
       case 'slam': enemyView.onEvent(ev); sound.slam(0, 1); addShake(0.6 * vol(ev.pos, 25)); break;
       case 'wallStun': enemyView.onEvent(ev); sound.slam(pan(ev.pos), vol(ev.pos)); addShake(0.5 * vol(ev.pos, 20)); break;
@@ -634,8 +634,16 @@ function handleEvents() {
         else sound.clang();
         break;
       case 'growl': sound.growl(pan(ev.pos), ev.loud ? 1 : vol(ev.pos), ev.low, ev.enemyType); break;
-      case 'enemyFire': sound.enemyFire(pan(ev.pos), vol(ev.pos)); break;
-      case 'enemySpawn': case 'enemyHit': case 'ring': case 'projectileEnd':
+      case 'enemyFire':
+        // the ghost gunner's swivel gun booms like the hand cannon, further off
+        if (world.enemies[ev.enemyType]?.ranged?.lob) sound.shot('cannon', pan(ev.pos), 0.7 * Math.max(0.2, vol(ev.pos, 80)));
+        else sound.enemyFire(pan(ev.pos), vol(ev.pos));
+        break;
+      case 'enemyHit':
+        enemyView.onEvent(ev);
+        if (ev.armored) sound.clang();
+        break;
+      case 'enemySpawn': case 'ring': case 'projectileEnd':
         enemyView.onEvent(ev);
         break;
       case 'prime': primes.set(ev.id, 0); break;
@@ -652,8 +660,9 @@ function handleEvents() {
       case 'rainMark': enemyView.onEvent(ev); break;
       case 'rainStrike':
         enemyView.onEvent(ev);
-        sound.crumble(pan(ev.pos), vol(ev.pos, 40), true);
-        addShake(0.35 * vol(ev.pos, 12));
+        if (ev.kind === 'lob') sound.explosion(pan(ev.pos), 0.6 * Math.max(0.3, vol(ev.pos, 60)));
+        else sound.crumble(pan(ev.pos), vol(ev.pos, 40), true);
+        addShake((ev.kind === 'lob' ? 0.5 : 0.35) * vol(ev.pos, 12));
         break;
       case 'teleportOut': case 'teleportIn': enemyView.onEvent(ev); sound.warp(pan(ev.pos), vol(ev.pos, 70)); break;
       case 'bossPhase2': enemyView.onEvent(ev); sound.transform(); addShake(0.5); break;

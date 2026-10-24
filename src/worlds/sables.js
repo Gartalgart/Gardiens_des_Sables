@@ -65,13 +65,15 @@ export const SABLES = {
     runner: {
       hp: 70, speed: 7.2, radius: 0.4, height: 1.75, headY: 1.3,
       early: 0.75, // speed factor in waves 1-2, so a new player has time to learn
+      weave: true, // zigzags on the way in
       melee: { range: 1.7, dmg: 11, windup: 0.18, cd: 0.75 },
       leap: { min: 3.5, max: 8, dur: 0.5, dmg: 15, cd: [2.2, 3.8] },
     },
     shooter: {
       hp: 95, speed: 4.2, radius: 0.45, height: 1.95, headY: 1.55,
       melee: { range: 1.7, dmg: 9, windup: 0.25, cd: 1.0 },
-      ranged: { min: 8, max: 28, cd: 1.7, windup: 0.35, speed: 22, dmg: 13, count: 1, spread: 0 },
+      // burst: three orbs at once from a wave set by the difficulty
+      ranged: { min: 8, max: 28, cd: 1.7, windup: 0.35, speed: 22, dmg: 13, count: 1, spread: 0, burst: true },
       muzzle: [0.36, 2.2, 0.3], // staff orb, in model space (model faces +Z)
     },
     tank: {
@@ -123,6 +125,8 @@ export const SABLES = {
   ],
   // the arena's few wandering guardians
   arenaGuards: ['runner', 'runner', 'shooter'],
+  // the group called with N in Exploration mode, to try the weapons on
+  targets: [['runner', 3], ['shooter', 2], ['tank', 1]],
 
   texts: {
     start: 'Khépesh [1] et pistolet [2] — survivez aux gardiens',

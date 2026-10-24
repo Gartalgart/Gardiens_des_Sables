@@ -369,7 +369,7 @@ for z in (20, 23, 26, 29):
 lantern(17, 10, 2.6, -41)
 post(10, -41, 0, 3.0, 0.08)
 empty("SPAWN_3", LEVEL, P(10, 0, -52))
-empty("SPAWN_4", LEVEL, P(-38, 0, 25))  # out of the sea, west
+empty("SPAWN_4", LEVEL, P(-39.5, 0, 20.5))  # out of the sea, west (clear of the sea rock)
 empty("SPAWN_5", LEVEL, P(36, 0, -36))
 empty("SPAWN_6", LEVEL, P(-38, 0, -10))
 empty("PLAYER_START", LEVEL, P(-6, 0, 4))

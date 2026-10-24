@@ -46,7 +46,7 @@ export class Sim {
     this.victory = null;
     this.lastCommands = new Map();
     this.weather = 'clear'; // 'sandstorm' once the pharaoh enters his second phase
-    this.strikes = []; // orb rain about to land: { id, pos, radius, dmg, t }
+    this.strikes = []; // orb rain or lobbed balls about to land: { id, pos, radius, dmg, t, kind }
     // fire pots in flight: { id, pos, vel, fuse, owner }; a cannon ball also has kind 'ball',
     // gravity and the weapon's blast, and has no fuse
     this.grenades = [];
@@ -472,13 +472,25 @@ export class Sim {
     }
   }
 
+  // A ball lobbed from `from` (the ghost gunner's swivel gun) onto where the player is heading: its
+  // shadow on the ground shows where it falls, and it lands after a flight that grows with distance.
+  lob(from, player, R, dmgMul) {
+    const flight = THREE.MathUtils.clamp(from.distanceTo(player.pos) / R.speed, 1.1, 2.4);
+    const pos = player.pos.clone().addScaledVector(player.vel.clone().setY(0), flight * 0.5);
+    pos.y = this.level.groundAt(pos.x, pos.z, 0.5, player.pos.y + 0.6);
+    const strike = { id: this.nextId(), pos, radius: R.radius, dmg: R.dmg * dmgMul, t: flight, kind: 'lob' };
+    this.strikes.push(strike);
+    this.emit('rainMark', { id: strike.id, pos: pos.clone(), radius: strike.radius, delay: flight, from: from.clone(), kind: 'lob' });
+  }
+
   #updateStrikes(dt) {
     for (let i = this.strikes.length - 1; i >= 0; i--) {
       const s = this.strikes[i];
       s.t -= dt;
       if (s.t > 0) continue;
       this.strikes.splice(i, 1);
-      this.emit('rainStrike', { id: s.id, pos: s.pos.clone(), radius: s.radius });
+      this.emit('rainStrike', { id: s.id, pos: s.pos.clone(), radius: s.radius, kind: s.kind });
+      if (s.kind === 'lob') this.#lightKegs(s.pos, s.radius, null);
       for (const p of this.alivePlayers()) {
         const d = Math.hypot(p.pos.x - s.pos.x, p.pos.z - s.pos.z);
         if (d < s.radius && Math.abs(p.pos.y - s.pos.y) < 2.5) this.hitPlayer(p, s.dmg, s.pos, 'explosion');
@@ -617,20 +629,39 @@ export class Sim {
   }
 
   // Most enemies rise from the sand inside the city, out of every player's sight; the rest come through the gates.
+  // Some types have their own places: a post of the universe (the gunners on the galleon's deck), or
+  // a stretch of shallow water (the crab comes out of the sea).
   pickSpawn(type) {
     const D = this.difficulty;
     const players = this.alivePlayers();
+    const T = this.world.enemies[type];
+    if (T.post && this.world.posts?.length) {
+      const free = this.world.posts.filter(([x, , z]) => !this.enemies.list.some((e) => e.T.post && Math.hypot(e.pos.x - x, e.pos.z - z) < 1.5));
+      const pool = free.length ? free : this.world.posts;
+      return new THREE.Vector3(...pool[Math.floor(Math.random() * pool.length)]);
+    }
+    if (T.fromWater) {
+      const p = this.level.nav.ambushPoint(8, 80, (c) => this.level.inWater(c.x, c.z, 0) && players.every((pl) => c.distanceTo(pl.pos) > 9), T.fromWater);
+      if (p) return p;
+    }
     if (type !== 'boss' && Math.random() < D.ambush) {
       const p = this.level.nav.ambushPoint(D.ambushMin, 44, (c) => players.every((pl) =>
         c.distanceTo(pl.pos) > 14 && !this.level.lineOfSight(c.clone().setY(1.6), pl.eye)));
       if (p) return p;
     }
     const minDist = (s) => Math.min(...players.map((pl) => s.distanceTo(pl.pos)));
-    const far = this.level.spawns.filter((s) => minDist(s) > 25);
-    const pool = far.length ? far : this.level.spawns;
+    // only the gates this body can walk out of: a big one (the boss, a crab) does not fit through the
+    // treasure cave or down the galleon's stairs
+    const nav = this.level.nav;
+    const layer = nav.layers[T.climber ? 'climb' : T.radius > 0.6 ? 'big' : 'small'];
+    const open = this.level.spawns.filter((s) => layer.dist[nav.index(s.x, s.z)] < Infinity);
+    const gates = open.length ? open : this.level.spawns;
+    const far = gates.filter((s) => minDist(s) > 25);
+    const pool = far.length ? far : gates;
     const s = pool[Math.floor(Math.random() * pool.length)].clone();
-    s.x += (Math.random() - 0.5) * 3;
-    s.z += (Math.random() - 0.5) * 3;
+    // a little spread around the gate, unless that would put the body in a wall
+    const x = s.x + (Math.random() - 0.5) * 3, z = s.z + (Math.random() - 0.5) * 3;
+    if (layer.dist[nav.index(x, z)] < Infinity) { s.x = x; s.z = z; }
     return s;
   }
 }

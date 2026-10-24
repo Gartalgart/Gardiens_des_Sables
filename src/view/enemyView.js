@@ -10,6 +10,10 @@ export const ENEMY_LOOK = {
   boss: { color: new THREE.Color(1, 0.75, 0.25), dot: '#ffd36b' },
   mummy: { color: new THREE.Color(0.5, 1, 0.3), dot: '#8dff5a' },
   scarab: { color: new THREE.Color(0.3, 1, 0.85), dot: '#3fe0c0' },
+  // the pirates'
+  skeleton: { color: new THREE.Color(0.45, 1, 0.55), dot: '#7dff8c' },
+  crab: { color: new THREE.Color(1, 0.4, 0.15), dot: '#ff6a2a' },
+  gunner: { color: new THREE.Color(0.4, 1, 0.9), dot: '#6af0e0' },
 };
 const ELITE_GOLD = new THREE.Color(1, 0.78, 0.3);
 const REFLECTED = new THREE.Color(1, 0.85, 0.4); // orbs parried back by a player
@@ -31,6 +35,9 @@ const GAIT = {
   boss: { run: 99, walkRef: 2.0, runRef: 4 },
   mummy: { run: 3.2, walkRef: 1.8, runRef: 4.6 },
   scarab: { run: 2, walkRef: 2.5, runRef: 7.5 },
+  skeleton: { run: 3.5, walkRef: 2.4, runRef: 7 },
+  crab: { run: 99, walkRef: 2.2, runRef: 5 },
+  gunner: { run: 99, walkRef: 1.2, runRef: 3 },
 };
 
 // Draws what the simulation's enemies, orbs and pickups are doing, and plays their deaths.
@@ -44,6 +51,9 @@ export class EnemyView {
     this.pickupMeshes = new Map(); // pickup id -> mesh
     this.debris = [];
     this.fallingOrbs = []; // orb rain coming down on a marked circle
+    this.lobs = []; // the gunners' balls in flight, each with its shadow on the ground
+    this.ballGeo = new THREE.IcosahedronGeometry(0.16, 1);
+    this.ballMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, metalness: 0.7, roughness: 0.45, flatShading: true });
 
     this.orbGeo = new THREE.IcosahedronGeometry(0.16, 1);
     this.orbTex = makeGlowTexture('#ffffff', 0.0);
@@ -62,6 +72,8 @@ export class EnemyView {
     for (const d of this.debris) this.scene.remove(d.mesh);
     for (const f of this.fallingOrbs) this.#releaseOrb(f.mesh);
     this.fallingOrbs.length = 0;
+    for (const l of this.lobs) this.#dropLob(l);
+    this.lobs.length = 0;
     this.views.clear();
     this.orbs.clear();
     this.pickupMeshes.clear();
@@ -79,6 +91,8 @@ export class EnemyView {
       o.material = o.material.clone();
       o.material.flatShading = true;
       if (vary) o.material.color.offsetHSL((vary - 0.5) * 0.06, (vary - 0.5) * 0.2, (vary - 0.5) * 0.08);
+      // the ghost gunner is see-through
+      if (o.material.name.startsWith('Ghost')) { o.material.transparent = true; o.material.opacity = 0.6; o.material.depthWrite = false; }
       if (o.material.emissive.getHex() === 0) {
         o.material.emissive.copy(e.elite ? ELITE_GOLD : look.color).multiplyScalar(e.elite ? 0.16 : 0.07);
         o.material.emissiveIntensity = 1;
@@ -132,12 +146,14 @@ export class EnemyView {
           v.flash = 0.08;
           v.actions.hit?.reset().play();
         }
+        // a blow glancing off the crab's shell
+        if (ev.armored) this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.9), null, { count: 14, color: new THREE.Color(1, 0.85, 0.5), speed: 6, size: 0.06, life: 0.25, grav: 8 });
         break;
       }
       case 'enemyKill': {
         const v = this.views.get(ev.id);
         const look = ENEMY_LOOK[ev.enemyType];
-        const big = ev.enemyType === 'tank' || ev.enemyType === 'boss';
+        const big = !!v?.last.T.big;
         if (v) { this.#shatter(v, ev.pos, ev.dir); this.views.delete(ev.id); }
         this.effects.burst(ev.pos.clone().setY(ev.pos.y + (v?.last.T.height ?? 2) * 0.5), null, { count: big ? 60 : 25, color: look.color, speed: 5, size: 0.14, life: 0.6, grav: 4 });
         break;
@@ -146,6 +162,20 @@ export class EnemyView {
         this.#ring(ev.pos, ev.radius, ENEMY_LOOK[ev.enemyType].color, ev.life);
         break;
       case 'rainMark': {
+        if (ev.kind === 'lob') {
+          // a ball lobbed from the galleon: its shadow darkens and grows where it will land
+          const shadow = new THREE.Mesh(this.blobGeo, this.blobMat.clone());
+          shadow.position.copy(ev.pos).setY(ev.pos.y + 0.04);
+          shadow.renderOrder = -1;
+          this.scene.add(shadow);
+          const ball = new THREE.Mesh(this.ballGeo, this.ballMat);
+          ball.castShadow = true;
+          this.scene.add(ball);
+          this.lobs.push({ id: ev.id, ball, shadow, from: ev.from.clone(), to: ev.pos.clone(), radius: ev.radius, t: 0, dur: ev.delay });
+          // a dull red edge, since a dark shadow hardly shows on the sand at night
+          this.#ring(ev.pos, ev.radius, new THREE.Color(0.6, 0.12, 0.05), ev.delay);
+          break;
+        }
         // a red circle grows on the ground while the orb falls onto it
         this.#ring(ev.pos, ev.radius, new THREE.Color(1, 0.3, 0.15), ev.delay);
         const mesh = this.#acquireOrb(new THREE.Color(1, 0.45, 0.2));
@@ -154,6 +184,13 @@ export class EnemyView {
         break;
       }
       case 'rainStrike': {
+        if (ev.kind === 'lob') {
+          const i = this.lobs.findIndex((l) => l.id === ev.id);
+          if (i >= 0) { this.#dropLob(this.lobs[i]); this.lobs.splice(i, 1); }
+          this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.2), UP, { count: 50, color: new THREE.Color(1, 0.6, 0.25), speed: 8, size: 0.22, life: 0.5, grav: 5, spread: 1.4 });
+          this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.4), UP, { count: 30, color: new THREE.Color(0.18, 0.17, 0.16), speed: 3, size: 0.6, life: 1.3, grav: -0.5, spread: 2 });
+          break;
+        }
         const i = this.fallingOrbs.findIndex((f) => f.id === ev.id);
         if (i >= 0) { const f = this.fallingOrbs[i]; f.mesh.scale.setScalar(1); this.#releaseOrb(f.mesh); this.fallingOrbs.splice(i, 1); }
         this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.2), UP, { count: 40, color: new THREE.Color(1, 0.45, 0.2), speed: 7, size: 0.2, life: 0.6, grav: 6, spread: 1.6 });
@@ -222,6 +259,18 @@ export class EnemyView {
     });
     for (const [id, m] of this.pickupMeshes) if (!pk.has(id)) { this.scene.remove(m); this.pickupMeshes.delete(id); }
 
+    // a lobbed ball flies in an arc; its shadow grows darker and wider as it comes down
+    for (const l of this.lobs) {
+      l.t += dt;
+      const k = Math.min(1, l.t / l.dur);
+      const arc = Math.max(4, l.from.distanceTo(l.to) * 0.35);
+      l.ball.position.lerpVectors(l.from, l.to, k);
+      l.ball.position.y += Math.sin(Math.PI * k) * arc;
+      l.shadow.scale.setScalar(l.radius * (0.6 + 1.4 * k));
+      l.shadow.material.opacity = 0.35 + 0.65 * k;
+      if (Math.random() < 0.5) this.effects.emit(l.ball.position, new THREE.Vector3(0, 0.5, 0), new THREE.Color(0.14, 0.14, 0.13), 0.16, 0.6, -0.3);
+    }
+
     for (const f of this.fallingOrbs) {
       f.t += dt;
       const k = Math.min(1, f.t / f.dur);
@@ -245,6 +294,12 @@ export class EnemyView {
     mesh.children[0].material.color.copy(color);
     this.scene.add(mesh);
     return mesh;
+  }
+
+  #dropLob(l) {
+    this.scene.remove(l.ball);
+    this.scene.remove(l.shadow);
+    l.shadow.material.dispose();
   }
 
   #releaseOrb(mesh) {
@@ -365,7 +420,7 @@ export class EnemyView {
     this.#animate(v, e, dt);
 
     const shake = a?.kind === 'charge-wind' || a?.kind === 'prime' ? Math.sin(v.phase * 60) * (a.kind === 'prime' ? 0.03 + p * 0.05 : 0.05) : 0;
-    const hover = T.boss ? 0.4 : 0;
+    const hover = T.hover ?? (T.boss ? 0.4 : 0);
     v.mesh.position.set(e.pos.x + shake, e.pos.y + e.lift + hover - e.rise * T.height, e.pos.z);
     v.mesh.rotation.y = e.facing;
     // a climbing scarab stands up against the wall

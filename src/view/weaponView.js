@@ -16,6 +16,7 @@ const VIEW = {
   cutlass: { hip: new THREE.Vector3(0.3, -0.31, -0.6), block: new THREE.Vector3(0.05, -0.2, -0.6), scale: 0.72 },
   flintlock: { hip: new THREE.Vector3(0.16, -0.15, -0.4), adsZ: -0.42, scale: 0.9, kick: [0.08, 0.3, 0.05], flash: 0.3, smoke: 1 },
   blunderbuss: { hip: new THREE.Vector3(0.16, -0.21, -0.36), adsZ: -0.3, sightY: 0.11, scale: 1.0, kick: [0.15, 0.42, 0.14], flash: 0.42, smoke: 1.6 },
+  musket: { hip: new THREE.Vector3(0.17, -0.23, -0.42), adsZ: -0.22, scale: 0.85, kick: [0.1, 0.3, 0.05], flash: 0.3, smoke: 1.2 },
   cannon: { hip: new THREE.Vector3(0.2, -0.28, -0.46), adsZ: -0.38, sightY: 0.21, scale: 0.95, kick: [0.22, 0.55, 0.1], flash: 0.55, smoke: 2.4 },
 };
 
@@ -32,6 +33,7 @@ const RIG = {
   flintlock: { arm: 'FL_', ram: { rod: 'F_Rod', len: 0.26, charge: 'paper' }, hammer: 'F_Hammer' },
   blunderbuss: { arm: 'BL_', ram: { rod: 'B_Rod', len: 0.38, charge: 'paper' } },
   cannon: { arm: 'CL_', ram: { charge: 'ball' } },
+  musket: { arm: 'ML_', ram: { rod: 'M_Rod', len: 0.7, charge: 'paper' } },
 };
 
 const ease = (x) => x * x * (3 - 2 * x);

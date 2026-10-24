@@ -202,6 +202,19 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 63 tests automatisés, dont 4 nouveaux : le pistolet à silex tire un coup puis recharge, le tromblon tire deux fois, le boulet vole, explose et repousse le tireur, l'Exploration donne toutes les armes et appelle des cibles.
 - **Validation :** essayer les armes en Exploration contre les ennemis du désert (touche N). Validée le 24/10/2026.
 
+### U1 Phase 4 — Ennemis de base `[x]`
+- [x] **Trois ennemis modélisés, avec squelette et animations** (`blender/pirates/enemies.py`, scène « Enemies » de `port.blend`, exportés dans `public/models/pirates/`) :
+  - **Matelot squelette** (comme le chacal) : os, bandana rouge, yeux verts maudits, sabre au poing. Il arrive par groupes de trois, zigzague, se fend sur le joueur et se défait en os quand il meurt (cliquetis d'os).
+  - **Crabe géant** (comme le colosse) : il sort de l'eau au large de la plage ouest. Sa carapace ne laisse passer que 30 % des coups portés de face (étincelles et bruit de métal). Il charge de côté, le flanc tourné vers le joueur : c'est le moment de tirer.
+  - **Artilleur fantôme** (comme le prêtre) : un fantôme translucide en tricorne qui flotte à son poste sur le pont ou le gaillard du galion. Il tire des boulets en cloche avec un pierrier ; une ombre et un cercle rouge montrent où le boulet va tomber. Il n'a pas besoin de voir le joueur, mais il ne tire pas sur quelqu'un qui est sous un toit. Il ne quitte son poste que si on monte à bord.
+- [x] **Le moteur généralise les comportements** : armure de face (`armor`), charge de côté (`charge.side`), poste fixe (`post` et `posts` de l'univers), apparition dans une zone d'eau (`fromWater`), tir en cloche (`ranged.lob`), zigzag (`weave`) et rafale (`ranged.burst`) deviennent des champs de la fiche au lieu de noms de types écrits en dur. Un groupe (`swarm`) arrive maintenant par blocs de sa taille.
+- [x] **Vagues des pirates** : squelettes, puis artilleurs (vague 2), puis crabes (vague 3) ; le pharaon reste le boss en attendant le Kraken (phase 6). En Exploration, la touche N appelle 3 squelettes, 2 artilleurs et 1 crabe.
+- [x] **Corrections après le premier essai :**
+  - le boss pouvait apparaître à une porte d'où un gros corps ne sort pas (la grotte, le pont du galion, un rocher en mer) : chaque type n'utilise plus que les points d'apparition dont il peut sortir, et l'écart aléatoire autour d'une porte ne le met plus dans un mur ; le point d'apparition ouest en mer est déplacé hors du rocher (`port.py`, `level.json`) ;
+  - **[5] Mousquet à longue-vue** pour la dernière vague, comme le fusil de précision du désert : long mousquet à lunette de laiton (`weapons.py`, `musket.glb`), une balle de 160 dégâts qui traverse un premier ennemi, imprécis à la hanche, parfait dans la longue-vue (zoom à 18°), rechargé par la bouche avec la baguette.
+- [x] 70 tests automatisés, dont 7 nouveaux : la carapace du crabe, son apparition dans l'eau, sa marche jusqu'au joueur et sa charge de côté ; les postes des artilleurs et leurs tirs en cloche, l'abri d'un toit ; les squelettes par trois ; le boss par une porte praticable ; les déblocages des vagues jusqu'au mousquet.
+- **Validation :** jouer des vagues avec ces trois ennemis (ou les appeler avec N en Exploration), jusqu'au boss de la vague 5. Validée le 24/10/2026.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).
