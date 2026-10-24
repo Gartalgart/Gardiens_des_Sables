@@ -37,7 +37,6 @@
     </div>
     <div id="hitmarker"></div>
     <div id="points"><div id="points-total"></div><div id="points-list"></div></div>
-    <div id="medal" class="hidden"></div>
     <div id="damage-dirs"></div>
 
     <div id="bottom-left">
@@ -64,7 +63,11 @@
     <div id="prompt" class="hidden"></div>
     <div id="downed" class="hidden"><div class="downed-title" id="downed-title">À terre</div><div id="downed-sub">Un coéquipier peut te relever</div><div class="revive-bar"><div id="downed-fill"></div></div></div>
 
-    <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
+    <!-- medal and wave banner can show at once: stacked in one column so they never overlap -->
+    <div id="announce">
+      <div id="medal" class="hidden"></div>
+      <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
+    </div>
     <div id="pickup-msg"></div>
 
     <div id="cards" class="hidden">
@@ -136,6 +139,8 @@
         <div class="opt-row"><input type="checkbox" id="o-shake" /></div>
         <label for="o-fps">Afficher les FPS</label>
         <div class="opt-row"><input type="checkbox" id="o-fps" /></div>
+        <label for="o-hpnum">Afficher la santé en chiffre</label>
+        <div class="opt-row"><input type="checkbox" id="o-hpnum" /></div>
       </div>
       <button id="btn-options-back">Retour</button>
       <button id="btn-options-reset" class="secondary">Valeurs par défaut</button>

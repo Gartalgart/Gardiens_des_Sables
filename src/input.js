@@ -59,7 +59,7 @@ export class Input {
 
   // sensitivityScale: lower while aiming down sights; cardMode: digit keys pick an upgrade card
   buildCommand(sensitivityScale, cardMode = false) {
-    const sens = 0.0022 * sensitivityScale * settings.sensitivity;
+    const sens = 0.0015 * sensitivityScale * settings.sensitivity;
     this.yaw -= this.mouse.dx * sens;
     this.pitch -= this.mouse.dy * sens * (settings.invertY ? -1 : 1);
     this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch));

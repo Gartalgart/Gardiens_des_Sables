@@ -77,11 +77,12 @@ html, body {
 #points-total.bump { animation: pointsBump 0.18s ease-out; }
 #points-list div { font-size: 14px; letter-spacing: 0.12em; color: var(--ink); text-shadow: 0 0 6px rgba(0,0,0,0.9); transition: opacity 0.4s; }
 #points-list b { color: var(--gold); margin-left: 6px; }
-#medal { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); font-family: "Cinzel", serif; font-weight: 800; font-size: 46px; letter-spacing: 0.12em; color: #ffd36b; text-shadow: 0 0 18px rgba(255,170,60,0.7), 0 2px 0 #5a3410; white-space: nowrap; }
+#announce { position: absolute; top: 17%; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 14px; }
+#medal { text-align: center; font-family: "Cinzel", serif; font-weight: 800; font-size: 46px; letter-spacing: 0.12em; color: #ffd36b; text-shadow: 0 0 18px rgba(255,170,60,0.7), 0 2px 0 #5a3410; white-space: nowrap; }
 #medal.show { animation: medalIn 0.35s cubic-bezier(.2,1.6,.4,1); }
 #medal small { display: block; font-size: 15px; letter-spacing: 0.35em; color: var(--ink); text-shadow: none; }
 @keyframes pointsBump { from { transform: scale(1.25); } to { transform: scale(1); } }
-@keyframes medalIn { from { opacity: 0; transform: translateX(-50%) scale(1.6); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes medalIn { from { opacity: 0; transform: scale(1.6); } to { opacity: 1; transform: scale(1); } }
 #slots { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 .slot { font-size: 13px; padding: 3px 8px; border: 1px solid rgba(255,255,255,0.12); color: var(--ink-dim); background: rgba(0,0,0,0.35); }
 .slot b { color: var(--gold-dim); margin-right: 4px; }
@@ -96,17 +97,17 @@ html, body {
 .ch.l, .ch.r { width: 9px; height: 2px; top: -1px; }
 #hitmarker { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; opacity: 0;
   background:
-    linear-gradient(45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%),
-    linear-gradient(-45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%);
+    linear-gradient(45deg, transparent 45%, var(--hm, #fff) 45%, var(--hm, #fff) 55%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, var(--hm, #fff) 45%, var(--hm, #fff) 55%, transparent 55%);
   -webkit-mask: radial-gradient(circle, transparent 5px, #000 6px);
           mask: radial-gradient(circle, transparent 5px, #000 6px);
 }
-#hitmarker.head { filter: drop-shadow(0 0 3px var(--blood)) sepia(1) saturate(6) hue-rotate(-30deg); }
+#hitmarker.head { --hm: #ff2a1a; width: 30px; height: 30px; margin: -15px 0 0 -15px; filter: drop-shadow(0 0 3px rgba(255, 40, 20, 0.8)); }
 #damage-dirs { position: absolute; left: 50%; top: 50%; }
 .dmg-dir { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
   border-top: 5px solid rgba(214, 58, 42, 0.9); filter: blur(1px); transition: opacity 0.9s; }
 
-#banner { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); text-align: center; animation: bannerIn 0.5s ease; }
+#banner { text-align: center; white-space: nowrap; animation: bannerIn 0.5s ease; }
 #banner-title { font-family: "Cinzel", serif; font-size: 64px; font-weight: 800; letter-spacing: 0.15em; color: var(--gold); }
 #banner-sub { font-size: 20px; letter-spacing: 0.3em; color: var(--ink); }
 #pickup-msg { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); font-size: 18px; letter-spacing: 0.15em; color: var(--cyan); opacity: 0; transition: opacity 0.3s; }
@@ -155,7 +156,7 @@ button.secondary { background: transparent; color: var(--ink); border: 1px solid
 .seg { gap: 6px; }
 .seg button { flex: 1; margin: 0; padding: 7px 4px; font-size: 13px; background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
 .seg button.active { color: #1a1206; background: var(--gold); border-color: var(--gold); }
-#fps { position: fixed; top: 6px; left: 50%; transform: translateX(-50%) translateY(84px); font-size: 13px; color: var(--ink-dim); pointer-events: none; font-variant-numeric: tabular-nums; }
+#fps { position: fixed; top: 224px; left: 18px; width: 200px; text-align: center; font-size: 13px; color: var(--ink-dim); pointer-events: none; font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) { .opts { grid-template-columns: 1fr; } }
 #objective { margin-top: 4px; font-size: 14px; letter-spacing: 0.06em; color: var(--ink-dim); }
 #objective b { color: var(--gold); font-weight: 700; }
@@ -200,7 +201,7 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 0 2px; f
 #stats div:nth-child(even) { text-align: left; font-weight: 700; }
 
 @keyframes pulse { from { opacity: 1; } to { opacity: 0.45; } }
-@keyframes bannerIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes bannerIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 700px) {
   #minimap-wrap, #minimap { width: 130px; height: 130px; }

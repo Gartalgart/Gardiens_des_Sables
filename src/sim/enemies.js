@@ -4,6 +4,7 @@ import * as THREE from 'three';
 export const TYPES = {
   runner: {
     hp: 70, speed: 7.2, radius: 0.4, height: 1.75, headY: 1.3,
+    early: 0.75, // speed factor in waves 1-2, so a new player has time to learn
     melee: { range: 1.7, dmg: 11, windup: 0.18, cd: 0.75 },
     leap: { min: 3.5, max: 8, dur: 0.5, dmg: 15, cd: [2.2, 3.8] },
   },
@@ -266,7 +267,7 @@ export class Enemies {
     }
 
     let move = null;
-    let speed = T.speed * this.speedMul * (e.elite ? 1.15 : 1);
+    let speed = T.speed * this.speedMul * (e.elite ? 1.15 : 1) * (T.early && this.wave <= 2 ? T.early : 1);
     let moved = 0;
 
     if (e.stun > 0) {
@@ -306,7 +307,7 @@ export class Enemies {
         moved = Math.hypot(e.pos.x - bx, e.pos.z - bz) / dt;
       }
       // follow the floor: step up at once, ease down
-      const g = this.level.groundAt(e.pos.x, e.pos.z, T.radius * 0.7, e.pos.y);
+      const g = this.level.groundAt(e.pos.x, e.pos.z, T.radius, e.pos.y);
       e.pos.y = g > e.pos.y ? g : e.pos.y + (g - e.pos.y) * Math.min(1, dt * 14);
     }
 

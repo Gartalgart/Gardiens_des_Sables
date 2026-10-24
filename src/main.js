@@ -66,7 +66,8 @@ const worldFlash = new THREE.PointLight(0xffb060, 0, 14, 1.6);
 camera.add(worldFlash);
 worldFlash.position.set(0, 0, -1);
 
-const composer = new EffectComposer(renderer);
+// the composer renders off-screen, where the canvas' antialias does not apply: multisample its targets instead
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
 const vmPass = new RenderPass(vmScene, vmCamera);
 vmPass.clear = false;
@@ -113,7 +114,7 @@ const enemyView = new EnemyView(scene, assets, effects);
 const playerView = new PlayerView(scene, assets, effects);
 const grenadeView = new GrenadeView(scene, assets, effects);
 const hud = new Hud(level);
-Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects });
+Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects, hud });
 
 // ---------- settings ----------
 let appliedQuality = null;
@@ -124,6 +125,7 @@ function applySettings(s) {
     const pr = Math.min(devicePixelRatio, Q.pixelRatio);
     renderer.setPixelRatio(pr);
     composer.setPixelRatio(pr);
+    for (const rt of [composer.renderTarget1, composer.renderTarget2]) { rt.samples = Q.msaa; rt.dispose(); }
     renderer.setSize(innerWidth, innerHeight);
     composer.setSize(innerWidth, innerHeight);
     const sh = worldView.moon.shadow;
@@ -139,6 +141,7 @@ function applySettings(s) {
   }
   sound.setVolumes(s.volMaster, s.volSfx, s.volMusic);
   $('fps').classList.toggle('hidden', !s.showFps);
+  $('health-num').classList.toggle('hidden', !s.showHealthNum);
 }
 onSettingsChange(applySettings);
 
@@ -154,6 +157,7 @@ function syncOptionsForm() {
   for (const [key, o] of Object.entries(optionInputs)) { o.el.value = settings[key]; o.out.textContent = o.fmt(settings[key]); }
   $('o-invert').checked = settings.invertY;
   $('o-fps').checked = settings.showFps;
+  $('o-hpnum').checked = settings.showHealthNum;
   $('o-shake').checked = settings.cameraShake;
   $('o-name').value = settings.playerName;
   document.querySelectorAll('#o-quality button').forEach((b) => b.classList.toggle('active', b.dataset.q === settings.quality));
@@ -163,6 +167,7 @@ for (const [key, o] of Object.entries(optionInputs)) {
 }
 $('o-invert').addEventListener('change', (e) => updateSettings({ invertY: e.target.checked }));
 $('o-fps').addEventListener('change', (e) => updateSettings({ showFps: e.target.checked }));
+$('o-hpnum').addEventListener('change', (e) => updateSettings({ showHealthNum: e.target.checked }));
 $('o-shake').addEventListener('change', (e) => updateSettings({ cameraShake: e.target.checked }));
 $('o-name').addEventListener('input', (e) => updateSettings({ playerName: e.target.value.trim().slice(0, 16) || 'Joueur' }));
 document.querySelectorAll('#o-quality button').forEach((b) => b.addEventListener('click', () => { updateSettings({ quality: b.dataset.q }); syncOptionsForm(); }));

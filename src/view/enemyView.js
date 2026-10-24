@@ -82,7 +82,7 @@ export class EnemyView {
       if (o.material.emissive.getHex() === 0) {
         o.material.emissive.copy(e.elite ? ELITE_GOLD : look.color).multiplyScalar(e.elite ? 0.16 : 0.07);
         o.material.emissiveIntensity = 1;
-      } else o.material.emissiveIntensity = Math.min(o.material.emissiveIntensity * 1.5, e.T.boss ? 3 : 8);
+      } else o.material.emissiveIntensity = Math.min(o.material.emissiveIntensity * 0.6, e.T.boss ? 2 : 3.5); // eyes: lit, but no glare
       mats.push({ m: o.material, emissive: o.material.emissive.clone(), ei: o.material.emissiveIntensity });
     });
     if (e.elite) {

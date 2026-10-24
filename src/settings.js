@@ -10,14 +10,15 @@ export const DEFAULTS = {
   volMusic: 0.6,
   quality: 'high', // low | medium | high
   showFps: false,
+  showHealthNum: false, // the number next to the health bar, handy for debugging
   cameraShake: true,
   playerName: 'Joueur',
 };
 
 export const QUALITY = {
-  low: { label: 'Basse', pixelRatio: 0.75, shadowSize: 1024, shadows: true, bloom: false, fireLights: 3, particles: 0.5 },
-  medium: { label: 'Moyenne', pixelRatio: 1.0, shadowSize: 1024, shadows: true, bloom: true, fireLights: 4, particles: 0.75 },
-  high: { label: 'Haute', pixelRatio: 1.5, shadowSize: 2048, shadows: true, bloom: true, fireLights: 6, particles: 1 },
+  low: { label: 'Basse', pixelRatio: 0.75, msaa: 0, shadowSize: 1024, shadows: true, bloom: false, fireLights: 3, particles: 0.5 },
+  medium: { label: 'Moyenne', pixelRatio: 1.0, msaa: 2, shadowSize: 1024, shadows: true, bloom: true, fireLights: 4, particles: 0.75 },
+  high: { label: 'Haute', pixelRatio: 1.5, msaa: 4, shadowSize: 2048, shadows: true, bloom: true, fireLights: 6, particles: 1 },
 };
 
 export const settings = { ...DEFAULTS };

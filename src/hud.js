@@ -334,7 +334,7 @@ export class Hud {
   }
 
   hit(head) {
-    this.hitTimer = 0.15;
+    this.hitTimer = head ? 0.25 : 0.15;
     $('hitmarker').classList.toggle('head', head);
   }
 

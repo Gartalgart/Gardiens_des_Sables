@@ -90,8 +90,8 @@ export class Sound {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const cfg = {
-      pistol: { f: 2200, dec: 0.16, thump: 140, vol: 0.7 },
-      rifle: { f: 2600, dec: 0.12, thump: 110, vol: 0.6 },
+      pistol: { f: 1300, dec: 0.2, thump: 95, tail: 0.22, vol: 0.8 },
+      rifle: { f: 1900, dec: 0.13, thump: 85, vol: 0.65 },
       shotgun: { f: 1300, dec: 0.38, thump: 70, vol: 1.0 },
       sniper: { f: 1900, dec: 0.6, thump: 55, vol: 1.1 },
     }[kind];
@@ -110,9 +110,9 @@ export class Sound {
     o.frequency.setValueAtTime(cfg.thump, t);
     o.frequency.exponentialRampToValueAtTime(35, t + 0.12);
     const og = this.ctx.createGain();
-    this.#env(og, t, 0.002, 0.9, 0.14);
+    this.#env(og, t, 0.002, 0.9, cfg.tail ?? 0.14);
     o.connect(og).connect(out);
-    o.start(t); o.stop(t + 0.2);
+    o.start(t); o.stop(t + (cfg.tail ?? 0.14) + 0.06);
   }
 
   swoosh() {
