@@ -50,6 +50,7 @@ export class Sim {
     // fire pots in flight: { id, pos, vel, fuse, owner }; a cannon ball also has kind 'ball',
     // gravity and the weapon's blast, and has no fuse
     this.grenades = [];
+    this.chest = null; // the pirate port's chest while an objective protects it: { pos, gold, looters }
     // the map's powder kegs; fuse: seconds before a keg caught in a blast goes off too
     this.kegs = level.kegs.map((pos, id) => ({ id, pos: pos.clone(), alive: true, fuse: null, by: null }));
     // the Level is shared by the games: a pier the Kraken broke stands again, and the nav grid

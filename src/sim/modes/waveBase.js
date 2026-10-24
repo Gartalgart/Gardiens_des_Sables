@@ -66,7 +66,9 @@ export class WaveBase {
     this.waveActive = true;
     this.spawnTimer = 0.5;
     // a secondary objective for this wave
-    this.objective = pickObjective(n);
+    this.objective = pickObjective(n, sim.world);
+    // protect the chest: it starts full, and some of this wave's enemies will go for it
+    sim.chest = this.objective.chest ? { pos: new THREE.Vector3(...sim.world.chest.pos), gold: 100, looters: sim.world.chest.looters } : null;
     for (const p of sim.players.values()) p.waveStats = freshWaveStats();
     sim.emit('objective', { state: 'start', text: this.objective.text });
   }
@@ -86,7 +88,10 @@ export class WaveBase {
       if (this.breakTimer <= 0) this.#beginWave(this.wave + 1);
       return;
     }
-    for (const p of sim.players.values()) p.waveStats.time += dt;
+    for (const p of sim.players.values()) {
+      p.waveStats.time += dt;
+      if (sim.chest) p.waveStats.chestLoss = 100 - sim.chest.gold;
+    }
 
     const D = sim.difficulty;
     this.spawnTimer -= dt;
@@ -114,6 +119,7 @@ export class WaveBase {
     const sim = this.sim;
     const n = this.wave;
     this.waveActive = false;
+    sim.chest = null;
     // objective and wave bonus for every player still standing
     // the end of a wave picks every downed player up
     for (const p of sim.players.values()) if (p.dead) { sim.raise(p, 0.5); sim.emit('playerRevived', { pid: p.id, by: null }); }

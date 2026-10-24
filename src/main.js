@@ -110,6 +110,12 @@ const world = getWorld(savedWorld);
 game.world = world;
 sound.setVoices(world.voices);
 $('menu-title').innerHTML = `${world.title[0]}<br /><span>${world.title[1]}</span>`;
+// the texts of the HUD and the help that name the universe's weapons
+world.weapons.forEach((w, i) => { const el = document.querySelector(`.slot[data-slot="${i}"]`); if (el) el.innerHTML = `<b>${i + 1}</b> ${w.short ?? w.name}`; });
+$('grenades').title = `${world.texts.grenadeName} [G]`;
+for (const el of document.querySelectorAll('.t-melee')) el.textContent = world.texts.meleeName;
+for (const el of document.querySelectorAll('.t-grenade')) el.textContent = world.texts.grenadeHelp;
+for (const el of document.querySelectorAll('.t-tips')) el.textContent = world.texts.tips;
 $('menu-lede').textContent = world.lede;
 document.title = world.name;
 $('world').innerHTML = Object.values(WORLDS).map((w) => `<button data-world="${w.id}" class="${w === world ? 'active' : ''}">${w.name}</button>`).join('');
@@ -397,6 +403,7 @@ function clearCharm() {
 
 function resetViews() {
   clearCharm();
+  game.chestWarned = -9;
   worldView.restoreBroken();
   $('ink').style.opacity = 0;
   enemyView.clear();
@@ -517,7 +524,7 @@ function endArena(winnerId) {
     ['Mode', `Arène · ${sim.mode.scoreLimit} éliminations`],
     ['Éliminations', p.stats.frags],
     ['Morts', p.stats.deaths],
-    ['Gardiens abattus', p.stats.kills],
+    [world.texts.killsLabel, p.stats.kills],
     ['Précision', `${p.accuracy} %`],
   ];
   $('stats').innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
@@ -617,7 +624,7 @@ function handleEvents() {
       case 'dry': if (mine) sound.dry(); break;
       case 'switch': if (mine) sound.weaponSwitch(); break;
       case 'kick': if (mine) input.addPitch(ev.pitch); break;
-      case 'step': if (mine) sound.step(ev.sprint, ev.land, ev.water); break;
+      case 'step': if (mine) sound.step(ev.sprint, ev.land, ev.water, ev.high); break;
       case 'reflectHit': if (mine) { hud.hit(false); sound.hit(false); } break;
       case 'blocked': if (mine) { sound.clang(); weaponView.onBlocked(); parrySparks(14); addShake(0.2); } break;
       case 'perfectParry':
@@ -672,7 +679,11 @@ function handleEvents() {
       case 'grab':
         if (mine) { if (!ev.released) { sound.hurt(); addShake(0.4); } hud.prompt(ev.released ? null : 'UNE TENTACULE VOUS TIENT — FRAPPEZ-LA POUR VOUS LIBÉRER'); }
         break;
-      case 'inked': if (mine) { sound.thud(0, 1); addShake(0.2); } break;
+      case 'chestHit':
+        sound.click(1.8);
+        if (game.sim.time - (game.chestWarned ?? -9) > 6) { game.chestWarned = game.sim.time; hud.pickup(`ON PILLE LE COFFRE ! (${Math.round(ev.gold)} %)`); }
+        break;
+      case 'inked': if (mine) { if (!sound.sample('enemies/ink_splat', { vol: 0.8 })) sound.thud(0, 1); addShake(0.2); } break;
       case 'pierBreak': {
         worldView.breakArea(ev);
         const mid = new THREE.Vector3((ev.minX + ev.maxX) / 2, 1, (ev.minZ + ev.maxZ) / 2);
@@ -681,8 +692,10 @@ function handleEvents() {
           effects.burst(at, null, { count: 18, color: new THREE.Color(0.35, 0.22, 0.12), speed: 6, size: 0.3, life: 1.2, grav: 9 });
           effects.burst(at, new THREE.Vector3(0, 1, 0), { count: 12, color: new THREE.Color(0.6, 0.75, 0.8), speed: 7, size: 0.35, life: 0.9, grav: 9, spread: 0.6 });
         }
-        sound.explosion(pan(mid), Math.max(0.4, vol(mid, 80)));
-        sound.crumble(pan(mid), 1, true);
+        if (!sound.sample('enemies/pier_break', { pan: pan(mid), vol: Math.max(0.5, vol(mid, 80)) })) {
+          sound.explosion(pan(mid), Math.max(0.4, vol(mid, 80)));
+          sound.crumble(pan(mid), 1, true);
+        }
         addShake(0.9 * Math.max(0.3, vol(mid, 40)));
         break;
       }
@@ -699,7 +712,7 @@ function handleEvents() {
       case 'rainMark': enemyView.onEvent(ev); break;
       case 'rainStrike':
         enemyView.onEvent(ev);
-        if (ev.kind === 'lob' && ev.ink) sound.thud(pan(ev.pos), vol(ev.pos, 40));
+        if (ev.kind === 'lob' && ev.ink) { if (!sound.sample('enemies/ink_splat', { pan: pan(ev.pos), vol: vol(ev.pos, 40) })) sound.thud(pan(ev.pos), vol(ev.pos, 40)); }
         else if (ev.kind === 'lob') sound.explosion(pan(ev.pos), 0.6 * Math.max(0.3, vol(ev.pos, 60)));
         else sound.crumble(pan(ev.pos), vol(ev.pos, 40), true);
         addShake((ev.kind === 'lob' ? 0.5 : 0.35) * vol(ev.pos, 12));

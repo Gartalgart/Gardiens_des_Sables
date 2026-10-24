@@ -1,17 +1,41 @@
-// Procedural music, no audio files: a drone, darbuka-like percussion and a plucked, oud-like melody
-// on the Hijaz scale. Its intensity follows the game: 0 calm (menu, breaks), 1 combat, 2 the pharaoh.
-const HIJAZ = [0, 1, 4, 5, 7, 8, 10]; // semitones from D: D Eb F# G A Bb C
-const ROOT = 146.83; // D3
-const LEVELS = [
-  { bpm: 76, drone: 0.11, perc: 0, notes: 0.22, ghost: 0 },
-  { bpm: 94, drone: 0.13, perc: 0.9, notes: 0.42, ghost: 0.2 },
-  { bpm: 116, drone: 0.17, perc: 1.1, notes: 0.6, ghost: 0.6 },
-];
-// maqsum rhythm on a 16-step bar: D = doum (low), T = tek (high)
-const MAQSUM = { 0: 'D', 2: 'T', 6: 'T', 8: 'D', 12: 'T' };
+// Procedural music, no audio files: a drone, percussion and a plucked melody wandering along a
+// scale. Its intensity follows the game: 0 calm (menu, breaks), 1 combat, 2 the boss. Each universe
+// has its theme (see THEMES): the desert, the pirates' shanty.
+export const THEMES = {
+  // darbuka-like percussion on the maqsum rhythm, an oud-like melody on the Hijaz scale
+  desert: {
+    scale: [0, 1, 4, 5, 7, 8, 10], // semitones from D: D Eb F# G A Bb C
+    root: 146.83, // D3
+    levels: [
+      { bpm: 76, drone: 0.11, perc: 0, notes: 0.22, ghost: 0 },
+      { bpm: 94, drone: 0.13, perc: 0.9, notes: 0.42, ghost: 0.2 },
+      { bpm: 116, drone: 0.17, perc: 1.1, notes: 0.6, ghost: 0.6 },
+    ],
+    steps: 16, // sixteenth notes in a bar
+    hits: { 0: 'D', 2: 'T', 6: 'T', 8: 'D', 12: 'T' }, // D = doum (low), T = tek (high)
+    accent: 8, // the melody leans on every 8th step
+    drone: [0.5, 0.75, 0.5025], // times the root: D2, A2 and a slightly detuned D2
+  },
+  // a sea shanty in 6/8: boots stomping, hands clapping, an accordion drone and a fiddle-like tune
+  // on the Dorian mode
+  shanty: {
+    scale: [0, 2, 3, 5, 7, 9, 10], // D Dorian: D E F G A B C
+    root: 146.83,
+    levels: [
+      { bpm: 70, drone: 0.1, perc: 0, notes: 0.3, ghost: 0 },
+      { bpm: 92, drone: 0.12, perc: 1.0, notes: 0.5, ghost: 0.25 },
+      { bpm: 112, drone: 0.16, perc: 1.2, notes: 0.65, ghost: 0.5 },
+    ],
+    steps: 12, // a 6/8 bar in sixteenths
+    hits: { 0: 'D', 3: 'T', 6: 'D', 9: 'T' },
+    accent: 6,
+    drone: [0.5, 0.75, 1],
+  },
+};
 
 export class Music {
-  constructor(ctx, out, noise) {
+  constructor(ctx, out, noise, theme = THEMES.desert) {
+    this.theme = theme;
     this.ctx = ctx;
     this.out = out;
     this.noise = noise;
@@ -38,7 +62,8 @@ export class Music {
     const lfoGain = ctx.createGain();
     lfoGain.gain.value = 180;
     lfo.connect(lfoGain).connect(lp.frequency);
-    for (const f of [ROOT / 2, ROOT * 0.75, ROOT / 2 * 1.005]) {
+    for (const k of theme.drone) {
+      const f = theme.root * k;
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
       o.frequency.value = f;
@@ -60,7 +85,7 @@ export class Music {
     if (level === this.level && this.started) return;
     this.started = true;
     this.level = level;
-    this.droneGain.gain.setTargetAtTime(LEVELS[level].drone, this.ctx.currentTime, 1.5);
+    this.droneGain.gain.setTargetAtTime(this.theme.levels[level].drone, this.ctx.currentTime, 1.5);
   }
 
   #schedule() {
@@ -69,15 +94,15 @@ export class Music {
     if (this.nextTime < ctx.currentTime) this.nextTime = ctx.currentTime + 0.05; // after a pause
     while (this.nextTime < ctx.currentTime + 0.25) {
       this.#playStep(this.step, this.nextTime);
-      this.nextTime += 60 / LEVELS[this.level].bpm / 4; // sixteenth notes
-      this.step = (this.step + 1) % 16;
+      this.nextTime += 60 / this.theme.levels[this.level].bpm / 4; // sixteenth notes
+      this.step = (this.step + 1) % this.theme.steps;
     }
   }
 
   #playStep(step, t) {
-    const L = LEVELS[this.level];
+    const T = this.theme, L = T.levels[this.level];
     if (L.perc > 0) {
-      const hit = MAQSUM[step];
+      const hit = T.hits[step];
       if (hit === 'D') this.#doum(t, L.perc);
       else if (hit === 'T') this.#tek(t, L.perc * 0.7);
       else if (step % 2 === 1 && Math.random() < L.ghost) this.#tek(t, L.perc * 0.25);
@@ -86,8 +111,8 @@ export class Music {
     if (step % 2 === 0 && Math.random() < L.notes) {
       this.degree = Math.max(0, Math.min(13, this.degree + [-2, -1, -1, 1, 1, 2][Math.floor(Math.random() * 6)]));
       const oct = Math.floor(this.degree / 7);
-      const semis = HIJAZ[this.degree % 7] + 12 * oct;
-      this.#pluck(t, ROOT * Math.pow(2, semis / 12), step % 8 === 0 ? 0.13 : 0.09);
+      const semis = T.scale[this.degree % 7] + 12 * oct;
+      this.#pluck(t, T.root * Math.pow(2, semis / 12), step % T.accent === 0 ? 0.13 : 0.09);
     }
   }
 

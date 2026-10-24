@@ -237,6 +237,18 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 79 tests automatisés, dont 5 nouveaux : le Kraken immergé et ses quatre tentacules, l'avertissement puis la frappe, la tentacule coupée qui replonge et revient, la tête qui sort, l'encre et les renforts, le ponton brisé, la saisie et la libération, le ponton restauré.
 - **Validation :** affronter le Kraken seul (B en Exploration), puis à la fin de la vague 5. Validée le 24/10/2026.
 
+### U1 Phase 7 — Vagues, progression et finition `[x]`
+- [x] **Objectifs secondaires propres au port**, tirés avec les objectifs communs (`world.objectives`) :
+  - **barils de poudre** : abattre 2 à 4 ennemis avec les barils ;
+  - **le coffre de la grotte** : pendant la vague, un tiers des squelettes et des crabes sont des pillards qui vont au coffre par leur propre chemin (un champ de navigation vers le coffre) et en prennent l'or (3 % par seconde chacun), sauf si un joueur est là pour les combattre. L'objectif est réussi s'il reste plus de la moitié de l'or ; la barre d'objectif affiche l'or restant, et un message prévient quand on pille.
+  - L'objectif « tuer au corps à corps » nomme l'arme de l'univers (khépesh ou sabre).
+- [x] **Textes de l'interface** suivant l'univers : noms courts des armes sur les emplacements, bulle des grenades, aide (parade, lancer), conseils, écran de fin ; les cartes d'amélioration parlent d'« arme blanche ».
+- [x] **21 sons enregistrés avec ElevenLabs** (`assets/audio-raw`, normalisés dans `assets/audio`), chacun avec son son procédural en secours : les quatre armes à feu, la recharge à la baguette, le sabre, la mèche des bombes, le squelette (cri et chute d'os), le crabe, l'artilleur fantôme, le chant de la sirène (en boucle), les chauves-souris, le Kraken (rugissement et mort), la frappe des tentacules, l'encre, le ponton qui se brise, les pas dans l'eau et sur les planches (quai, pont du galion). Chaque univers choisit ses voix (`voices`). Ils sont tous sur la page de test `sons.html`.
+- [x] **Musique de pirates** procédurale : un chant de marins en 6/8 sur le mode dorien (bottes qui frappent, mains qui claquent, bourdon d'accordéon, air pincé), avec les trois intensités du désert (calme, combat, boss).
+- [x] **Parties complètes** simulées en facile, normal et difficile, le joueur immobile à divers endroits : les douze vont au bout des cinq vagues. Un ennemi renvoyé par le filet de sécurité ne revient plus par une porte à moins de 10 m de l'endroit où il était coincé (le pont du galion le ramenait au même coin de la proue).
+- [x] 82 tests automatisés, dont 3 nouveaux : les objectifs du port dans le tirage (et pas dans celui du désert), les barils comptés, les pillards du coffre.
+- **Validation :** une partie complète des cinq vagues, en normal. Validée le 24/10/2026. **U1 est terminé.**
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).

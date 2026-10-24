@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { Level } from '../src/sim/level.js';
 import { Sim } from '../src/sim/sim.js';
 import { emptyCommand } from '../src/sim/player.js';
-import { applyUpgrade, drawCards, UPGRADES } from '../src/sim/progression.js';
+import { applyUpgrade, drawCards, UPGRADES, pickObjective } from '../src/sim/progression.js';
 import { WORLDS, getWorld } from '../src/worlds/index.js';
 
 const DT = 1 / 60;
@@ -13,7 +13,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit',
 ];
 let level;
 
@@ -1266,5 +1266,56 @@ describe('the Kraken', () => {
     new Sim(port, { mode: 'sandbox', world: 'pirates' });
     expect(port.boxes.length).toBe(boxes);
     expect(port.groundAt(-22.5, 26, 0.4, 2)).toBe(1);
+  });
+});
+
+describe('pirate objectives', () => {
+  const port = new Level(JSON.parse(readFileSync(new URL(`../public/${getWorld('pirates').files.levelData}`, import.meta.url), 'utf8')));
+  const wavesGame = () => {
+    const sim = new Sim(port, { mode: 'waves', world: 'pirates' });
+    const player = sim.addPlayer('p1');
+    return { sim, player };
+  };
+  it('the port adds its own objectives to the draw: powder kegs and the chest', () => {
+    const ids = new Set();
+    for (let i = 0; i < 300; i++) ids.add(pickObjective(2, getWorld('pirates')).id);
+    expect(ids.has('kegs')).toBe(true);
+    expect(ids.has('chest')).toBe(true);
+    for (let i = 0; i < 100; i++) expect(['kegs', 'chest']).not.toContain(pickObjective(2, getWorld('sables')).id);
+    expect(pickObjective(2, getWorld('pirates')).text).not.toContain('khépesh');
+  });
+
+  it('keg kills count for the powder-keg objective', () => {
+    const { sim, player } = wavesGame();
+    sim.mode.objective = { id: 'kegs', target: 2, stat: 'kegKills' };
+    const keg = sim.kegs[0];
+    keg.pos.set(0, 0, -5);
+    for (const dx of [-1.5, 1.5]) { const e = sim.enemies.spawn('skeleton', keg.pos.clone().add(new THREE.Vector3(dx, 0, -1))); e.rise = 0; }
+    sim.blowKeg(keg, player);
+    expect(player.waveStats.kegKills).toBe(2);
+  });
+
+  it('looters go for the chest in the cave and empty it, unless a player stands guard', () => {
+    const sim = new Sim(port, { mode: 'sandbox', world: 'pirates' }); // no wave to reset the chest
+    const player = sim.addPlayer('p1');
+    sim.chest = { pos: new THREE.Vector3(-36, 0, -39.2), gold: 100, looters: 1 };
+    player.pos.set(-6, 0, 4); // far from the cave
+    run(sim, 0.1);
+    const looter = sim.enemies.spawn('skeleton', new THREE.Vector3(-20, 0, -20));
+    looter.rise = 0;
+    expect(looter.looter).toBe(true);
+    let reached = false;
+    run(sim, 12, () => {
+      player.health = 100;
+      if (Math.hypot(looter.pos.x + 36, looter.pos.z + 37.7) < 2.5) reached = true;
+      return emptyCommand();
+    });
+    expect(reached).toBe(true);
+    expect(sim.chest.gold).toBeLessThan(100);
+    // a player in the cave: the looter turns on them instead
+    player.pos.set(-35, 0, -35);
+    const gold = sim.chest.gold;
+    run(sim, 2, () => { player.health = 100; return emptyCommand(); });
+    expect(sim.chest.gold).toBeGreaterThan(gold - 3);
   });
 });

@@ -36,29 +36,29 @@ export const PIRATES = {
   // ---------- weapons: all muzzle-loaders but the sabre, loaded by the mouth with a ramrod ----------
   weapons: [
     {
-      id: 'cutlass', name: 'SABRE', melee: true, dmg: 80, range: 3.0, swing: 0.32, hitAt: 0.1, cooldown: 0.4,
+      id: 'cutlass', name: 'SABRE', short: 'Sabre', melee: true, dmg: 80, range: 3.0, swing: 0.32, hitAt: 0.1, cooldown: 0.4,
       spread: 0, adsSpread: 0, adsFov: 75,
     },
     {
       // one heavy ball, then a long reload
-      id: 'flintlock', name: 'PISTOLET À SILEX', dmg: 130, rpm: 100, auto: false, mag: 1, reserve: Infinity, pellets: 1,
+      id: 'flintlock', name: 'PISTOLET À SILEX', short: 'Silex', dmg: 130, rpm: 100, auto: false, mag: 1, reserve: Infinity, pellets: 1,
       spread: 0.012, adsSpread: 0.001, reload: 1.7, recoil: 0.06, adsFov: 56,
     },
     {
       // two bell-mouthed barrels: a wide cone of shot each, then both are reloaded
-      id: 'blunderbuss', name: 'TROMBLON', dmg: 13, rpm: 150, auto: false, mag: 2, reserve: 36, pellets: 12,
+      id: 'blunderbuss', name: 'TROMBLON', short: 'Tromblon', dmg: 13, rpm: 150, auto: false, mag: 2, reserve: 36, pellets: 12,
       spread: 0.12, adsSpread: 0.09, reload: 2.6, recoil: 0.08, adsFov: 64,
     },
     {
       // a ball that flies in an arc and blows up where it lands; the shot shoves the gunner back
-      id: 'cannon', name: 'CANON PORTATIF', dmg: 0, rpm: 50, auto: false, mag: 1, reserve: 10, pellets: 1,
+      id: 'cannon', name: 'CANON PORTATIF', short: 'Canon', dmg: 0, rpm: 50, auto: false, mag: 1, reserve: 10, pellets: 1,
       spread: 0.008, adsSpread: 0.002, reload: 2.3, recoil: 0.12, adsFov: 60, knockback: 7,
       ball: { speed: 42, gravity: 9, radius: 4.5, dmg: 230, playerDmg: 40, hit: 120 },
     },
     {
       // for the last wave: a long musket with a spyglass; one ball that goes on through a first
       // target, wild from the hip, dead on through the glass, then a long reload
-      id: 'musket', name: 'MOUSQUET À LONGUE-VUE', dmg: 160, rpm: 40, auto: false, mag: 1, reserve: 20, pellets: 1,
+      id: 'musket', name: 'MOUSQUET À LONGUE-VUE', short: 'Mousquet', dmg: 160, rpm: 40, auto: false, mag: 1, reserve: 20, pellets: 1,
       spread: 0.07, adsSpread: 0, reload: 2.4, recoil: 0.1, adsFov: 18, pierce: true, scope: true,
     },
   ],
@@ -72,7 +72,7 @@ export const PIRATES = {
       hp: 75, speed: 6.8, radius: 0.4, height: 1.85, headY: 1.45, early: 0.75, weave: true,
       melee: { range: 1.8, dmg: 12, windup: 0.22, cd: 0.8 },
       leap: { min: 3.5, max: 7, dur: 0.5, dmg: 14, cd: [3, 5] },
-      swarm: 3,
+      swarm: 3, loot: true,
     },
     // the giant crab: comes out of the sea; its shell stops most of a blow from the front, but it
     // charges sideways, its flank turned toward its target
@@ -81,7 +81,7 @@ export const PIRATES = {
       melee: { range: 2.9, dmg: 28, windup: 0.45, cd: 1.5 },
       charge: { min: 5, max: 20, wind: 0.65, speed: 12, dur: 1.3, dmg: 26, cd: [5, 7], side: true },
       armor: { mul: 0.3, arc: 0.5 }, // damage × mul within ±60° of its face
-      big: true,
+      big: true, loot: true,
       // rises from the shallows off the west beach: the quay along the rest of the shore is a 1 m step
       // it cannot climb, and behind the galleon it would get caught on the ship
       fromWater: { minX: -42, minZ: 18.5, maxX: -32, maxZ: 27 },
@@ -148,6 +148,10 @@ export const PIRATES = {
       grab: { range: 3.2, windup: 0.6, dps: 9, free: 70, hold: 6, cd: 8 },
     },
   },
+  // the port's own wave objectives (src/sim/progression.js WORLD_OBJECTIVES), and the chest in the
+  // treasure cave that looters go for (looters: share of the skeletons and crabs that do)
+  objectives: ['kegs', 'chest'],
+  chest: { pos: [-36, 0, -39.2], looters: 0.35 },
   // where gunners stand: the main deck and the sterncastle of the galleon (x, y, z)
   posts: [[24, 4, 21.5], [25.5, 4, 17.5], [18, 4, 22.3], [34.5, 6.6, 18], [34.5, 6.6, 22]],
   waves: [
@@ -182,6 +186,12 @@ export const PIRATES = {
     ...SABLES.texts,
     start: 'Sabre [1] et pistolet à silex [2] — bombes [G] — tenez le port',
     grenadeKill: 'BOMBE',
+    meleeName: 'sabre',
+    bladeObjective: 'au sabre',
+    grenadeName: 'Bombes à mèche',
+    grenadeHelp: 'Lancer une bombe à mèche',
+    killsLabel: 'Ennemis abattus',
+    tips: "Les tirs à la tête infligent double dégâts. Le sabre tranche tout ce qui est devant vous, et sa parade renvoie les tirs ennemis. Les armes à feu se rechargent par la bouche : un coup, puis la baguette. Un tir sur un baril de poudre le fait sauter. Seuls les ennemis tués au corps à corps lâchent de la santé. La santé se régénère après quelques secondes sans blessure.",
     bossName: 'LE KRAKEN',
     bossKill: 'KRAKEN TERRASSÉ',
     bossWave: 'le Kraken',
@@ -198,7 +208,20 @@ export const PIRATES = {
   },
 
   // the Kraken's roar and death: the colossus's recordings, slowed right down (src/audio.js setVoices)
-  voices: { growls: { boss: 'enemies/tank_roar', tentacle: 'enemies/scarab_skitter' }, rates: { boss: 0.5, tentacle: 0.5 }, bossDeath: 'enemies/tank_roar' },
+  voices: {
+    growls: {
+      skeleton: 'enemies/skeleton_rattle', crab: 'enemies/crab_clack', gunner: 'enemies/gunner_moan', bats: 'enemies/bats_screech',
+      siren: 'enemies/gunner_moan', boss: 'enemies/kraken_roar', tentacle: 'enemies/kraken_roar',
+    },
+    rates: { crab: 1, gunner: 1, bats: 1, siren: 1.6, boss: 1, tentacle: 1.4 },
+    bossDeath: 'enemies/kraken_death',
+    music: 'shanty',
+    samples: {
+      swing: 'weapons/cutlass_swing', throw: 'grenades/bomb_fuse', slam: 'enemies/tentacle_slam',
+      kill: { skeleton: 'enemies/skeleton_death' },
+      highSteps: ['footsteps/wood_step_1', 'footsteps/wood_step_2'], waterStep: 'footsteps/water_step',
+    },
+  },
   // colours of this universe's own types where the desert has the same key (the boss)
   looks: { boss: { color: [0.75, 0.25, 0.9], dot: '#c060ff' } },
 

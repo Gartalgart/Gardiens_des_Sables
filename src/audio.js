@@ -1,6 +1,6 @@
 // WebAudio sound effects: recorded samples from assets/audio (ElevenLabs), each with
 // a procedural version that plays while the file loads or if it fails to.
-import { Music } from './music.js';
+import { Music, THEMES } from './music.js';
 
 // 'weapons/pistol_fire' -> bundled url
 const SAMPLE_URLS = Object.fromEntries(
@@ -39,6 +39,9 @@ export class Sound {
     this.growls = { ...GROWLS };
     this.growlRates = { ...GROWL_RATE };
     this.bossDeath = 'enemies/pharaoh_death';
+    // recordings of a few sounds a universe can swap: swing, throw, slam, kill (by enemy type),
+    // high steps (on decks and quays), water step
+    this.samples = { swing: 'weapons/khopesh_swing', throw: 'grenades/grenade_throw', slam: 'enemies/tank_slam', kill: {}, highSteps: null, waterStep: null };
   }
 
   // master scales everything; sfx and music are separate buses
@@ -71,7 +74,7 @@ export class Sound {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.#wind();
     if (this.surfOn) this.setSurf(true);
-    this.musicPlayer = new Music(this.ctx, this.music, this.noise);
+    this.musicPlayer = new Music(this.ctx, this.music, this.noise, THEMES[this.musicTheme] ?? THEMES.desert);
     this.musicPlayer.start();
     this.samplesReady = this.#loadSamples();
   }
@@ -104,10 +107,18 @@ export class Sound {
 
   // 0 calm, 1 combat, 2 the pharaoh
   // a universe's own voices: { growls: { type: sample }, rates: { type: playback rate }, bossDeath }
-  setVoices({ growls = {}, rates = {}, bossDeath } = {}) {
+  // music: the name of a theme of src/music.js (before init, which starts it)
+  setVoices({ growls = {}, rates = {}, bossDeath, samples = {}, music } = {}) {
+    if (music) this.musicTheme = music;
     Object.assign(this.growls, growls);
     Object.assign(this.growlRates, rates);
     if (bossDeath) this.bossDeath = bossDeath;
+    Object.assign(this.samples, samples);
+  }
+
+  // a recording by name if it has loaded (false otherwise, so the caller can fall back)
+  sample(name, opts) {
+    return !!this.ctx && this.#play(name, opts);
   }
 
   setMusicIntensity(level) { this.musicPlayer?.setIntensity(level); }
@@ -203,13 +214,13 @@ export class Sound {
   // the khopesh's swing
   swoosh() {
     if (!this.ctx) return;
-    if (this.#play('weapons/khopesh_swing', { vol: 0.5, rate: 0.95 + Math.random() * 0.1 })) return;
+    if (this.#play(this.samples.swing, { vol: 0.5, rate: 0.95 + Math.random() * 0.1 })) return;
     this.#swoosh();
   }
 
   throw() {
     if (!this.ctx) return;
-    if (this.#play('grenades/grenade_throw', { vol: 0.45 })) return;
+    if (this.#play(this.samples.throw, { vol: 0.45 })) return;
     this.#swoosh();
   }
 
@@ -398,6 +409,10 @@ export class Sound {
   // timed with the view model: magazine out, seated, slide or bolt racked
   reload(duration, weapon) {
     if (!this.ctx) return;
+    if (['flintlock', 'blunderbuss', 'musket'].includes(weapon) && this.buffers['weapons/ramrod_reload']) {
+      const rate = Math.min(1.6, Math.max(0.7, this.buffers['weapons/ramrod_reload'].duration / (duration * 0.95)));
+      if (this.#play('weapons/ramrod_reload', { vol: 0.6, rate })) return;
+    }
     if (['flintlock', 'blunderbuss', 'cannon', 'musket'].includes(weapon)) { this.#ram(duration, weapon); return; }
     if (weapon === 'shotgun') { this.click(0.7, 0.05); return; } // then a sound per shell
     // the sample is laid so it ends with the reload; the sniper's bolt is racked on its own
@@ -419,6 +434,17 @@ export class Sound {
   setSong(level, pan = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    if (!this.song && level > 0.01 && this.buffers['enemies/siren_song']) {
+      const out = this.ctx.createGain();
+      out.gain.value = 0;
+      const panner = this.ctx.createStereoPanner();
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.buffers['enemies/siren_song'];
+      src.loop = true;
+      src.connect(out).connect(panner).connect(this.sfx);
+      src.start();
+      this.song = { out, panner, recorded: true };
+    }
     if (!this.song) {
       const out = this.ctx.createGain();
       out.gain.value = 0;
@@ -439,9 +465,9 @@ export class Sound {
       this.song = { out, panner, voice, fifth, next: 0, i: 0 };
     }
     const s = this.song;
-    s.out.gain.setTargetAtTime(level * 0.22, t, 0.25);
+    s.out.gain.setTargetAtTime(level * (s.recorded ? 0.7 : 0.22), t, 0.25);
     s.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.1);
-    if (level > 0.01 && t >= s.next) {
+    if (!s.recorded && level > 0.01 && t >= s.next) {
       const note = SONG_NOTES[s.i++ % SONG_NOTES.length];
       s.voice.frequency.setTargetAtTime(note, t, 0.09);
       s.fifth.frequency.setTargetAtTime(note * 1.5, t, 0.09);
@@ -573,9 +599,10 @@ export class Sound {
   // an enemy turning to sand (a skeleton falls apart in bones); the pharaoh has his own death
   kill(pan, vol, type) {
     if (!this.ctx) return;
-    if (type === 'skeleton') this.#rattle(pan, vol, 12);
+    if (type === 'skeleton' && !this.samples.kill.skeleton) this.#rattle(pan, vol, 12);
     const big = type === 'tank' || type === 'boss' || type === 'crab';
     if (type === 'boss' && this.#play(this.bossDeath, { pan, vol: 0.9, rate: this.growlRates.boss ?? 1 })) return;
+    if (this.samples.kill[type] && this.#play(this.samples.kill[type], { pan, vol: 0.6 * vol, rate: 0.95 + Math.random() * 0.1 })) return;
     if (this.#play('enemies/enemy_death_crumble', { pan, vol: 0.6 * vol, rate: big ? 0.8 : 0.95 + Math.random() * 0.1 })) return;
     this.crumble(pan, vol, big);
   }
@@ -583,7 +610,7 @@ export class Sound {
   // the stone guardian's ground slam, or its charge ending in a wall
   slam(pan, vol) {
     if (!this.ctx) return;
-    if (this.#play('enemies/tank_slam', { pan, vol: 0.8 * vol })) return;
+    if (this.#play(this.samples.slam, { pan, vol: 0.8 * vol })) return;
     this.crumble(pan, vol, true);
   }
 
@@ -610,7 +637,7 @@ export class Sound {
       if (t - this.lastLaugh < 6) return; // the laugh is long: not on every swing
       this.lastLaugh = t;
     }
-    if (type === 'skeleton') { this.#rattle(pan, vol); return; }
+    if (type === 'skeleton' && !this.growls.skeleton) { this.#rattle(pan, vol); return; }
     const name = this.growls[type];
     if (name && this.#play(name, { pan, vol: 0.6 * vol, rate: (this.growlRates[type] ?? 1) * (0.93 + Math.random() * 0.14) })) return;
     const o = this.ctx.createOscillator();
@@ -734,9 +761,14 @@ export class Sound {
   }
 
   // land: the end of a fall; water: wading through the shallows
-  step(sprint, land = false, water = false) {
+  // high: off the ground (a deck, a quay), where a universe may have its own steps (wood)
+  step(sprint, land = false, water = false, high = false) {
     if (!this.ctx) return;
-    if (water) return this.#splash(sprint ? 0.5 : 0.35);
+    if (water) {
+      if (this.samples.waterStep && this.#play(this.samples.waterStep, { vol: sprint ? 0.5 : 0.38, rate: 0.9 + Math.random() * 0.2 })) return;
+      return this.#splash(sprint ? 0.5 : 0.35);
+    }
+    if (high && this.samples.highSteps && this.#play(pick(this.samples.highSteps), { vol: land ? 0.6 : sprint ? 0.5 : 0.4, rate: 0.9 + Math.random() * 0.2 })) return;
     const name = land ? 'footsteps/sand_land'
       : sprint ? pick(['footsteps/sand_run_1', 'footsteps/sand_run_2'])
       : pick(['footsteps/sand_walk_1', 'footsteps/sand_walk_2', 'footsteps/sand_walk_3']);

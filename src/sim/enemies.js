@@ -73,6 +73,8 @@ export class Enemies {
       trapClock: 0, // and the check that it still gets somewhere: where it stood a few seconds ago
       trapFrom: position.clone(),
     };
+    // while the chest is to be protected, some of the enemies that can loot go for it
+    if (T.loot && this.sim.chest && Math.random() < this.sim.chest.looters) e.looter = true;
     this.list.push(e);
     this.sim.emit('enemySpawn', { id: e.id, enemyType: type, pos: position.clone(), elite });
     if (T.kraken) {
@@ -172,6 +174,7 @@ export class Enemies {
       killer.stats.kills++;
       this.sim.scoreKill(killer, e, cause);
       this.sim.registerKill(killer, false);
+      if (cause === 'keg') killer.waveStats.kegKills++;
       if (cause === 'melee') {
         killer.waveStats.meleeKills++;
         if (killer.mods.lifesteal && !killer.dead) killer.health = Math.min(killer.maxHealth, killer.health + killer.mods.lifesteal);
@@ -267,6 +270,9 @@ export class Enemies {
         if (moved < 1.5 && dist > 6 && !e.act && e.stun <= 0) return this.#relocate(e);
       }
     }
+    // a looter heads for the chest and empties it, unless a player is right there to fight
+    if (e.looter && this.sim.chest?.gold > 0 && !e.act && e.stun <= 0
+      && !(dist < 7 && this.level.lineOfSight(e.pos.clone().setY(e.pos.y + T.height * 0.85), player.center))) return this.#loot(e, dt);
     toPlayer.divideScalar(dist || 1);
     const dy = player.pos.y - e.pos.y;
 
@@ -532,9 +538,42 @@ export class Enemies {
     if (e.act?.kind === 'hold') e.act = null;
   }
 
+  // A looter on its way to the chest, or at it, taking the gold
+  #loot(e, dt) {
+    const T = e.T, chest = this.sim.chest;
+    // the front of the chest (it stands against the back of the cave)
+    const front = chest.pos.clone().add(new THREE.Vector3(0, 0, 1.5));
+    const to = new THREE.Vector3(front.x - e.pos.x, 0, front.z - e.pos.z);
+    const d = to.length();
+    if (d < 1.2 + T.radius) {
+      e.trapClock = 0; // standing still at the chest is no trap
+      chest.gold = Math.max(0, chest.gold - dt * 3); // a looter alone takes half the gold in about 17 s
+      e.speed = 0;
+      e.facing = Math.atan2(chest.pos.x - e.pos.x, chest.pos.z - e.pos.z);
+      e.lootTick = (e.lootTick ?? 0) - dt;
+      if (e.lootTick <= 0) { e.lootTick = 1; this.sim.emit('chestHit', { pos: chest.pos.clone(), gold: chest.gold }); }
+      return;
+    }
+    const nav = this.level.nav;
+    const dir = nav.directionIn(nav.fieldTo(front), e.pos, new THREE.Vector3(), T.radius > 0.6 ? 'big' : 'small') ?? to.normalize();
+    const speed = T.speed * this.speedMul * (this.level.inWater(e.pos.x, e.pos.z, e.pos.y) ? WATER_SLOW : 1);
+    const bx = e.pos.x, bz = e.pos.z;
+    this.level.moveBody(e.pos, dir.x * speed * dt, dir.z * speed * dt, T.radius, T.height);
+    const g = this.level.groundAt(e.pos.x, e.pos.z, T.radius, e.pos.y);
+    e.pos.y = g > e.pos.y ? g : e.pos.y + (g - e.pos.y) * Math.min(1, dt * 14);
+    e.speed = Math.hypot(e.pos.x - bx, e.pos.z - bz) / dt;
+    let dA = Math.atan2(dir.x, dir.z) - e.facing;
+    dA = Math.atan2(Math.sin(dA), Math.cos(dA));
+    e.facing += dA * Math.min(1, dt * 10);
+    e.phase += dt * (2.5 + e.speed * 2.0);
+  }
+
   // back through a gate, rising from the ground again (see #think: out of the world, or trapped)
   #relocate(e) {
-    e.pos.copy(this.sim.pickSpawn(e.type));
+    // not back at the trap it came from (the gate on the galleon's deck can lead to the same corner)
+    let at = this.sim.pickSpawn(e.type);
+    for (let i = 0; i < 6 && at.distanceTo(e.pos) < 10; i++) at = this.sim.pickSpawn(e.type);
+    e.pos.copy(at);
     e.rise = e.T.fly ? 0 : 1;
     e.lost = 0;
     e.trapClock = 0;

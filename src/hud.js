@@ -310,6 +310,7 @@ export class Hud {
     const v = st[obj.stat];
     let progress, done = false;
     if (obj.stat === 'time') progress = `${Math.max(0, Math.ceil(obj.target - v))} s`;
+    else if (obj.stat === 'chestLoss') { progress = `or : ${Math.round(100 - v)} %`; done = false; }
     else if (obj.under) progress = `${Math.round(v)} / ${obj.target} PV`;
     else { progress = `${Math.min(v, obj.target)} / ${obj.target}`; done = v >= obj.target; }
     const html = `Objectif : ${obj.text} — <b>${done ? '✓' : progress}</b>`;

@@ -118,7 +118,7 @@ export class PlayerSim {
     this.pos.y += this.vel.y * dt;
     const ground = level.groundAt(this.pos.x, this.pos.z, PLAYER_RADIUS, Math.max(this.pos.y, beforeY));
     if (this.pos.y <= ground) {
-      if (!this.onGround && this.vel.y < -6) this.sim.emit('step', { pid: this.id, sprint: true, land: true });
+      if (!this.onGround && this.vel.y < -6) this.sim.emit('step', { pid: this.id, sprint: true, land: true, high: this.pos.y > 0.5 });
       this.pos.y = ground;
       this.vel.y = 0;
       this.onGround = true;
@@ -137,7 +137,7 @@ export class PlayerSim {
     if (this.moving) {
       this.stepDist += hv * dt;
       const stride = this.sprinting ? 2.6 : 2.1;
-      if (this.stepDist > stride) { this.stepDist = 0; this.sim.emit('step', { pid: this.id, sprint: this.sprinting, water: this.wading }); }
+      if (this.stepDist > stride) { this.stepDist = 0; this.sim.emit('step', { pid: this.id, sprint: this.sprinting, water: this.wading, high: this.pos.y > 0.5 }); }
     }
 
     // recoil recovers over time

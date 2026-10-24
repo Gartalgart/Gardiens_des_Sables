@@ -113,6 +113,32 @@ export class NavGrid {
     }
   }
 
+  // A flow field toward a fixed spot (the pirates' chest), worked out once per spot and kept: the
+  // same layers as the field toward the players, with their own distances.
+  fieldTo(target) {
+    const key = `${target.x.toFixed(1)},${target.z.toFixed(1)}`;
+    this.fields ??= new Map();
+    if (!this.fields.has(key)) {
+      const field = {};
+      for (const [name, layer] of Object.entries(this.layers)) {
+        const own = { ...layer, dist: new Float32Array(layer.dist.length).fill(Infinity) };
+        this.#flow(own, [this.index(target.x, target.z)], [target]);
+        field[name] = own;
+      }
+      this.fields.set(key, field);
+    }
+    return this.fields.get(key);
+  }
+
+  // the way to go from pos along a field of fieldTo()
+  directionIn(field, pos, out, mode = 'small') {
+    if (mode === 'big') {
+      const d = this.#direction(field.big, pos, out, 4);
+      if (d) return d;
+    }
+    return this.#direction(field.small, pos, out, 2);
+  }
+
   // Is there a cell of the playable world within `reach` cells of this point? (a body pressed
   // against a wall may stand on a closed cell, so by default the neighbours count too)
   inWorld(x, z, layer = 'small', reach = 1) {
