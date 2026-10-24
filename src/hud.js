@@ -9,11 +9,12 @@ const HALF = 60;
 export class Hud {
   // level: collision data of the level (boxes and braziers are drawn on the minimap)
   // bossName: over the boss health bar, from the universe's texts
-  constructor(level, bossName) {
+  // indoor: the map has ceilings, left out of the minimap (anything starting 3 m up)
+  constructor(level, bossName, indoor = false) {
     this.el = $('hud');
     this.mm = $('minimap');
     this.ctx = this.mm.getContext('2d');
-    this.map = this.#renderMap(level);
+    this.map = this.#renderMap(level, indoor);
     this.hitTimer = 0;
     this.bannerTimer = 0;
     this.pickupTimer = 0;
@@ -107,7 +108,7 @@ export class Hud {
     if (this.boardHtml !== html) { el.innerHTML = html; this.boardHtml = html; }
   }
 
-  #renderMap(level) {
+  #renderMap(level, indoor) {
     const c = document.createElement('canvas');
     c.width = c.height = HALF * 2 * MAP_PX;
     const g = c.getContext('2d');
@@ -115,7 +116,7 @@ export class Hud {
     g.fillRect(0, 0, c.width, c.height);
     const boxes = [...level.boxes].sort((a, b) => a.max.y - b.max.y);
     for (const b of boxes) {
-      if (b.max.y < 0.8) continue;
+      if (b.max.y < 0.8 || (indoor && b.min.y >= 3)) continue;
       const h = Math.min(1, b.max.y / 9);
       const l = Math.round(70 + h * 110);
       g.fillStyle = `rgb(${l + 20}, ${l}, ${Math.round(l * 0.75)})`;

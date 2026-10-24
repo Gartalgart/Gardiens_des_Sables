@@ -249,6 +249,26 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 82 tests automatisés, dont 3 nouveaux : les objectifs du port dans le tirage (et pas dans celui du désert), les barils comptés, les pillards du coffre.
 - **Validation :** une partie complète des cinq vagues, en normal. Validée le 24/10/2026. **U1 est terminé.**
 
+## U2 — Station spatiale infestée
+
+### U2 Phase 1 — La station, ses sas et ses bonbonnes `[~]`
+- [x] **La carte** (`blender/station/station.py`, `station.blend`), tout en intérieur sous plafond : la salle des machines au centre (réacteur aux anneaux lumineux, quatre générateurs), reliée par quatre couloirs courts à un anneau de couloirs (hublots, tuyaux, chemins de câbles, bandes rouges de secours). Autour de l'anneau : la serre hydroponique au toit vitré (bacs de plantes, lampes de croissance roses), le hangar (navette, caisses, pont roulant, grande porte sur le vide), le salon d'observation (baie vitrée sur la planète) et une petite chambre de sas à l'ouest. Six points d'apparition, 21 néons.
+- [x] **Décor sans collision** (`decor.glb`) : sols, nervures, tuyaux, câbles, cadres de portes à rayures, écrans, plantes, panneaux solaires et antenne visibles par les hublots. **Textures procédurales** : tôle rivetée, panneaux muraux avec grilles d'aération, caillebotis, pont à motif losange, rayures de danger, câbles.
+- [x] **Ambiance** : espace noir avec étoiles tout autour, bande de la galaxie, planète orange à anneaux éclairée par le soleil (qui entre par le toit de la serre) ; néons blancs qui bégaient (un sur six est mourant) ; lueur rouge de secours qui pulse ; vapeur qui fuit des tuyaux ; ronronnement des machines au lieu du vent. La minimap ignore les plafonds.
+- [x] **Deux sas** (hangar et ouest) : un levier [E] ouvre la porte sur le vide pendant 7 s (ou la referme). L'air aspire vers la porte tout ce qui est en vue, d'autant plus fort qu'on est près ; qui passe la porte est perdu (ennemi tué au crédit de celui qui a ouvert, « DANS LE VIDE » ; joueur mort). Klaxon, souffle, secousses, poussière aspirée ; le levier et son voyant changent ; les portes se referment à chaque partie.
+- [x] **Bonbonnes d'oxygène** (9) à la place des barils de poudre : elles explosent quand on tire dessus, en flash blanc-bleu.
+- [x] Armes, ennemis et vagues : encore ceux du désert jusqu'aux phases suivantes.
+- [x] 87 tests automatisés, dont 5 nouveaux : les ennemis rejoignent le joueur depuis chaque point d'apparition, le levier ouvre et referme le sas (et il se referme seul), un ennemi aspiré dans le vide, un joueur aspiré devant la porte alors qu'un autre qui s'éloigne s'en sort, les portes refermées à la partie suivante.
+- **Validation :** se promener dans la station, ouvrir et refermer un sas. Validée le 24/10/2026, avec une demande : plus de détails, plus sombre, une horreur à la « Alien ».
+- [x] **Passe « Alien »** (`blender/station/horror.py`, à lancer après `station.py`) :
+  - couloirs nervurés (nervures murales alignées sur celles du plafond, chanfrein entre murs intérieurs et plafond), murs couverts de boîtiers, conduits, voyants et petits écrans ;
+  - câbles qui pendent du plafond, panneaux de plafond arrachés qui crachent des étincelles, chaînes qui gouttent dans la salle des machines, flaques ;
+  - l'infestation : résine noire biomécanique qui part du sas ouest (chambre, couloir), envahit le mur du fond de la serre, un coin de la salle des machines et du hangar ; deux nids d'œufs (serre, hangar) ;
+  - écrans CRT verts avec des lignes de texte.
+- [x] **Plus sombre** : brouillard noir plus dense, presque plus de lumière ambiante, néons plus faibles (un sur trois mourant, un sur cinq mort), **lampe torche** sur l'arme (touche **F**), grain de pellicule, vignettage, lignes de balayage et franges de couleur. Sept gyrophares orange tournants (le plus proche balaie les murs), étincelles, gouttes d'eau (sons), grincements de coque, chocs lointains et souffles des aérations au hasard (procéduraux).
+- [x] **Lumière volumétrique** (`src/view/lightBeams.js`, des cônes additifs qui s'estompent vers leurs bords et leur extrémité) : un cône de lumière sous chaque néon (qui clignote avec lui), les faisceaux des gyrophares, le faisceau de la lampe torche, des rais de soleil à travers le toit de la serre.
+- 87 tests automatisés, tous verts.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).

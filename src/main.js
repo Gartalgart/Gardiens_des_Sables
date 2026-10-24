@@ -3,10 +3,11 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadAssets } from './assets.js';
 import { Level } from './sim/level.js';
-import { Sim } from './sim/sim.js';
+import { Sim, AIRLOCK } from './sim/sim.js';
 import { DIFFICULTIES } from './sim/difficulty.js';
 import { PropsView } from './view/propsView.js';
 import { PlayerView } from './view/playerView.js';
@@ -17,6 +18,7 @@ import { NetSession, defaultServer } from './net/session.js';
 import { MULTIPLAYER } from './features.js';
 import { emptyCommand } from './sim/player.js';
 import { WorldView } from './view/worldView.js';
+import { beamMaterial, makeBeam } from './view/lightBeams.js';
 import { EnemyView, ENEMY_LOOK } from './view/enemyView.js';
 import { WeaponView } from './view/weaponView.js';
 import { Input } from './input.js';
@@ -78,6 +80,27 @@ composer.addPass(vmPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.75, 0.5, 0.82);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+// the station's film look: grain, a dark vignette, faint scanlines and colour fringes at the edges
+// (enabled with the universe, see below)
+const filmPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, grain: { value: 0.07 }, vignette: { value: 0.75 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float time; uniform float grain; uniform float vignette; varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main() {
+      vec2 d = vUv - 0.5;
+      float r = dot(d, d);
+      vec2 off = d * r * 0.012;
+      vec3 c = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
+      c *= mix(1.0, smoothstep(0.62, 0.05, r * 1.6), vignette);
+      c *= 1.0 - 0.035 * (0.5 + 0.5 * sin(vUv.y * 900.0));
+      c += (hash(vUv * 1000.0 + fract(time * 7.13)) - 0.5) * grain;
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+filmPass.enabled = false;
+composer.addPass(filmPass);
 
 addEventListener('resize', () => {
   for (const c of [camera, vmCamera]) { c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix(); }
@@ -145,9 +168,25 @@ const weaponView = new WeaponView(assets, vmScene, effects, worldFlash, world.we
 const enemyView = new EnemyView(scene, assets, effects);
 const playerView = new PlayerView(scene, assets, effects);
 const grenadeView = new GrenadeView(scene, assets, effects);
-const kegView = new KegView(scene);
+const kegView = new KegView(scene, world.ambiance.keg);
+filmPass.enabled = !!world.ambiance.film;
+// the station's sparks and drips are heard where they are
+if (worldView.fx) worldView.fx.onSound = (kind, pos) => { const v = vol(pos, kind === 'drip' ? 14 : 30); if (v > 0) sound[kind](pan(pos), v); };
+// a torch on the player's gun, for the dark universes: F turns it off and on
+const flashlight = new THREE.SpotLight(0xffe8c8, 0, 30, 0.4, 0.6, 1.2);
+flashlight.position.set(0.18, -0.12, 0);
+camera.add(flashlight);
+camera.add(flashlight.target);
+flashlight.target.position.set(0.05, -0.06, -1);
+// and its beam, faint in the haze
+const torchBeam = makeBeam(beamMaterial(0xffe8c8, 0.08, 1.1), 0.03, 2.6, 16, new THREE.Vector3(0.18, -0.14, -0.3), new THREE.Vector3(0.05, -0.06, -1).normalize());
+torchBeam.visible = false;
+camera.add(torchBeam);
+game.torch = !!world.ambiance.flashlight;
+for (const el of document.querySelectorAll('.torch-only')) el.classList.toggle('hidden', !world.ambiance.flashlight);
 sound.setSurf(!!world.ambiance.surf);
-const hud = new Hud(level, world.texts.bossName);
+sound.setHum(!!world.ambiance.hum);
+const hud = new Hud(level, world.texts.bossName, !!world.ambiance.indoor);
 Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects, hud });
 
 // ---------- settings ----------
@@ -407,6 +446,9 @@ function resetViews() {
   clearCharm();
   game.chestWarned = -9;
   worldView.restoreBroken();
+  worldView.closeAirlocks();
+  game.leverPrompt = null;
+  sound.setSuction(0);
   $('ink').style.opacity = 0;
   enemyView.clear();
   playerView.clear();
@@ -686,6 +728,11 @@ function handleEvents() {
         if (game.sim.time - (game.chestWarned ?? -9) > 6) { game.chestWarned = game.sim.time; hud.pickup(`ON PILLE LE COFFRE ! (${Math.round(ev.gold)} %)`); }
         break;
       case 'inked': if (mine) { if (!sound.sample('enemies/ink_splat', { vol: 0.8 })) sound.thud(0, 1); addShake(0.2); } break;
+      case 'airlock':
+        worldView.setAirlock(ev.id, ev.open);
+        sound.airlock(ev.open, pan(ev.pos), Math.max(0.3, vol(ev.pos, 60)));
+        if (ev.open) addShake(0.5 * vol(ev.pos, 30));
+        break;
       case 'pierBreak': {
         worldView.breakArea(ev);
         const mid = new THREE.Vector3((ev.minX + ev.maxX) / 2, 1, (ev.minZ + ev.maxZ) / 2);
@@ -705,7 +752,8 @@ function handleEvents() {
         // fire pots, cannon balls and powder kegs burst into flames; a mummy's blast is green
         if (ev.kind === 'grenade' || ev.kind === 'keg' || ev.kind === 'ball') grenadeView.explode(ev.pos);
         else { enemyView.onEvent(ev); primes.clear(); }
-        blastLight.color.setHex(ev.kind === 'grenade' ? 0xff8a3a : ev.kind === 'keg' || ev.kind === 'ball' ? 0xffa040 : 0x9dff6a);
+        // an oxygen bottle (the station) flares white-blue
+        blastLight.color.setHex(ev.kind === 'keg' && world.ambiance.keg === 'oxygen' ? 0xcfe4ff : ev.kind === 'grenade' ? 0xff8a3a : ev.kind === 'keg' || ev.kind === 'ball' ? 0xffa040 : 0x9dff6a);
         sound.explosion(pan(ev.pos), Math.max(0.3, vol(ev.pos, 70)));
         addShake(0.8 * vol(ev.pos, 22));
         blastLight.position.copy(ev.pos);
@@ -777,6 +825,11 @@ function frame(ts) {
 let tickClock = 0;
 function tick(dt, now = (tickClock += dt)) {
   worldView.update(now, dt, camera.position);
+  filmPass.uniforms.time.value = now;
+  // the torch: on while playing, a faint flicker when the battery is old
+  const torchOn = game.torch && game.state === 'playing' && !game.player?.dead;
+  torchBeam.visible = torchOn;
+  flashlight.intensity = torchOn ? 16 * (0.97 + 0.03 * Math.sin(now * 31) * Math.sin(now * 7.3)) : 0;
   const sim = game.sim;
   // co-op: the shared world goes on while this player is in the pause menu
   if (sim && game.player && (game.state === 'playing' || (game.net && game.state === 'paused'))) {
@@ -790,6 +843,7 @@ function tick(dt, now = (tickClock += dt)) {
     // exploration: N calls a group of enemies to try the weapons on
     if (game.state === 'playing' && !game.net && sim.mode.callTargets && input.wasPressed('KeyN')) sim.mode.callTargets();
     if (game.state === 'playing' && !game.net && sim.mode.callBoss && input.wasPressed('KeyB')) sim.mode.callBoss();
+    if (game.state === 'playing' && world.ambiance.flashlight && input.wasPressed('KeyF')) { game.torch = !game.torch; sound.click(game.torch ? 1.4 : 1); }
     sim.step(dt, new Map([[game.localId, cmd]]));
 
     // camera: the player's eye with a walking bob, plus the recoil the simulation applied
@@ -818,6 +872,7 @@ function tick(dt, now = (tickClock += dt)) {
     enemyView.sync(sim.enemies, viewDt, sim.time);
     grenadeView.sync(sim.grenades, viewDt);
     kegView.sync(sim.kegs);
+    updateAirlocks(sim, p);
     if (game.net) coopHud(p, dt);
     const ranked = sim.mode.pvp ? arenaRanking() : null;
 
@@ -901,6 +956,20 @@ function tick(dt, now = (tickClock += dt)) {
   input.endFrame();
 }
 game.tick = tick;
+
+// The station's airlocks: the lever's prompt when standing by it, the roar and the shaking of an
+// open door. (Co-op sessions have no airlocks: their server only knows the desert.)
+function updateAirlocks(sim, p) {
+  if (!sim.airlocks?.length || !p) return;
+  let k = 0, prompt = null;
+  for (const a of sim.airlocks) {
+    if (a.open) k = Math.max(k, 1 - Math.min(1, Math.hypot(a.center.x - p.pos.x, a.center.z - p.pos.z) / a.reach));
+    if (!p.dead && a.cd <= 0 && Math.hypot(a.lever.x - p.pos.x, a.lever.z - p.pos.z) < AIRLOCK.use) prompt = a.open ? world.texts.airlockShut : world.texts.airlockUse;
+  }
+  sound.setSuction(k);
+  if (k > 0.05) addShake(0.04 * k);
+  if (prompt !== game.leverPrompt) { hud.prompt(prompt); game.leverPrompt = prompt; }
+}
 
 // co-op HUD: teammates, the use prompt next to a downed teammate, and the downed screen
 function coopHud(p, dt) {

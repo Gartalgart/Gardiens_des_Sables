@@ -13,6 +13,14 @@ export class Level {
     // optional (the pirate port): shallow water rectangles and powder kegs
     this.water = (data.water ?? []).map(([minX, minZ, maxX, maxZ]) => ({ minX, minZ, maxX, maxZ }));
     this.kegs = (data.kegs ?? []).map((p) => new THREE.Vector3(...p));
+    // optional (the space station): airlocks, a door on the void and the lever that works it; a
+    // closed door is one of the boxes (the nav grid is worked out with every door closed)
+    this.airlocks = (data.airlocks ?? []).map(({ door: [a, b, c, d, e, f], lever }) => ({
+      door: new THREE.Box3(new THREE.Vector3(a, b, c), new THREE.Vector3(d, e, f)),
+      lever: new THREE.Vector3(...lever),
+      open: false,
+    }));
+    for (const a of this.airlocks) this.boxes.push(a.door);
     this.#buildBoxGrid();
     this.nav = new NavGrid(this);
     this.original = null; // the boxes before a part of the map was broken (see breakArea)
@@ -28,8 +36,21 @@ export class Level {
     this.nav = new NavGrid(this);
   }
 
+  // An airlock's door opens (its box goes) or closes; the nav grid stays as it is: a door gives on
+  // the void, where no path leads.
+  setDoor(i, open) {
+    const a = this.airlocks[i];
+    if (a.open === open) return;
+    a.open = open;
+    if (open) this.boxes = this.boxes.filter((b) => b !== a.door);
+    else this.boxes.push(a.door);
+    if (this.original) this.original = open ? this.original.filter((b) => b !== a.door) : [...this.original, a.door];
+    this.#buildBoxGrid();
+  }
+
   // back as exported, for a new game
   restore() {
+    this.airlocks.forEach((a, i) => this.setDoor(i, false));
     if (!this.original) return;
     this.boxes = this.original;
     this.original = null;

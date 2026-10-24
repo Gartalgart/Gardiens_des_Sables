@@ -22,6 +22,10 @@ const GRENADE = { speed: 15, lift: 3.5, fuse: 2, radius: 5, dmg: 170, playerDmg:
 const BALL_SIZE = 0.09;
 // powder kegs of the map (pirate port): a standing cylinder; a shot or a blast nearby sets one off
 export const KEG = { radius: 0.42, height: 1.0, blast: 5.5, dmg: 220, playerDmg: 70, chain: [0.12, 0.3] };
+// the station's airlocks: a lever opens the door on the void, and for a few seconds the air rushing
+// out drags bodies towards it (m/s at the door, fading out at reach + reachPerWidth × the door's
+// width); whoever goes through the door is lost. use: how close to the lever a player must stand.
+export const AIRLOCK = { dur: 7, pull: 10, reach: 10, reachPerWidth: 0.9, use: 1.8, cooldown: 1 };
 // Halo: kills less than 4 s apart chain into a multi-kill
 export const MULTI_WINDOW = 4;
 const REVIVE_TIME = 3;
@@ -53,6 +57,16 @@ export class Sim {
     this.chest = null; // the pirate port's chest while an objective protects it: { pos, gold, looters }
     // the map's powder kegs; fuse: seconds before a keg caught in a blast goes off too
     this.kegs = level.kegs.map((pos, id) => ({ id, pos: pos.clone(), alive: true, fuse: null, by: null }));
+    // the station's airlocks (the doors themselves are boxes of the level, see Level#setDoor):
+    // axis: the door's normal ('x' or 'z'), sign: the way out; side: the axis along the door
+    this.airlocks = level.airlocks.map((a, id) => {
+      const size = a.door.getSize(new THREE.Vector3()), center = a.door.getCenter(new THREE.Vector3()).setY(0);
+      const axis = size.x < size.z ? 'x' : 'z', side = axis === 'x' ? 'z' : 'x';
+      return {
+        id, center, axis, side, sign: Math.sign(center[axis]) || 1, lever: a.lever.clone(),
+        reach: AIRLOCK.reach + AIRLOCK.reachPerWidth * size[side], open: false, t: 0, by: null, cd: 0,
+      };
+    });
     // the Level is shared by the games: a pier the Kraken broke stands again, and the nav grid
     // forgets the previous game's targets
     level.restore();
@@ -98,6 +112,7 @@ export class Sim {
     p.move(dt, cmd, p.loadout.adsT > 0.5);
     p.loadout.update(dt, cmd);
     this.#revive(p, cmd, dt);
+    this.#useLever(p, cmd);
   }
 
   // Everything but the players: enemies, orb rain, the game mode.
@@ -115,6 +130,7 @@ export class Sim {
     this.#updateStrikes(dt * this.timeScale);
     this.#updateGrenades(dt * this.timeScale);
     this.#updateKegs(dt * this.timeScale);
+    this.#updateAirlocks(dt);
     if (!this.over) this.mode.update(dt);
   }
 
@@ -180,7 +196,8 @@ export class Sim {
     if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, this.world.weapons.find((w) => w.melee)?.name ?? 'MÊLÉE');
     if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, this.world.texts.grenadeKill ?? 'GRENADE');
     if (cause === 'ball') this.addScore(killer, BONUS.grenadeKill, 'BOULET');
-    if (cause === 'keg') this.addScore(killer, BONUS.grenadeKill, 'BARIL');
+    if (cause === 'keg') this.addScore(killer, BONUS.grenadeKill, this.world.texts.kegKill ?? 'BARIL');
+    if (cause === 'airlock') this.addScore(killer, BONUS.grenadeKill, this.world.texts.airlockKill ?? 'SAS');
   }
 
   // Every kill goes through here for the medals: multi-kills (kills less than MULTI_WINDOW apart)
@@ -314,6 +331,66 @@ export class Sim {
       k.fuse -= dt;
       if (k.fuse <= 0) this.blowKeg(k, k.by);
     }
+  }
+
+  // ---------- airlocks ----------
+  // the use key pressed (not held) next to a lever works its airlock
+  #useLever(p, cmd) {
+    const press = cmd.use && !p.useHeld;
+    p.useHeld = cmd.use;
+    if (!press) return;
+    for (const a of this.airlocks) {
+      if (a.cd > 0 || Math.hypot(a.lever.x - p.pos.x, a.lever.z - p.pos.z) > AIRLOCK.use || Math.abs(a.lever.y - p.pos.y) > 2) continue;
+      this.setAirlock(a, !a.open, p);
+      return;
+    }
+  }
+
+  // by: the player who opened it, credited with what goes out
+  setAirlock(a, open, by = null) {
+    if (a.open === open) return;
+    a.open = open;
+    a.t = open ? AIRLOCK.dur : 0;
+    a.by = open ? by : null;
+    a.cd = AIRLOCK.cooldown;
+    this.level.setDoor(a.id, open);
+    this.emit('airlock', { id: a.id, open, pos: a.center.clone() });
+    const T = this.world.texts;
+    this.emit('banner', { title: '', sub: open ? T.airlockOpen ?? 'Sas ouvert !' : T.airlockClosed ?? 'Sas refermé', duration: 1.8 });
+  }
+
+  #updateAirlocks(dt) {
+    for (const a of this.airlocks) {
+      a.cd = Math.max(0, a.cd - dt);
+      if (!a.open) continue;
+      a.t -= dt;
+      if (a.t <= 0) { this.setAirlock(a, false); continue; } // it closes by itself
+      for (const p of this.players.values()) {
+        if (p.dead || !this.#suck(a, p.pos, PLAYER_RADIUS, PLAYER_HEIGHT, dt)) continue;
+        this.hitPlayer(p, 9999, a.center, 'explosion', null, a.by && a.by !== p ? { by: a.by, weapon: 'airlock' } : null);
+      }
+      for (const e of [...this.enemies.list]) {
+        // what keeps to its spot (a boss, a turret) holds on
+        if (e.T.stay || e.T.part || e.T.boss || e.hidden) continue;
+        if (this.#suck(a, e.pos, e.T.radius, e.T.height, dt)) this.enemies.space(e, a.by && this.players.has(a.by.id) ? a.by : null);
+      }
+    }
+  }
+
+  // Drags a body in sight of an open airlock towards it, harder the closer it is; true once it
+  // has gone past the door.
+  #suck(a, pos, r, h, dt) {
+    const dx = a.center.x - pos.x, dz = a.center.z - pos.z, d = Math.hypot(dx, dz);
+    if (d > a.reach) return false;
+    const from = a.center.clone().setY(1.2);
+    if (d > 1.5 && !this.level.lineOfSight(from, pos.clone().setY(pos.y + 1.2))) return false;
+    // aimed past the door, so a body at the door goes on through
+    const out = a.center.clone();
+    out[a.axis] += a.sign * 3;
+    const tx = out.x - pos.x, tz = out.z - pos.z, tl = Math.hypot(tx, tz) || 1;
+    const step = AIRLOCK.pull * Math.pow(1 - d / a.reach, 0.7) * dt;
+    this.level.moveBody(pos, (tx / tl) * step, (tz / tl) * step, r, h);
+    return (pos[a.axis] - a.center[a.axis]) * a.sign > 0;
   }
 
   // the other players, as standing cylinders with the head on top

@@ -2,10 +2,14 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Sea } from './sea.js';
 import { dressMaterial, wetSand } from './surfaces.js';
+import { StationFx } from './stationFx.js';
+import { beamMaterial, makeBeam } from './lightBeams.js';
 
 // What the level looks like: merged meshes, sky, moon, braziers and their lights.
 // Collisions and navigation live in the simulation (src/sim/level.js).
-// look: the universe's ambiance (fog, sky, moon, fire colours; see src/worlds/).
+// look: the universe's ambiance (fog, sky, moon, fire colours; see src/worlds/). A station (look.space)
+// has stars all round and a planet, neon lights that stutter, a red emergency glow, airlock doors and
+// their levers, and steam leaking from pipes.
 // breakable: rectangles of the map that can break during a game ({ minX, maxX, minZ, maxZ, maxY },
 // the Kraken's piers): their meshes are kept apart from the merged ones so they can be hidden.
 export class WorldView {
@@ -16,6 +20,11 @@ export class WorldView {
     this.flames = [];
     this.breakable = breakable.map((rect) => ({ rect, group: new THREE.Group() }));
     for (const b of this.breakable) scene.add(b.group);
+    this.neons = []; // L_DecoNeon_n: the tube of light n, drawn on its own to flicker with it
+    this.doors = []; // D_Airlock_n: the door of airlock n, slid up when it opens
+    this.steamAt = []; // FX_Steam_n empties
+    this.fxAt = { beacons: [], sparks: [], drips: [] }; // FX_Beacon_n, FX_Spark_n, FX_Drip_n (see StationFx)
+    this.alarmMats = new Set(); // the red emergency lights, pulsing with the alarm
 
     // a universe whose map is not modelled yet is drawn from its collision boxes
     if (levelRoot) this.#buildLevel(levelRoot);
@@ -24,6 +33,218 @@ export class WorldView {
     this.#buildLights();
     this.#buildStorm();
     if (look.sea) this.sea = new Sea(scene, look.sea, look, level);
+    if (look.space?.planet) this.#buildPlanet(look.space.planet);
+    if (look.alarm) {
+      this.alarm = new THREE.HemisphereLight(look.alarm.color, 0x000000, 0);
+      scene.add(this.alarm);
+    }
+    this.#buildAirlocks(level);
+    this.#buildSteam();
+    this.#buildBeams(look);
+    const { beacons, sparks, drips } = this.fxAt;
+    if (beacons.length + sparks.length + drips.length) this.fx = new StationFx(scene, this.fxAt, look);
+  }
+
+  // ---------- the station ----------
+  // a ringed planet far out, lit by the sun (the moon light) so it has a night side
+  #buildPlanet(P) {
+    const dir = new THREE.Vector3(...P.dir).normalize();
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 256;
+    const g = c.getContext('2d');
+    const base = new THREE.Color(P.color), band = new THREE.Color(P.band);
+    for (let y = 0; y < 256; y++) {
+      // latitude bands, wavy, with a darker storm belt
+      const v = y / 256;
+      const k = 0.5 + 0.5 * Math.sin(v * 38 + Math.sin(v * 9) * 2.5) * Math.sin(v * 11);
+      const col = base.clone().lerp(band, k * 0.75);
+      for (let x = 0; x < 512; x += 4) {
+        const w = 0.92 + 0.08 * Math.sin(x * 0.05 + y * 0.31) * Math.sin(x * 0.013 - y * 0.07);
+        g.fillStyle = `rgb(${col.r * 255 * w | 0},${col.g * 255 * w | 0},${col.b * 255 * w | 0})`;
+        g.fillRect(x, y, 4, 1);
+      }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const planet = new THREE.Mesh(new THREE.SphereGeometry(P.size, 48, 32), new THREE.MeshStandardMaterial({ map: tex, roughness: 1, fog: false }));
+    planet.position.copy(dir).multiplyScalar(400);
+    planet.rotation.set(0.35, 0, 0.2);
+    this.scene.add(planet);
+    // its rings: a flat band of dust, tilted, fading in and out across its width
+    const rc = document.createElement('canvas');
+    rc.width = 256; rc.height = 4;
+    const rg = rc.getContext('2d');
+    for (let x = 0; x < 256; x++) {
+      const a = (0.25 + 0.6 * Math.abs(Math.sin(x * 0.11) * Math.sin(x * 0.037))) * Math.min(1, x / 20, (256 - x) / 20) * (x > 150 && x < 162 ? 0.1 : 1);
+      rg.fillStyle = P.ring; rg.globalAlpha = a; rg.fillRect(x, 0, 1, 4);
+    }
+    const rtex = new THREE.CanvasTexture(rc);
+    rtex.colorSpace = THREE.SRGBColorSpace;
+    const ringGeo = new THREE.RingGeometry(P.size * 1.3, P.size * 2.2, 96, 1);
+    // the texture runs across the ring's width: u from the radius
+    const pos = ringGeo.attributes.position, uv = ringGeo.attributes.uv;
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, (Math.hypot(pos.getX(i), pos.getY(i)) - P.size * 1.3) / (P.size * 0.9), 0.5);
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshStandardMaterial({ map: rtex, transparent: true, side: THREE.DoubleSide, depthWrite: false, roughness: 1, fog: false }));
+    ring.position.copy(planet.position);
+    ring.rotation.set(-Math.PI / 2 + 0.32, 0.25, 0);
+    this.scene.add(ring);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowTexture(P.atmosphere, 0.0), blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true, opacity: 0.45 }));
+    halo.position.copy(planet.position).addScaledVector(dir, 40);
+    halo.scale.setScalar(P.size * 2.6);
+    this.scene.add(halo);
+  }
+
+  // Levers next to the airlocks (on the wall nearest to their spot): a handle up while the door is
+  // shut, down while it is open, and a lamp, green or blinking red. Plus dust drawn into an open door.
+  #buildAirlocks(level) {
+    this.airlocks = level.airlocks.map((a) => {
+      const at = a.lever.clone();
+      let hit = null;
+      for (const d of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+        const h = level.raycast(at, new THREE.Vector3(...d), 1.2);
+        if (h && (!hit || h.dist < hit.dist)) hit = h;
+      }
+      const g = new THREE.Group();
+      g.position.copy(hit ? hit.point : at);
+      if (hit) g.lookAt(g.position.clone().add(hit.normal));
+      const dark = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.5, metalness: 0.7 });
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.08).translate(0, 0, 0.04), dark));
+      const handle = new THREE.Group();
+      handle.position.set(0, -0.05, 0.1);
+      handle.add(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.36, 6).translate(0, 0.18, 0), dark));
+      handle.add(new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6).translate(0, 0.37, 0), new THREE.MeshStandardMaterial({ color: 0xc8261a, roughness: 0.4 })));
+      g.add(handle);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6).translate(0, 0.24, 0.09), new THREE.MeshBasicMaterial({ color: 0x30ff50 }));
+      g.add(lamp);
+      this.scene.add(g);
+      const box = a.door, size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+      const axis = size.x < size.z ? 'x' : 'z';
+      return { handle, lamp, open: false, slide: 0, height: size.y + 0.1, center, axis, sign: Math.sign(center[axis]) || 1, width: Math.max(size.x, size.z) };
+    });
+    // dust and scraps streaming to the open door
+    const n = 260, pos = new Float32Array(n * 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.dust = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xb8c0c8, size: 0.03, transparent: true, opacity: 0.8, depthWrite: false }));
+    this.dust.frustumCulled = false;
+    this.dust.visible = false;
+    this.dust.userData.speed = new Float32Array(n);
+    this.scene.add(this.dust);
+  }
+
+  // Light in the haze: a soft cone under each neon (flickering with it), and shafts of sunlight
+  // through the greenhouse roof (look.sunShafts: the roof's height and the spots they come through).
+  #buildBeams(look) {
+    this.neonBeams = [];
+    if (look.fire.neon)
+      this.neonBeams = this.braziers.map((p) => {
+        const mat = beamMaterial(look.fire.light, 0.08, 1.3);
+        const beam = makeBeam(mat, 0.55, 2.2, p.y, p.clone().setY(p.y + 0.1), new THREE.Vector3(0, -1, 0));
+        this.scene.add(beam);
+        return mat;
+      });
+    const S = look.sunShafts;
+    if (!S) return;
+    const dir = new THREE.Vector3(...look.moon.dir).normalize().negate();
+    const len = S.y / -dir.y;
+    for (const [x, z] of S.at) {
+      const mat = beamMaterial(look.moon.light, S.strength, 0.9);
+      this.scene.add(makeBeam(mat, S.radius, S.radius * 1.15, len, new THREE.Vector3(x, S.y, z), dir));
+    }
+  }
+
+  // the sim's 'airlock' event: { id, open }
+  setAirlock(id, open) {
+    const a = this.airlocks[id];
+    if (!a) return;
+    a.open = open;
+    if (open) {
+      const p = this.dust.geometry.attributes.position;
+      for (let i = 0; i < p.count; i++) this.#dustSpawn(a, i, true);
+    }
+  }
+
+  // shut doors and levers up, for a new game
+  closeAirlocks() {
+    for (const a of this.airlocks) a.open = false;
+  }
+
+  #dustSpawn(a, i, anywhere) {
+    const p = this.dust.geometry.attributes.position, side = a.axis === 'x' ? 'z' : 'x';
+    const v = new THREE.Vector3();
+    v[a.axis] = a.center[a.axis] - a.sign * (anywhere ? 1 + Math.random() * 14 : 10 + Math.random() * 6);
+    v[side] = a.center[side] + (Math.random() - 0.5) * (a.width + 8);
+    v.y = 0.05 + Math.random() * Math.min(3, a.height);
+    p.setXYZ(i, v.x, v.y, v.z);
+    this.dust.userData.speed[i] = 4 + Math.random() * 6;
+  }
+
+  #updateAirlocks(t, dt) {
+    let any = null;
+    this.airlocks.forEach((a, i) => {
+      a.slide += ((a.open ? 1 : 0) - a.slide) * Math.min(1, dt * (a.open ? 6 : 2.5));
+      const door = this.doors[i];
+      if (door) door.position.y = door.userData.y + a.slide * a.height;
+      a.handle.rotation.x = THREE.MathUtils.lerp(-0.5, 1.1, a.slide);
+      a.lamp.material.color.setHex(a.open ? (Math.sin(t * 12) > 0 ? 0xff2010 : 0x300000) : 0x30ff50);
+      if (a.open) any = a;
+    });
+    this.dust.visible = !!any;
+    if (!any) return;
+    const p = this.dust.geometry.attributes.position, sp = this.dust.userData.speed;
+    const v = new THREE.Vector3(), to = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.set(p.getX(i), p.getY(i), p.getZ(i));
+      to.copy(any.center).setY(Math.min(v.y, any.height * 0.6)).sub(v);
+      const d = to.length();
+      if (d < 0.6 || (v[any.axis] - any.center[any.axis]) * any.sign > 0) { this.#dustSpawn(any, i, false); continue; }
+      sp[i] = Math.min(25, sp[i] + dt * 12);
+      v.addScaledVector(to, (sp[i] * dt) / d);
+      p.setXYZ(i, v.x, v.y, v.z);
+    }
+    p.needsUpdate = true;
+  }
+
+  // steam puffing from leaking pipes: soft sprites that rise, swell and fade
+  #buildSteam() {
+    if (!this.steamAt.length) return;
+    const tex = makeGlowTexture('rgba(220,228,236,1)', 0.0);
+    this.steam = [];
+    for (const at of this.steamAt)
+      for (let k = 0; k < 14; k++) {
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0 }));
+        s.userData = { at, age: Math.random() * 2.4, life: 2.4, vel: new THREE.Vector3() };
+        s.position.copy(at);
+        this.scene.add(s);
+        this.steam.push(s);
+      }
+  }
+
+  #updateSteam(dt) {
+    for (const s of this.steam ?? []) {
+      const u = s.userData;
+      u.age += dt;
+      if (u.age >= u.life) {
+        u.age = 0;
+        s.position.copy(u.at);
+        u.vel.set((Math.random() - 0.5) * 0.8, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.8);
+      }
+      s.position.addScaledVector(u.vel, dt);
+      const k = u.age / u.life;
+      s.scale.setScalar(0.3 + k * 1.8);
+      s.material.opacity = 0.16 * Math.min(1, k * 6) * (1 - k);
+    }
+  }
+
+  // Neon tubes: steady most of the time, then a short stutter; one in three is dying and stutters
+  // often, one in five is dead and only flashes now and then. 0..1 for light n (BRAZIER_n).
+  static neonLevel(t, n) {
+    if (n % 5 === 0) return (t + n * 1.7) % 9 < 0.12 && Math.sin(t * 90) > 0 ? 0.8 : 0;
+    const dying = n % 3 === 0;
+    const cycle = dying ? 2.3 + (n % 4) * 0.4 : 7 + (n % 5) * 1.7;
+    const u = (t + n * 3.17) % cycle;
+    if (u > (dying ? 0.9 : 0.45)) return dying ? 0.75 : 1;
+    return Math.sin(u * 70 + n) > 0.1 ? 1 : 0.06;
   }
 
   // a part of the map broke (the sim's 'pierBreak' event gives its rectangle); restoreBroken() for a new game
@@ -83,7 +304,28 @@ export class WorldView {
     const fires = [];
 
     root.traverse((o) => {
+      if (o.name.startsWith('FX_Steam')) this.steamAt.push(o.getWorldPosition(new THREE.Vector3()));
+      const fx = /^FX_(Beacon|Spark|Drip)_/.exec(o.name);
+      if (fx) this.fxAt[fx[1].toLowerCase() + 's'].push(o.getWorldPosition(new THREE.Vector3()));
       if (!o.isMesh) return;
+      if (o.material?.name?.startsWith('S_Alarm')) this.alarmMats.add(o.material);
+      // an airlock's door and a neon tube move or flicker on their own
+      const door = /^D_Airlock_(\d+)/.exec(o.name), neon = /^L_DecoNeon_(\d+)/.exec(o.name);
+      if (door || neon) {
+        const m = new THREE.Mesh(o.geometry, neon ? o.material.clone() : o.material);
+        o.matrixWorld.decompose(m.position, m.quaternion, m.scale);
+        if (door) {
+          dressMaterial(m.material);
+          m.castShadow = m.receiveShadow = true;
+          m.userData.y = m.position.y;
+          this.doors[Number(door[1]) - 1] = m;
+        } else {
+          m.userData.base = m.material.emissiveIntensity * 0.5; // the bloom does the rest
+          this.neons[Number(neon[1]) - 1] = m;
+        }
+        this.scene.add(m);
+        return;
+      }
       // C_*: collision only (under the quay planks, the barrier along the deep water); Z_*: zones
       if (o.name.startsWith('C_') || o.name.startsWith('Z_')) return;
       if (o.name.startsWith('L_DecoFire')) {
@@ -117,10 +359,15 @@ export class WorldView {
         material.color.setRGB(0.42, 0.4, 0.42);
         if (this.look.sea) wetSand(material, this.look.sea.shore);
       } else dressMaterial(material);
+      // window panes: faintly tinted, and the sun goes through them
+      const glass = material.name.startsWith('S_Glass');
+      if (glass) Object.assign(material, { transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide, roughness: 0.05, metalness: 0.5 });
+      // puddles: a dark, glossy film over the deck
+      if (material.name.startsWith('S_Wet')) Object.assign(material, { transparent: true, opacity: 0.55, depthWrite: false });
       const merged = mergeGeometries(list.map((e) => e.geo), false);
       if (isGround) addPlanarUVs(merged, 6);
       const mesh = new THREE.Mesh(merged, material);
-      mesh.castShadow = !isGround;
+      mesh.castShadow = !isGround && !glass;
       mesh.receiveShadow = true;
       this.scene.add(mesh);
     }
@@ -170,11 +417,12 @@ export class WorldView {
         haze: { value: new THREE.Vector3(...L.sky.haze) },
         glow: { value: new THREE.Vector3(...L.sky.glow) },
         storm: { value: 0 },
+        space: { value: L.space ? 1 : 0 },
         stormColor: { value: new THREE.Color(0x4a3522) },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `
-        varying vec3 vDir; uniform vec3 moonDir; uniform float storm; uniform vec3 stormColor;
+        varying vec3 vDir; uniform vec3 moonDir; uniform float storm; uniform vec3 stormColor; uniform float space;
         uniform vec3 zenith; uniform vec3 horizon; uniform vec3 haze; uniform vec3 glow;
         void main(){
           float h = max(vDir.y, 0.0);
@@ -185,6 +433,12 @@ export class WorldView {
           float m = max(dot(vDir, moonDir), 0.0);
           col += glow * pow(m, 60.0) * 0.6;
           if (vDir.y < 0.0) col = horizon * 0.9;
+          // space: no ground, the same deep black below, and the faint band of the galaxy across it
+          if (space > 0.5) {
+            float b = 1.0 - abs(dot(vDir, normalize(vec3(0.35, 0.8, -0.45))));
+            col = mix(horizon, zenith, pow(abs(vDir.y), 0.45)) + haze * pow(b, 10.0) * (0.7 + 0.3 * sin(vDir.x * 23.0 + vDir.z * 17.0));
+            col += glow * pow(m, 60.0) * 0.6;
+          }
           // the sandstorm swallows the sky, a little lighter towards the zenith
           col = mix(col, stormColor * (0.8 + 0.25 * h), storm);
           gl_FragColor = vec4(col, 1.0);
@@ -194,10 +448,10 @@ export class WorldView {
     this.skyMat = skyMat;
 
     // stars
-    const n = 1800, pos = new Float32Array(n * 3);
+    const n = L.space ? 4000 : 1800, pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       const v = new THREE.Vector3().randomDirection();
-      v.y = Math.abs(v.y) * 0.95 + 0.05;
+      if (!L.space) v.y = Math.abs(v.y) * 0.95 + 0.05;
       v.normalize().multiplyScalar(420);
       pos.set([v.x, v.y, v.z], i * 3);
     }
@@ -235,11 +489,13 @@ export class WorldView {
     this.fireLights = [];
     this.lightTimer = 0;
     this.setFireLightCount(6);
+    this.halos = [];
     for (const p of this.braziers) {
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: L.fire.halo, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.22 }));
       halo.position.copy(p).add(new THREE.Vector3(0, -0.2, 0));
       halo.scale.setScalar(2.4);
       this.scene.add(halo);
+      this.halos.push(halo);
     }
   }
 
@@ -285,8 +541,25 @@ export class WorldView {
       if (u.brazier < 0) { l.intensity = 0; continue; }
       u.fade = Math.min(1, u.fade + dt * 2.5);
       const ph = u.phase;
-      l.intensity = 22 * u.fade * (0.82 + 0.12 * Math.sin(t * 9 + ph) + 0.08 * Math.sin(t * 23.7 + ph * 3));
+      l.intensity = this.look.fire.neon
+        ? this.look.fire.intensity * u.fade * WorldView.neonLevel(t, u.brazier + 1)
+        : 22 * u.fade * (0.82 + 0.12 * Math.sin(t * 9 + ph) + 0.08 * Math.sin(t * 23.7 + ph * 3));
     }
+    this.neons.forEach((m, i) => {
+      if (!m) return;
+      const k = WorldView.neonLevel(t, i + 1);
+      m.material.emissiveIntensity = m.userData.base * k;
+      if (this.neonBeams[i]) this.neonBeams[i].uniforms.strength.value = 0.08 * k;
+      if (this.halos[i]) this.halos[i].material.opacity = 0.08 * k;
+    });
+    if (this.alarm) {
+      const A = this.look.alarm, pulse = 0.5 + 0.5 * Math.sin((t / A.period) * Math.PI * 2);
+      this.alarm.intensity = A.intensity * pulse * pulse;
+      for (const m of this.alarmMats) m.emissiveIntensity = 0.3 + 1.2 * pulse;
+    }
+    this.#updateAirlocks(t, dt);
+    this.#updateSteam(dt);
+    this.fx?.update(t, dt, view);
     for (const f of this.flames) {
       const ph = f.userData.phase;
       f.scale.set(1, 0.85 + 0.25 * Math.abs(Math.sin(t * 7 + ph)), 1);

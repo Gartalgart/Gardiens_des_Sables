@@ -13,7 +13,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock',
 ];
 let level;
 
@@ -791,6 +791,89 @@ describe('universes', () => {
       expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
     });
   }
+
+  it('the station: enemies find their way from every spawn to the player', () => {
+    const station = levelOf('station');
+    const sim = new Sim(station, { mode: 'sandbox', world: 'station' });
+    const player = sim.addPlayer('p1');
+    expect(station.spawns.length).toBe(6);
+    expect(station.airlocks.length).toBe(2);
+    const runners = station.spawns.map((s) => pacify(sim.enemies.spawn('runner', s)));
+    run(sim, 25, () => emptyCommand());
+    for (const e of runners) expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
+  });
+
+  describe('the station airlocks', () => {
+    const station = () => levelOf('station');
+    // the use key pressed for one step, then let go
+    const pressUse = (sim) => { sim.step(DT, new Map([['p1', { ...emptyCommand(), use: true }]])); sim.step(DT, new Map([['p1', emptyCommand()]])); };
+
+    it('a lever opens the door on the void, a second press closes it; it also closes by itself', () => {
+      const lv = station();
+      const sim = new Sim(lv, { mode: 'sandbox', world: 'station' });
+      const player = sim.addPlayer('p1');
+      const a = sim.airlocks[0]; // the hangar's bay door
+      player.pos.set(a.lever.x - 1, 0, a.lever.z);
+      const boxes = lv.boxes.length;
+      pressUse(sim);
+      expect(a.open).toBe(true);
+      expect(lv.boxes.length).toBe(boxes - 1);
+      run(sim, 1.2, () => emptyCommand());
+      pressUse(sim);
+      expect(a.open).toBe(false);
+      expect(lv.boxes.length).toBe(boxes);
+      run(sim, 1.2, () => emptyCommand());
+      pressUse(sim);
+      run(sim, 8, () => emptyCommand());
+      expect(a.open).toBe(false);
+      // far from any lever, the key does nothing
+      player.pos.set(0, 0, 16.5);
+      run(sim, 1.2, () => emptyCommand());
+      pressUse(sim);
+      expect(sim.airlocks.some((o) => o.open)).toBe(false);
+    });
+
+    it('the open bay door drags enemies out into the void, credited to who opened it', () => {
+      const sim = new Sim(station(), { mode: 'sandbox', world: 'station' });
+      const player = sim.addPlayer('p1');
+      const a = sim.airlocks[0];
+      player.pos.set(a.lever.x - 1, 0, a.lever.z);
+      const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 35)));
+      e.T = { ...e.T, speed: 0 };
+      pressUse(sim);
+      const before = player.stats.kills;
+      run(sim, 4, () => emptyCommand());
+      expect(sim.enemies.list).not.toContain(e);
+      expect(player.stats.kills).toBe(before + 1);
+    });
+
+    it('a player standing in front of the open door is pulled out, one walking away at the far end of the hangar escapes', () => {
+      const sim = new Sim(station(), { mode: 'sandbox', world: 'station' });
+      const player = sim.addPlayer('p1');
+      sim.setAirlock(sim.airlocks[0], true);
+      player.pos.set(0, 0, 37);
+      run(sim, 3, () => emptyCommand());
+      expect(player.dead).toBe(true);
+
+      const sim2 = new Sim(station(), { mode: 'sandbox', world: 'station' });
+      const p2 = sim2.addPlayer('p1');
+      p2.pos.set(-4, 0, 20.5);
+      sim2.setAirlock(sim2.airlocks[0], true);
+      run(sim2, 3, () => ({ ...emptyCommand(), moveZ: -1 })); // walking north, away from the door
+      expect(p2.dead).toBe(false);
+      expect(p2.pos.z).toBeLessThan(20.5);
+    });
+
+    it('a new game closes the doors again', () => {
+      const lv = station();
+      const sim = new Sim(lv, { mode: 'sandbox', world: 'station' });
+      sim.setAirlock(sim.airlocks[1], true);
+      expect(lv.airlocks[1].open).toBe(true);
+      new Sim(lv, { mode: 'sandbox', world: 'station' });
+      expect(lv.airlocks[1].open).toBe(false);
+      expect(lv.boxes).toContain(lv.airlocks[1].door);
+    });
+  });
 
   it('shallow water slows players and enemies; the quay and the deck are dry', () => {
     const port = levelOf('pirates');

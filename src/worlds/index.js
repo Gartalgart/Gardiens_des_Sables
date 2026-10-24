@@ -1,8 +1,9 @@
 import { SABLES } from './sables.js';
 import { PIRATES } from './pirates.js';
+import { STATION } from './station.js';
 
 // Every universe of the game, in the order of the title screen.
-export const WORLDS = { sables: SABLES, pirates: PIRATES };
+export const WORLDS = { sables: SABLES, pirates: PIRATES, station: STATION };
 export const DEFAULT_WORLD = 'sables';
 
 // A world by id; an unknown id (an old save, a typo) falls back to the desert.

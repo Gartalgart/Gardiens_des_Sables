@@ -3,7 +3,8 @@ import * as THREE from 'three';
 // Procedural surface detail for the map's flat-coloured materials. The merged level meshes have no
 // UVs, so a grey detail texture is projected from the three world axes (triplanar) and multiplies
 // the material's colour; its second channel is a height used as a bump and to vary roughness.
-// Textures are drawn once on canvases, by material name (blender/pirates/port.py names them P_*).
+// Textures are drawn once on canvases, by material name (blender/pirates/port.py names them P_*,
+// blender/station/station.py S_*).
 
 const SIZE = 512;
 
@@ -140,6 +141,104 @@ const PAINTERS = {
     const n = fbm(5, 6, 61);
     return (u, v) => { const h = n(u, v); return [0.4 + h * 0.3, h]; };
   },
+  // ---------- the station ----------
+  // riveted metal plates, `n` per tile, each a little different, scratched and stained
+  plate: (n = 2, seed = 71) => {
+    const rand = rng(seed);
+    const tone = Array.from({ length: n * n }, () => 0.85 + rand() * 0.3);
+    const stain = fbm(5, 4, seed + 1), scratch = noiseField(256, seed + 2);
+    return (u, v) => {
+      const cx = Math.floor(u * n), cy = Math.floor(v * n), fu = u * n - cx, fv = v * n - cy;
+      const edge = Math.min(fu, 1 - fu, fv, 1 - fv);
+      let a = tone[cy * n + cx] * (0.42 + (stain(u, v) - 0.5) * 0.25);
+      let h = 0.6;
+      // scratches: thin streaks of bright metal
+      if (scratch(u * 0.08 + v * 0.9, v * 0.08) > 0.93) a *= 1.35;
+      if (edge < 0.012) { a *= 0.3; h = 0.1; } // the seam
+      else if (edge < 0.05) {
+        // rivets along the edges
+        const along = (Math.abs(fu - 0.5) < Math.abs(fv - 0.5) ? fu : fv) * 10;
+        if (Math.abs(along - Math.round(along)) < 0.12 && edge > 0.025 && edge < 0.04) { a *= 1.25; h = 0.95; }
+        else h = 0.7;
+      }
+      return [a, h];
+    };
+  },
+  // wall panels: tall boards with a seam at a third of their height, a vent grille here and there
+  panels: () => {
+    const rand = rng(81);
+    const tone = Array.from({ length: 4 }, () => 0.85 + rand() * 0.25);
+    const stain = fbm(5, 3, 83);
+    return (u, v) => {
+      const c = Math.floor(u * 4), fu = u * 4 - c;
+      let a = tone[c] * (0.45 + (stain(u, v) - 0.5) * 0.2), h = 0.6;
+      if (fu < 0.015 || fu > 0.985 || Math.abs(v - 0.33) < 0.006 || v < 0.006) return [a * 0.3, 0.1];
+      // a vent in every other panel, slats across it
+      if (c % 2 === 1 && v > 0.08 && v < 0.24 && fu > 0.2 && fu < 0.8) return ((v * 60) % 1 < 0.5 ? [a * 0.25, 0.15] : [a * 0.9, 0.7]);
+      if (Math.abs(fu - 0.5) < 0.004) { a *= 0.75; h = 0.45; } // a faint fold
+      return [a, h];
+    };
+  },
+  // a floor grating: bars and the dark between them
+  grating: () => {
+    const n = fbm(4, 4, 91);
+    return (u, v) => {
+      const fu = (u * 8) % 1, fv = (v * 8) % 1;
+      const bar = fu < 0.22 || fv < 0.22;
+      const wear = n(u, v);
+      return bar ? [0.5 + wear * 0.3, 0.75] : [0.08, 0.05];
+    };
+  },
+  // a deck of large plates with a diamond tread
+  deck: () => {
+    const plate = PAINTERS.plate(2, 101);
+    return (u, v) => {
+      const [a, h] = plate(u, v);
+      const du = (u * 40 + v * 40) % 1, dv = (u * 40 - v * 40 + 100) % 1;
+      const tread = Math.abs(du - 0.5) < 0.12 && Math.abs(dv - 0.5) < 0.35;
+      return tread && h > 0.3 ? [a * 1.15, 0.8] : [a, h * 0.9];
+    };
+  },
+  // diagonal yellow and black stripes, worn
+  hazard: () => {
+    const n = fbm(5, 4, 111);
+    return (u, v) => {
+      const stripe = ((u + v) * 4) % 1 < 0.5;
+      const wear = n(u, v) > 0.66;
+      return stripe && !wear ? [0.5, 0.6] : [stripe ? 0.32 : 0.07, 0.5];
+    };
+  },
+  // a green CRT: lines of text in blocks, scanlines, a dark frame (multiplies the glow, see glow below)
+  crt: () => {
+    const rand = rng(131);
+    const words = Array.from({ length: 24 * 16 }, () => rand());
+    return (u, v) => {
+      const row = Math.floor(v * 24), fv = v * 24 - row;
+      const col = Math.floor(u * 16), fu = u * 16 - col;
+      const scan = 0.75 + 0.25 * Math.sin(v * SIZE * 1.2);
+      const on = words[row * 16 + col] > (row % 6 === 0 ? 0.15 : 0.45) && fv > 0.3 && fv < 0.75 && fu > 0.08 && (row % 5 !== 4);
+      return [(on ? 0.75 : 0.12) * scan, 0.5];
+    };
+  },
+  // black resin: glossy ribs and veins
+  resin: () => {
+    const n = fbm(5, 4, 141), vein = fbm(4, 6, 143);
+    return (u, v) => {
+      const rib = Math.sin((v * 14 + n(u, v) * 3) * Math.PI) * 0.5 + 0.5;
+      const ve = Math.abs(vein(u, v) - 0.5) < 0.02 ? 1.6 : 1;
+      return [(0.35 + rib * 0.4) * ve, 0.3 + rib * 0.6];
+    };
+  },
+  // a bundle of cables along u
+  cables: () => {
+    const rand = rng(121);
+    const tone = Array.from({ length: 12 }, () => 0.5 + rand() * 0.8);
+    return (u, v) => {
+      const c = Math.floor(v * 12), fv = v * 12 - c;
+      const round = Math.sin(fv * Math.PI);
+      return [tone[c] * (0.3 + round * 0.4), round];
+    };
+  },
 };
 
 // material name -> painter, metres per tile, bump strength, grime near the ground
@@ -157,6 +256,21 @@ const LOOKS = {
   P_Stone: { tex: 'rock', scale: 1.2, bump: 1.5, grime: true },
   P_Shutter: { tex: 'planks', scale: 1.2, bump: 0.8 },
   P_Char: { tex: 'wood', scale: 1.0, bump: 1.0 },
+  S_Plate: { tex: 'plate', scale: 3, bump: 0.8, grime: true },
+  S_Panel: { tex: 'panels', scale: 4, bump: 0.8, grime: true },
+  S_Frame: { tex: 'plate', scale: 1.2, bump: 0.5 },
+  S_Grating: { tex: 'grating', scale: 1.0, bump: 1.6 },
+  S_Deck: { tex: 'deck', scale: 3, bump: 1.0 },
+  S_Hazard: { tex: 'hazard', scale: 1.2, bump: 0.4 },
+  S_White: { tex: 'plate', scale: 2.5, bump: 0.5 },
+  S_Crate: { tex: 'plate', scale: 1.4, bump: 0.6 },
+  S_Pipe: { tex: 'iron', scale: 1.0, bump: 0.4 },
+  S_Cable: { tex: 'cables', scale: 0.6, bump: 0.8 },
+  S_Soil: { tex: 'rock', scale: 1.0, bump: 1.5 },
+  S_Couch: { tex: 'canvas', scale: 1.0, bump: 0.4 },
+  S_Screen: { tex: 'crt', scale: 0.5, bump: 0, glow: true },
+  S_Resin: { tex: 'resin', scale: 0.8, bump: 2.0 },
+  S_Egg: { tex: 'resin', scale: 0.5, bump: 1.4 },
 };
 
 const cache = new Map();
@@ -201,9 +315,12 @@ export function dressMaterial(material) {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = clamp(roughnessFactor * mix(1.15, 0.8, triH), 0.05, 1.0);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        normal = triBumpNormal(-vViewPosition, normal, vec2(dFdx(triH), dFdy(triH)) * triBump, faceDirection);`);
+        normal = triBumpNormal(-vViewPosition, normal, vec2(dFdx(triH), dFdy(triH)) * triBump, faceDirection);`)
+      // glow: the texture also draws on the emitted light (a screen's text)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        ${look.glow ? 'totalEmissiveRadiance *= triT.r * 2.0;' : ''}`);
   };
-  material.customProgramCacheKey = () => 'tri-' + look.tex + (look.grime ? 'g' : '');
+  material.customProgramCacheKey = () => 'tri-' + look.tex + (look.grime ? 'g' : '') + (look.glow ? 'e' : '');
   material.needsUpdate = true;
   return true;
 }

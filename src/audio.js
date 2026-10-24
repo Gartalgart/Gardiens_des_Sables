@@ -74,6 +74,7 @@ export class Sound {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.#wind();
     if (this.surfOn) this.setSurf(true);
+    if (this.humOn) this.setHum(true);
     this.musicPlayer = new Music(this.ctx, this.music, this.noise, THEMES[this.musicTheme] ?? THEMES.desert);
     this.musicPlayer.start();
     this.samplesReady = this.#loadSamples();
@@ -370,6 +371,151 @@ export class Sound {
     src.connect(f).connect(g).connect(this.sfx);
     src.start(); lfo.start();
     this.surf = g;
+  }
+
+  // The station: the low hum of its machines instead of the night wind.
+  setHum(on) {
+    this.humOn = on;
+    if (!this.ctx || !on || this.hum) return;
+    if (this.windGain) this.windGain.gain.value = 0.01;
+    const g = this.ctx.createGain();
+    g.gain.value = 0.05;
+    for (const [f, v] of [[55, 1], [110, 0.45], [167, 0.15]]) {
+      const o = this.ctx.createOscillator();
+      o.frequency.value = f;
+      const og = this.ctx.createGain();
+      og.gain.value = v;
+      o.connect(og).connect(g);
+      o.start();
+    }
+    // air in the ducts
+    const src = this.#noiseSrc();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 420; f.Q.value = 0.8;
+    const ng = this.ctx.createGain();
+    ng.gain.value = 0.5;
+    src.connect(f).connect(ng).connect(g);
+    src.start();
+    g.connect(this.sfx);
+    this.hum = g;
+    this.#creak();
+  }
+
+  // Now and then, somewhere in the hull: a long metal groan, a far bang, a sigh of the vents.
+  #creak() {
+    setTimeout(() => this.#creak(), 5000 + Math.random() * 9000);
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime, pan = Math.random() * 1.6 - 0.8, r = Math.random();
+    if (r < 0.45) {
+      // a groan: a low sawtooth bending down through a resonant filter
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      const f0 = 60 + Math.random() * 50;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.linearRampToValueAtTime(f0 * (0.6 + Math.random() * 0.3), t + 2.2);
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.Q.value = 9;
+      f.frequency.setValueAtTime(300 + Math.random() * 300, t);
+      f.frequency.linearRampToValueAtTime(150, t + 2.2);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.12, t + 0.6);
+      g.gain.linearRampToValueAtTime(0, t + 2.4);
+      o.connect(f).connect(g).connect(this.#out(pan, 0.8));
+      o.start(t); o.stop(t + 2.5);
+    } else if (r < 0.75) {
+      // a far bang and its echoes down the corridors
+      for (const [when, k] of [[0, 1], [0.32, 0.35], [0.7, 0.12]]) {
+        const src = this.#noiseSrc();
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'lowpass'; f.frequency.value = 280;
+        const g = this.ctx.createGain();
+        this.#env(g, t + when, 0.005, 0.5 * k, 0.5);
+        src.connect(f).connect(g).connect(this.#out(pan, 0.7));
+        src.start(t + when); src.stop(t + when + 0.8);
+      }
+    } else {
+      // the vents breathe out
+      const src = this.#noiseSrc();
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 1.5;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.08, t + 0.8);
+      g.gain.linearRampToValueAtTime(0, t + 2.6);
+      src.connect(f).connect(g).connect(this.#out(pan, 0.8));
+      src.start(t); src.stop(t + 2.7);
+    }
+  }
+
+  // a cut cable spitting sparks: a burst of crackles
+  spark(pan = 0, vol = 1) {
+    if (!this.ctx) return;
+    if (this.#play('ambience/spark', { pan, vol: 0.5 * vol, rate: 0.9 + Math.random() * 0.2 })) return;
+    const t = this.ctx.currentTime;
+    for (let k = 0; k < 7; k++) {
+      const src = this.#noiseSrc();
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'highpass'; f.frequency.value = 2500 + Math.random() * 3000;
+      const g = this.ctx.createGain();
+      const at = t + k * 0.03 + Math.random() * 0.05;
+      this.#env(g, at, 0.001, 0.25 * Math.random(), 0.03);
+      src.connect(f).connect(g).connect(this.#out(pan, vol));
+      src.start(at); src.stop(at + 0.06);
+    }
+  }
+
+  // a drop of water on the deck plates, a little echo after it
+  drip(pan = 0, vol = 1) {
+    if (!this.ctx) return;
+    if (this.#play('ambience/drip', { pan, vol: 0.35 * vol, rate: 0.85 + Math.random() * 0.3 })) return;
+    const t = this.ctx.currentTime;
+    for (const [when, k] of [[0, 1], [0.18, 0.25]]) {
+      const o = this.ctx.createOscillator();
+      o.frequency.setValueAtTime(1400 + Math.random() * 300, t + when);
+      o.frequency.exponentialRampToValueAtTime(600, t + when + 0.06);
+      const g = this.ctx.createGain();
+      this.#env(g, t + when, 0.002, 0.12 * k, 0.05);
+      o.connect(g).connect(this.#out(pan, vol));
+      o.start(t + when); o.stop(t + when + 0.1);
+    }
+  }
+
+  // An airlock opens: a two-tone klaxon and the bang of the door; the roar of the air rushing out
+  // follows setSuction. Closing: a heavy thud.
+  airlock(open, pan = 0, vol = 1) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (!open) { this.thud(pan, vol); return; }
+    for (let k = 0; k < 4; k++) {
+      const o = this.ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = k % 2 ? 520 : 690;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = 1800;
+      const g = this.ctx.createGain();
+      this.#env(g, t + k * 0.32, 0.01, 0.12, 0.28);
+      o.connect(f).connect(g).connect(this.#out(pan, vol));
+      o.start(t + k * 0.32); o.stop(t + k * 0.32 + 0.32);
+    }
+    this.explosion(pan, 0.5 * vol);
+  }
+
+  // the air rushing out of an open airlock, k: 0 (closed or far) .. 1 (at the door)
+  setSuction(k) {
+    if (!this.ctx) return;
+    if (!this.suction) {
+      const src = this.#noiseSrc();
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 0.6;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      src.connect(f).connect(g).connect(this.sfx);
+      src.start();
+      this.suction = { g, f };
+    }
+    this.suction.g.gain.setTargetAtTime(0.5 * k, this.ctx.currentTime, 0.15);
+    this.suction.f.frequency.setTargetAtTime(500 + 900 * k, this.ctx.currentTime, 0.15);
   }
 
   // stronger wind during the sandstorm (k: 0..1)

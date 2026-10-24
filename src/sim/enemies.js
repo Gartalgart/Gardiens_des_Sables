@@ -134,6 +134,11 @@ export class Enemies {
     if (e.hp <= 0) this.#kill(e, dir, killer, cause);
   }
 
+  // sucked out of an airlock: gone, whatever its health
+  space(e, killer) {
+    if (this.list.includes(e)) this.#kill(e, null, killer, 'airlock');
+  }
+
   // sword hit: damage plus knockback and a short stagger that cancels attacks
   meleeHit(e, amount, dir, killer) {
     const big = !!e.T.big;
@@ -188,7 +193,7 @@ export class Enemies {
       e.exploded = true;
       this.sim.explode(e.pos.clone().setY(e.pos.y + 1), e.T.explode, killer);
     }
-    if (!e.T.boss && cause !== 'self') {
+    if (!e.T.boss && cause !== 'self' && cause !== 'airlock') { // nothing drops in the void
       // health only rewards blade kills; ammo can drop either way; elites always drop something
       const luck = killer?.mods.drops ?? 1; // the "Pillard" card
       const always = !!this.sim.mode.alwaysDrop; // the arena: every guardian leaves something
