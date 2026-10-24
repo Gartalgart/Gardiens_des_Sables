@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:multi": "vite --mode multiplayer",
     "build": "vite build",
+    "build:multi": "vite build --mode multiplayer",
     "preview": "vite preview",
     "test": "vitest run",
     "server": "node server/index.js"

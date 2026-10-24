@@ -13,6 +13,7 @@ import { PlayerView } from './view/playerView.js';
 import { GrenadeView } from './view/grenadeView.js';
 import { multiKillName, spreeName } from './medals.js';
 import { NetSession, defaultServer } from './net/session.js';
+import { MULTIPLAYER } from './features.js';
 import { emptyCommand } from './sim/player.js';
 import { WorldView } from './view/worldView.js';
 import { EnemyView, ENEMY_LOOK } from './view/enemyView.js';
@@ -217,6 +218,8 @@ $('btn-board').addEventListener('click', () => { boardOpen = true; board.mode = 
 $('btn-board-back').addEventListener('click', () => { boardOpen = false; refreshScreens(); });
 
 // ---------- co-op: connection, rooms and lobby ----------
+// Hidden unless built in multiplayer mode (src/features.js); the code stays wired up.
+if (!MULTIPLAYER) document.querySelectorAll('.mp-only').forEach((el) => el.classList.add('hidden'));
 const net = new NetSession(level);
 let coopScreen = null; // null, 'coop' (connect / join) or 'lobby'
 let configureOnJoin = false;

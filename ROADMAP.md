@@ -162,3 +162,4 @@ Choix validés : médailles en anglais comme dans Halo, séries d'éliminations 
 
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
+- **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).
