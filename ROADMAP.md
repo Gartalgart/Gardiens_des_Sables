@@ -172,7 +172,7 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 51 tests automatisés, dont 4 nouveaux : fiches complètes, univers inconnu, navigation sur le port, cinq vagues des pirates jusqu'à la victoire.
 - **Validation :** Gardiens des Sables se joue exactement comme avant ; l'univers Pirates apparaît au menu. Validée le 24/10/2026.
 
-### U1 Phase 2 — La carte du port et son ambiance `[~]`
+### U1 Phase 2 — La carte du port et son ambiance `[x]`
 - [x] **Le port modélisé dans Blender** (`blender/pirates/port.py`, fichier `blender/pirates/port.blend`) :
   - falaises tout autour de la crique, un canyon d'où arrivent les ennemis, la grotte au trésor (coffre, tas d'or, crânes) ;
   - un village en ruine : quatre maisons où l'on entre (une sans toit, une au toit effondré), un puits, des étals, et une taverne pleine avec une terrasse sur le toit ;
@@ -186,7 +186,21 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] **Mode Exploration** sur l'écran titre : la carte sans ennemis, pour la visiter.
 - [x] **Export :** la sécurité de Blender interdit d'écrire des fichiers depuis Python ; la carte est exportée en `level.glb` et `scripts/level-json-from-glb.mjs` en tire `level.json` (même règle que `blender/export_level_json.py`, vérifiée identique sur le désert).
 - [x] 59 tests automatisés, dont 11 nouveaux : un chacal rejoint le joueur depuis chaque apparition et sur chaque hauteur (ponton, pont, gaillard, terrasse, grotte, canyon), l'eau ralentit, les barils explosent en chaîne et reviennent.
-- **Validation :** se promener sur le port en mode Exploration (eau, barils, ambiance), puis une partie en Vagues.
+- **Validation :** se promener sur le port en mode Exploration (eau, barils, ambiance), puis une partie en Vagues. Validée le 24/10/2026.
+
+### U1 Phase 3 — Les armes `[x]`
+- [x] **Cinq armes modélisées dans Blender** (`blender/pirates/weapons.py`, scène « Weapons » de `blender/pirates/port.blend`, exportées dans `public/models/pirates/`), avec des mains en gants de cuir sans doigts et des manches de chemise retroussées (`blender/hands.py` accepte maintenant un style de mains) :
+  - **[1] Sabre d'abordage** : lame courbe, garde et branche de garde en laiton. Mêlée et parade au clic droit, comme le khépesh.
+  - **[2] Pistolet à silex** : un seul coup de 130 dégâts (un chacal ou un prêtre d'une balle), puis 1,7 s de recharge. Le chien s'abat au tir et se réarme à la fin de la recharge.
+  - **[3] Tromblon** à deux canons évasés : deux gerbes de 12 plombs, puis recharge des deux canons. Débloqué après la vague 1.
+  - **[4] Canon portatif** en bronze : un boulet qui vole en cloche et explose sur ce qu'il touche (120 dégâts directs, 230 dans un rayon de 4,5 m). Le tir repousse le joueur en arrière. Débloqué après la vague 2.
+  - **[G] Bombes à mèche** : boulets de fer à mèche fumante, qui rebondissent et explosent comme les pots de feu.
+- [x] **Recharge par la bouche** pour les trois armes à feu : l'arme se relève, la main gauche apporte une cartouche de papier (ou le boulet) à la bouche, tire la baguette, bourre deux fois et la remet en place. Fumée de poudre noire à chaque tir.
+- [x] **Sons procéduraux** : détonation sourde de la poudre noire précédée du claquement de la platine, papier déchiré, baguette et réarmement. Les sons enregistrés viendront en phase 7.
+- [x] **Mode Exploration** : toutes les armes en main dès le départ, quatre bombes, et la touche **N** appelle un groupe d'ennemis (3 chacals, 2 prêtres, 1 colosse) et recharge les munitions.
+- [x] Le moteur lit les modèles propres à l'univers (`files.models`), la dispersion des plombs vaut pour toute arme à plusieurs plombs, et le bonus de mêlée prend le nom de l'arme de l'univers.
+- [x] 63 tests automatisés, dont 4 nouveaux : le pistolet à silex tire un coup puis recharge, le tromblon tire deux fois, le boulet vole, explose et repousse le tireur, l'Exploration donne toutes les armes et appelle des cibles.
+- **Validation :** essayer les armes en Exploration contre les ennemis du désert (touche N). Validée le 24/10/2026.
 
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.

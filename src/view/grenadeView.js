@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 
 const SPARK_COLOR = new THREE.Color(1, 0.6, 0.2);
+const SMOKE_COLOR = new THREE.Color(0.14, 0.14, 0.13);
 
-// The fire pots in flight (grenade.glb, made in blender/grenade.py): they tumble as they fly
-// and their fuse throws sparks. The blast itself is drawn by explode().
+// The fire pots in flight (grenade.glb, made in blender/grenade.py, or the universe's own, like the
+// pirates' bombs): they tumble as they fly and their fuse throws sparks. Cannon balls (kind 'ball')
+// fly in the same list, trailing smoke. The blast itself is drawn by explode().
 export class GrenadeView {
   constructor(scene, assets, effects) {
     this.scene = scene;
     this.model = assets.grenade;
+    this.ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09, 1), new THREE.MeshStandardMaterial({ color: 0x1c1c1e, metalness: 0.7, roughness: 0.45, flatShading: true }));
     this.effects = effects;
     this.views = new Map(); // grenade id -> { mesh, spark, last }
     this.sparkTimer = 0;
@@ -27,7 +30,7 @@ export class GrenadeView {
       seen.add(g.id);
       let v = this.views.get(g.id);
       if (!v) {
-        const mesh = this.model.clone(true);
+        const mesh = (g.kind === 'ball' ? this.ball : this.model).clone(true);
         mesh.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         this.scene.add(mesh);
         v = { mesh, spark: mesh.getObjectByName('Spark'), last: g.pos.clone() };
@@ -39,6 +42,7 @@ export class GrenadeView {
       v.mesh.rotation.x += moved * 6;
       v.mesh.rotation.z += moved * 3;
       v.last.copy(g.pos);
+      if (emit && g.kind === 'ball') this.effects.emit(g.pos, new THREE.Vector3(0, 0.6, 0), SMOKE_COLOR, 0.14, 0.8, -0.3);
       if (emit && v.spark) {
         const p = v.spark.getWorldPosition(new THREE.Vector3());
         const up = new THREE.Vector3((Math.random() - 0.5) * 1.5, 1.5 + Math.random(), (Math.random() - 0.5) * 1.5);

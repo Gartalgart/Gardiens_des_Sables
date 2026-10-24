@@ -851,3 +851,69 @@ describe('universes', () => {
     expect(sim.victory).toBe(true);
   });
 });
+
+describe('pirate weapons', () => {
+  // on the desert's open sand, with the pirates' loadout
+  const pirateGame = () => newGame({ world: 'pirates' });
+  const slot = (player, id) => player.loadout.items.findIndex((it) => it.def.id === id);
+
+  it('the flintlock fires one heavy ball, then reloads by itself', () => {
+    const { sim, player } = pirateGame();
+    const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 28)));
+    e.T = { ...e.T, speed: 0 };
+    const lo = player.loadout;
+    expect(lo.current.def.id).toBe('flintlock');
+    run(sim, 0.3, (p, i) => aimAt(p, e.pos.clone().setY(1.0), { fire: i === 0 }));
+    expect(sim.enemies.list).not.toContain(e); // one ball is enough for a jackal
+    expect(lo.current.mag).toBe(0);
+    expect(lo.reloading).toBeGreaterThan(1.2);
+    run(sim, 1.8);
+    expect(lo.current.mag).toBe(1);
+  });
+
+  it('the blunderbuss fires two cones of shot before its reload', () => {
+    const { sim, player } = pirateGame();
+    const lo = player.loadout;
+    lo.unlock('blunderbuss');
+    run(sim, 0.5);
+    const shots = [];
+    run(sim, 1.2, (p, i) => ({ ...emptyCommand(), fire: i % 10 < 5 }));
+    for (const ev of sim.drainEvents()) if (ev.type === 'playerShot') shots.push(ev);
+    expect(shots.length).toBe(2);
+    expect(shots[0].points.length).toBe(12);
+    expect(lo.current.mag).toBe(0);
+    expect(lo.reloading).toBeGreaterThan(0);
+  });
+
+  it('the cannon ball flies in an arc, blows up on what it meets, and the shot shoves the gunner back', () => {
+    const { sim, player } = pirateGame();
+    const lo = player.loadout;
+    lo.unlock('cannon');
+    expect(lo.index).toBe(slot(player, 'cannon'));
+    const tank = pacify(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 18)));
+    tank.T = { ...tank.T, speed: 0 };
+    const runner = pacify(sim.enemies.spawn('runner', new THREE.Vector3(2, 0, 17)));
+    runner.T = { ...runner.T, speed: 0 };
+    run(sim, 0.5);
+    const z0 = player.pos.z;
+    const target = tank.pos.clone().setY(1.6);
+    run(sim, 0.1, (p, i) => aimAt(p, target, { fire: i === 0 }));
+    expect(sim.grenades.filter((g) => g.kind === 'ball').length).toBe(1);
+    run(sim, 0.4);
+    expect(player.pos.z).toBeGreaterThan(z0 + 0.3); // pushed back, away from the target
+    run(sim, 0.6);
+    expect(sim.grenades.length).toBe(0);
+    expect(sim.drainEvents().some((ev) => ev.type === 'explosion' && ev.kind === 'ball')).toBe(true);
+    expect(tank.hp).toBeLessThan(tank.maxHp - 250); // direct hit plus the blast
+    expect(sim.enemies.list).not.toContain(runner); // caught in the blast
+    expect(player.health).toBe(100); // far from its own blast
+  });
+
+  it('exploration: every weapon in hand, and N calls a group of targets', () => {
+    const { sim, player } = pirateGame();
+    sim.start();
+    expect(player.loadout.items.every((it) => it.unlocked)).toBe(true);
+    sim.mode.callTargets();
+    expect(sim.enemies.list.length).toBe(6);
+  });
+});

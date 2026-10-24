@@ -200,9 +200,12 @@ export class Loadout {
     const moveSpread = player.moving ? (player.sprinting ? 0.03 : 0.012) : 0;
     const airSpread = player.onGround ? 0 : 0.03;
     const spread = def.spread + (def.adsSpread - def.spread) * this.adsT + moveSpread * (1 - this.adsT * 0.7) + airSpread;
-    this.sim.fireWeapon(player, def, spread);
+    if (def.ball) this.sim.fireBall(player, def, spread);
+    else this.sim.fireWeapon(player, def, spread);
 
     const kick = def.recoil * (1 - this.adsT * 0.45);
     player.kick(kick, (Math.random() - 0.5) * kick * 0.6);
+    // a heavy gun shoves its shooter back
+    if (def.knockback) player.impulse(player.flatForward().multiplyScalar(-def.knockback));
   }
 }

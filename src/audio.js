@@ -137,7 +137,7 @@ export class Sound {
   // pan / gain: a teammate's shot is placed in space and quieter
   shot(kind, pan = 0, gain = 1) {
     if (!this.ctx) return;
-    const level = { pistol: 0.55, rifle: 0.45, shotgun: 0.7, sniper: 0.75 }[kind];
+    const level = { pistol: 0.55, rifle: 0.45, shotgun: 0.7, sniper: 0.75, flintlock: 0.7, blunderbuss: 0.8, cannon: 0.9 }[kind];
     if (this.#play(`weapons/${kind}_fire`, { pan, vol: level * gain, rate: 0.97 + Math.random() * 0.06 })) return;
     const t = this.ctx.currentTime;
     const cfg = {
@@ -145,7 +145,12 @@ export class Sound {
       rifle: { f: 1900, dec: 0.13, thump: 85, vol: 0.65 },
       shotgun: { f: 1300, dec: 0.38, thump: 70, vol: 1.0 },
       sniper: { f: 1900, dec: 0.6, thump: 55, vol: 1.1 },
+      // black powder: a dull, long boom; the flintlock's lock snaps just before
+      flintlock: { f: 1100, dec: 0.5, thump: 70, tail: 0.32, vol: 1.0, lock: true },
+      blunderbuss: { f: 950, dec: 0.6, thump: 58, tail: 0.35, vol: 1.15, lock: true },
+      cannon: { f: 650, dec: 1.0, thump: 42, tail: 0.7, vol: 1.3 },
     }[kind];
+    if (cfg.lock && gain === 1) this.#clack(0, 1.3, 0.5);
     const out = this.#out(pan, cfg.vol * gain);
     const n = this.#noiseSrc();
     const lp = this.ctx.createBiquadFilter();
@@ -372,6 +377,7 @@ export class Sound {
   // timed with the view model: magazine out, seated, slide or bolt racked
   reload(duration, weapon) {
     if (!this.ctx) return;
+    if (weapon === 'flintlock' || weapon === 'blunderbuss' || weapon === 'cannon') { this.#ram(duration, weapon); return; }
     if (weapon === 'shotgun') { this.click(0.7, 0.05); return; } // then a sound per shell
     // the sample is laid so it ends with the reload; the sniper's bolt is racked on its own
     const name = weapon === 'pistol' ? 'weapons/pistol_reload' : 'weapons/rifle_reload';
@@ -385,6 +391,44 @@ export class Sound {
     this.#clack(duration * 0.72, 0.5, 0.9);
     this.click(0.6, duration * 0.72);
     if (weapon !== 'rifle') this.#clack(duration * 0.86, 0.8, 0.6);
+  }
+
+  // a muzzle-loader, timed with the view model: the charge goes down the mouth, the rod is drawn,
+  // rams twice and goes back; the flintlock is cocked at the end
+  #ram(duration, weapon) {
+    const at = (k) => duration * k;
+    if (weapon === 'cannon') {
+      this.#scrape(at(0.3), 0.12, 300, 0.7); // the ball rolls down the barrel
+      this.#clack(at(0.42), 0.25, 0.9);
+      this.#clack(at(0.9), 0.5, 0.5);
+      return;
+    }
+    this.#scrape(at(0.12), 0.08, 3200, 0.25); // the paper torn open
+    this.#scrape(at(0.26), 0.1, 1400, 0.3);
+    this.#scrape(at(0.36), 0.18, 2000, 0.25); // the rod drawn out
+    this.#scrape(at(0.53), 0.12, 900, 0.45); // rammed twice
+    this.#clack(at(0.6), 0.35, 0.5);
+    this.#scrape(at(0.65), 0.12, 900, 0.45);
+    this.#clack(at(0.72), 0.35, 0.5);
+    this.#scrape(at(0.86), 0.12, 2000, 0.2); // back under the barrel
+    if (weapon === 'flintlock') { this.click(0.9, at(0.9)); this.#clack(at(0.92), 0.8, 0.6); }
+    else this.#clack(at(0.9), 0.7, 0.6);
+  }
+
+  // wood or metal sliding: a band of noise that sweeps down a little
+  #scrape(when, dur, freq, vol) {
+    const t = this.ctx.currentTime + when;
+    const n = this.#noiseSrc();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.Q.value = 3;
+    f.frequency.setValueAtTime(freq, t);
+    f.frequency.exponentialRampToValueAtTime(freq * 0.6, t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(f).connect(g).connect(this.#out(0, 1));
+    n.start(t); n.stop(t + dur + 0.05);
   }
 
   // a shell pushed into the shotgun's tube

@@ -548,7 +548,7 @@ function parrySparks(count) {
   effects.burst(pos, _fwd.clone().negate(), { count, color: new THREE.Color(1, 0.78, 0.35), speed: 4.5, size: 0.035, life: 0.32, grav: 5 });
 }
 
-const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3 };
+const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3, flintlock: 0.25, blunderbuss: 0.45, cannon: 0.7 };
 const PLAYER_HIT_COLOR = new THREE.Color(0.75, 0.15, 0.1);
 const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? 'Un allié').toUpperCase();
 
@@ -640,10 +640,10 @@ function handleEvents() {
         break;
       case 'prime': primes.set(ev.id, 0); break;
       case 'explosion':
-        // fire pots and powder kegs burst into flames; a mummy's blast is green
-        if (ev.kind === 'grenade' || ev.kind === 'keg') grenadeView.explode(ev.pos);
+        // fire pots, cannon balls and powder kegs burst into flames; a mummy's blast is green
+        if (ev.kind === 'grenade' || ev.kind === 'keg' || ev.kind === 'ball') grenadeView.explode(ev.pos);
         else { enemyView.onEvent(ev); primes.clear(); }
-        blastLight.color.setHex(ev.kind === 'grenade' ? 0xff8a3a : ev.kind === 'keg' ? 0xffa040 : 0x9dff6a);
+        blastLight.color.setHex(ev.kind === 'grenade' ? 0xff8a3a : ev.kind === 'keg' || ev.kind === 'ball' ? 0xffa040 : 0x9dff6a);
         sound.explosion(pan(ev.pos), Math.max(0.3, vol(ev.pos, 70)));
         addShake(0.8 * vol(ev.pos, 22));
         blastLight.position.copy(ev.pos);
@@ -723,6 +723,8 @@ function tick(dt, now = (tickClock += dt)) {
       // aiming slows the mouse down, much more through the precision rifle's scope
       ? input.buildCommand(lo.current.def.melee ? 1 : 1 - lo.adsT * (lo.current.def.scope ? 0.75 : 0.45), !!p.cardOffer)
       : { ...emptyCommand(), yaw: input.yaw, pitch: input.pitch };
+    // exploration: N calls a group of enemies to try the weapons on
+    if (game.state === 'playing' && !game.net && sim.mode.callTargets && input.wasPressed('KeyN')) sim.mode.callTargets();
     sim.step(dt, new Map([[game.localId, cmd]]));
 
     // camera: the player's eye with a walking bob, plus the recoil the simulation applied

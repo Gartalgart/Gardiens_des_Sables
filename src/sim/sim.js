@@ -18,6 +18,8 @@ const REVIVE_RANGE = 2.2;
 // fire pots: thrown in an arc, they bounce and blow up after a fuse
 const GRAVITY_GRENADE = 18;
 const GRENADE = { speed: 15, lift: 3.5, fuse: 2, radius: 5, dmg: 170, playerDmg: 95, size: 0.12 };
+// a weapon's ball (the pirates' hand cannon) flies in the same list but blows up where it lands
+const BALL_SIZE = 0.09;
 // powder kegs of the map (pirate port): a standing cylinder; a shot or a blast nearby sets one off
 export const KEG = { radius: 0.42, height: 1.0, blast: 5.5, dmg: 220, playerDmg: 70, chain: [0.12, 0.3] };
 // Halo: kills less than 4 s apart chain into a multi-kill
@@ -45,7 +47,9 @@ export class Sim {
     this.lastCommands = new Map();
     this.weather = 'clear'; // 'sandstorm' once the pharaoh enters his second phase
     this.strikes = []; // orb rain about to land: { id, pos, radius, dmg, t }
-    this.grenades = []; // fire pots in flight: { id, pos, vel, fuse, owner }
+    // fire pots in flight: { id, pos, vel, fuse, owner }; a cannon ball also has kind 'ball',
+    // gravity and the weapon's blast, and has no fuse
+    this.grenades = [];
     // the map's powder kegs; fuse: seconds before a keg caught in a blast goes off too
     this.kegs = level.kegs.map((pos, id) => ({ id, pos: pos.clone(), alive: true, fuse: null, by: null }));
     // the nav grid belongs to the shared Level: forget the previous game's targets
@@ -170,8 +174,9 @@ export class Sim {
 
   scoreKill(killer, enemy, cause) {
     this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1), enemy.T.boss ? this.world.texts.bossKill : enemy.elite ? 'ÉLITE ABATTU' : 'ÉLIMINATION');
-    if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, 'KHÉPESH');
-    if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, 'GRENADE');
+    if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, this.world.weapons.find((w) => w.melee)?.name ?? 'MÊLÉE');
+    if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, this.world.texts.grenadeKill ?? 'GRENADE');
+    if (cause === 'ball') this.addScore(killer, BONUS.grenadeKill, 'BOULET');
     if (cause === 'keg') this.addScore(killer, BONUS.grenadeKill, 'BARIL');
   }
 
@@ -230,7 +235,7 @@ export class Sim {
       return { point: kh.point };
     }
     if (ph) {
-      const falloff = def.id === 'shotgun' ? THREE.MathUtils.clamp(1 - (ph.dist - 7) / 25, 0.25, 1) : ph.dist > 45 ? 0.75 : 1;
+      const falloff = def.pellets > 1 ? THREE.MathUtils.clamp(1 - (ph.dist - 7) / 25, 0.25, 1) : ph.dist > 45 ? 0.75 : 1;
       const dmg = def.dmg * (PVP_DMG[def.id] ?? 1) * (ph.head ? 2 : 1) * falloff;
       this.emit('impactPlayer', { point: ph.point, normal: dir.clone().negate() });
       const res = this.hitPlayer(ph.player, dmg, origin, 'bullet', null, { by: player, weapon: def.id, head: ph.head });
@@ -251,6 +256,18 @@ export class Sim {
       return { point: wh.point };
     }
     return { point: origin.clone().addScaledVector(dir, 250) };
+  }
+
+  // A weapon that fires a ball (def.ball): it flies with gravity and blows up on what it meets.
+  fireBall(player, def, spread) {
+    player.protect = 0;
+    const q = player.aimQuaternion();
+    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * spread;
+    const dir = new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, -1).normalize().applyQuaternion(q);
+    const pos = player.eye.addScaledVector(dir, 0.6);
+    const vel = dir.multiplyScalar(def.ball.speed);
+    this.grenades.push({ id: this.nextId(), kind: 'ball', pos, vel, fuse: Infinity, owner: player, ball: def.ball });
+    this.emit('playerShot', { pid: player.id, weapon: def.id, origin: player.eye, points: [] });
   }
 
   #raycastKegs(origin, dir, maxDist) {
@@ -310,7 +327,7 @@ export class Sim {
   }
 
   #hitEnemy(player, eh, dir, def, power) {
-    const falloff = def.id === 'shotgun' ? THREE.MathUtils.clamp(1 - (eh.dist - 7) / 25, 0.25, 1) : eh.dist > 45 ? 0.75 : 1;
+    const falloff = def.pellets > 1 ? THREE.MathUtils.clamp(1 - (eh.dist - 7) / 25, 0.25, 1) : eh.dist > 45 ? 0.75 : 1;
     const dmg = def.dmg * (eh.head ? player.mods.headMul : 1) * falloff * power;
     this.emit('impactEnemy', { point: eh.point, normal: dir.clone().negate(), enemyType: eh.enemy.type });
     this.enemies.damage(eh.enemy, dmg, dir, player);
@@ -361,12 +378,29 @@ export class Sim {
         this.#grenadeBlast(g);
         continue;
       }
-      g.vel.y -= GRAVITY_GRENADE * dt;
+      g.vel.y -= (g.ball ? g.ball.gravity : GRAVITY_GRENADE) * dt;
       const step = g.vel.clone().multiplyScalar(dt);
       const len = step.length();
       if (len < 1e-6) continue;
       const dir = step.clone().divideScalar(len);
-      const hit = this.level.raycast(g.pos, dir, len + GRENADE.size);
+      const hit = this.level.raycast(g.pos, dir, len + (g.ball ? BALL_SIZE : GRENADE.size));
+      if (g.ball) {
+        // the first thing on its way: a wall, an enemy, a keg (or a player in the arena)
+        let d = hit ? hit.dist : len + BALL_SIZE;
+        const eh = this.enemies.raycast(g.pos, dir, d);
+        if (eh) d = eh.dist;
+        const ph = this.pvp ? this.#raycastPlayers(g.pos, dir, d, g.owner) : null;
+        if (ph) d = ph.dist;
+        const kh = this.#raycastKegs(g.pos, dir, d);
+        if (kh) d = kh.dist;
+        const struck = eh || ph || kh || hit;
+        if (!struck && g.pos.y > -20) { g.pos.add(step); continue; }
+        this.grenades.splice(i, 1);
+        g.pos.addScaledVector(dir, Math.max(0, d - BALL_SIZE));
+        if (eh && !ph && !kh) this.#hitEnemy(g.owner, { ...eh, head: false }, dir, { dmg: g.ball.hit, pellets: 1 }, 1);
+        this.#grenadeBlast(g);
+        continue;
+      }
       if (!hit) { g.pos.add(step); continue; }
       // bounce: the part of the speed into the surface comes back weaker, the rest slides with friction
       g.pos.copy(hit.point).addScaledVector(hit.normal, GRENADE.size);
@@ -380,10 +414,11 @@ export class Sim {
 
   #grenadeBlast(g) {
     const owner = this.players.has(g.owner.id) ? g.owner : null;
-    this.#blast(g.pos.clone(), { radius: GRENADE.radius, dmg: GRENADE.dmg, playerDmg: GRENADE.playerDmg }, owner, 'grenade');
+    const cfg = g.ball ?? { radius: GRENADE.radius, dmg: GRENADE.dmg, playerDmg: GRENADE.playerDmg };
+    this.#blast(g.pos.clone(), cfg, owner, g.ball ? 'ball' : 'grenade');
   }
 
-  // A fire pot or a powder keg going off (kind 'grenade' or 'keg'): walls shelter from it.
+  // A fire pot, a cannon ball or a powder keg going off (kind 'grenade', 'ball' or 'keg'): walls shelter from it.
   #blast(pos, cfg, owner, kind) {
     const R = cfg.radius;
     this.emit('explosion', { pos: pos.clone(), radius: R, kind });
@@ -399,9 +434,9 @@ export class Sim {
       e.knock.copy(e.pos).sub(pos).setY(0).normalize().multiplyScalar(e.T.big ? 3 : 10);
       this.enemies.damage(e, cfg.dmg * k, e.pos.clone().sub(pos).normalize(), owner, kind);
     }
-    // the thrower is hurt by their own pot, other players only in the arena; a keg hurts everyone near
+    // the thrower is hurt by their own pot or ball, other players only in the arena; a keg hurts everyone near
     for (const p of this.alivePlayers()) {
-      if (kind === 'grenade' && p !== owner && !this.pvp) continue;
+      if (kind !== 'keg' && p !== owner && !this.pvp) continue;
       const d = p.center.distanceTo(pos);
       if (d > R || !exposed(p.center)) continue;
       const k = 1 - (d / R) * 0.6;

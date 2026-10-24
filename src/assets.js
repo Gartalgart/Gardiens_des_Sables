@@ -1,6 +1,7 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-// models shared by every universe for now (the map and its props come from the universe)
+// models shared by every universe (the map and its props come from the universe, which can also
+// replace or add models: files.models in src/worlds/)
 const FILES = {
   player: 'models/player.glb',
   runner: 'models/runner.glb',
@@ -21,7 +22,7 @@ const FILES = {
 export async function loadAssets(world, onProgress) {
   const loader = new GLTFLoader();
   const out = { clips: {}, level: null, props: null }; // clips: animations of each model, by file key
-  const files = { ...FILES };
+  const files = { ...FILES, ...world.files.models };
   if (world.files.level) files.level = world.files.level;
   if (world.files.props) files.props = world.files.props;
   let done = 0;

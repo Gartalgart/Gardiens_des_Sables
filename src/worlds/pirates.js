@@ -1,8 +1,8 @@
 import { SABLES } from './sables.js';
 
 // "L'Île des pirates maudits" (U1): a ruined pirate port on a misty night.
-// The map is its own (blender/pirates/port.py); until its weapons and enemies are made (phases 3
-// to 6 of the U1 plan), it borrows the desert's, so the universe is already playable.
+// The map (blender/pirates/port.py) and the weapons (blender/pirates/weapons.py) are its own; until
+// its enemies are made (phases 4 to 6 of the U1 plan), it borrows the desert's.
 export const PIRATES = {
   ...SABLES,
   id: 'pirates',
@@ -15,7 +15,41 @@ export const PIRATES = {
     // computed from level.glb by scripts/level-json-from-glb.mjs
     levelData: 'models/pirates/level.json',
     props: 'models/pirates/props.glb',
+    // models of this universe that replace or add to the shared ones (src/assets.js), by key
+    models: {
+      cutlass: 'models/pirates/cutlass.glb',
+      flintlock: 'models/pirates/flintlock.glb',
+      blunderbuss: 'models/pirates/blunderbuss.glb',
+      cannon: 'models/pirates/cannon.glb',
+      grenade: 'models/pirates/bomb.glb',
+    },
   },
+
+  // ---------- weapons: all muzzle-loaders but the sabre, loaded by the mouth with a ramrod ----------
+  weapons: [
+    {
+      id: 'cutlass', name: 'SABRE', melee: true, dmg: 80, range: 3.0, swing: 0.32, hitAt: 0.1, cooldown: 0.4,
+      spread: 0, adsSpread: 0, adsFov: 75,
+    },
+    {
+      // one heavy ball, then a long reload
+      id: 'flintlock', name: 'PISTOLET À SILEX', dmg: 130, rpm: 100, auto: false, mag: 1, reserve: Infinity, pellets: 1,
+      spread: 0.012, adsSpread: 0.001, reload: 1.7, recoil: 0.06, adsFov: 56,
+    },
+    {
+      // two bell-mouthed barrels: a wide cone of shot each, then both are reloaded
+      id: 'blunderbuss', name: 'TROMBLON', dmg: 13, rpm: 150, auto: false, mag: 2, reserve: 36, pellets: 12,
+      spread: 0.12, adsSpread: 0.09, reload: 2.6, recoil: 0.08, adsFov: 64,
+    },
+    {
+      // a ball that flies in an arc and blows up where it lands; the shot shoves the gunner back
+      id: 'cannon', name: 'CANON PORTATIF', dmg: 0, rpm: 50, auto: false, mag: 1, reserve: 10, pellets: 1,
+      spread: 0.008, adsSpread: 0.002, reload: 2.3, recoil: 0.12, adsFov: 60, knockback: 7,
+      ball: { speed: 42, gravity: 9, radius: 4.5, dmg: 230, playerDmg: 40, hit: 120 },
+    },
+  ],
+  startUnlocked: ['cutlass', 'flintlock'],
+  unlocks: { 2: 'blunderbuss', 3: 'cannon' },
   props: {
     inside: 40, // the cliffs stand at ±42 m
     list: [
@@ -30,6 +64,8 @@ export const PIRATES = {
 
   texts: {
     ...SABLES.texts,
+    start: 'Sabre [1] et pistolet à silex [2] — bombes [G] — tenez le port',
+    grenadeKill: 'BOMBE',
     victory: "La brume se lève sur le port. L'équipage maudit retourne au fond de la baie.",
   },
 

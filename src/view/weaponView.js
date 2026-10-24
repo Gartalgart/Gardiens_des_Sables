@@ -2,13 +2,21 @@ import * as THREE from 'three';
 import { findPart, baseName } from '../assets.js';
 import { makeGlowTexture } from './worldView.js';
 
-// How each weapon sits on screen. Rules (damage, ammo...) are in src/sim/weapons.js.
+// How each weapon sits on screen. Rules (damage, ammo...) are in src/worlds/.
+// kick: how far the gun jumps back, tilts up and rolls on a shot; flash: the muzzle flash's size;
+// smoke: black powder leaves a cloud at the mouth
 const VIEW = {
   sword: { hip: new THREE.Vector3(0.3, -0.31, -0.6), block: new THREE.Vector3(0.05, -0.2, -0.6), scale: 0.72 },
-  pistol: { hip: new THREE.Vector3(0.16, -0.15, -0.4), adsZ: -0.3, scale: 0.9, sightY: null },
-  rifle: { hip: new THREE.Vector3(0.15, -0.19, -0.3), adsZ: -0.24, scale: 1.0, sightY: null, holo: 'R_HoloGlass' },
-  shotgun: { hip: new THREE.Vector3(0.16, -0.19, -0.26), adsZ: -0.2, scale: 1.0, sightY: null },
-  sniper: { hip: new THREE.Vector3(0.17, -0.23, -0.42), adsZ: -0.22, scale: 0.85, sightY: null },
+  pistol: { hip: new THREE.Vector3(0.16, -0.15, -0.4), adsZ: -0.3, scale: 0.9, sightY: null, kick: [0.05, 0.1, 0] },
+  rifle: { hip: new THREE.Vector3(0.15, -0.19, -0.3), adsZ: -0.24, scale: 1.0, sightY: null, holo: 'R_HoloGlass', kick: [0.05, 0.1, 0] },
+  // the shotgun bucks hard and twists a little
+  shotgun: { hip: new THREE.Vector3(0.16, -0.19, -0.26), adsZ: -0.2, scale: 1.0, sightY: null, kick: [0.14, 0.38, 0.12], flash: 0.32 },
+  sniper: { hip: new THREE.Vector3(0.17, -0.23, -0.42), adsZ: -0.22, scale: 0.85, sightY: null, kick: [0.09, 0.22, 0] },
+  // the pirates' (src/worlds/pirates.js)
+  cutlass: { hip: new THREE.Vector3(0.3, -0.31, -0.6), block: new THREE.Vector3(0.05, -0.2, -0.6), scale: 0.72 },
+  flintlock: { hip: new THREE.Vector3(0.16, -0.15, -0.4), adsZ: -0.42, scale: 0.9, kick: [0.08, 0.3, 0.05], flash: 0.3, smoke: 1 },
+  blunderbuss: { hip: new THREE.Vector3(0.16, -0.21, -0.36), adsZ: -0.3, sightY: 0.11, scale: 1.0, kick: [0.15, 0.42, 0.14], flash: 0.42, smoke: 1.6 },
+  cannon: { hip: new THREE.Vector3(0.2, -0.28, -0.46), adsZ: -0.38, sightY: 0.21, scale: 0.95, kick: [0.22, 0.55, 0.1], flash: 0.55, smoke: 2.4 },
 };
 
 // Moving parts of each gun (names from blender/fps_assets.blend): the left arm's objects share a prefix,
@@ -19,6 +27,11 @@ const RIG = {
   rifle: { arm: 'RL_', mag: 'R_Mag' },
   shotgun: { arm: 'SL_', pump: 'S_Pump', action: { parts: [['S_Pump', 0.075]], at: [0.12, 0.4], arm: true } },
   sniper: { arm: 'NL_', mag: 'N_Mag', rack: [['N_Bolt', 0.07], ['N_BoltKnob', 0.07]], action: { parts: [['N_Bolt', 0.07], ['N_BoltKnob', 0.07]], at: [0.3, 0.72] } },
+  // muzzle-loaders: the left hand brings a charge to the mouth, then rams it with the rod (its length);
+  // the flintlock's hammer falls on a shot and is cocked again at the end of the reload
+  flintlock: { arm: 'FL_', ram: { rod: 'F_Rod', len: 0.26, charge: 'paper' }, hammer: 'F_Hammer' },
+  blunderbuss: { arm: 'BL_', ram: { rod: 'B_Rod', len: 0.38, charge: 'paper' } },
+  cannon: { arm: 'CL_', ram: { charge: 'ball' } },
 };
 
 const ease = (x) => x * x * (3 - 2 * x);
@@ -51,8 +64,8 @@ export class WeaponView {
           o.material.flatShading = true;
           o.material.emissiveIntensity *= def.melee ? 0.25 : 0.12;
           if (def.melee) o.material.roughness = Math.max(o.material.roughness, 0.5);
-          // bandaged hands: toned down so they sit in the night instead of glowing under the view model lights
-          if (o.material.name === 'Linen' || o.material.name === 'Skin') o.material.color.multiplyScalar(0.55);
+          // hands and sleeves: toned down so they sit in the night instead of glowing under the view model lights
+          if (['Linen', 'Skin', 'Shirt'].includes(o.material.name)) o.material.color.multiplyScalar(0.55);
         }
       });
       const holder = new THREE.Group();
@@ -77,7 +90,7 @@ export class WeaponView {
       item.ads = new THREE.Vector3(-sight.position.x * view.scale, -sightY, view.adsZ);
       if (view.holo) this.#holoSight(findPart(model, view.holo));
       item.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-      item.flash.scale.setScalar(def.id === 'shotgun' ? 0.32 : 0.22);
+      item.flash.scale.setScalar(view.flash ?? 0.22);
       item.flash.visible = false;
       item.muzzle.add(item.flash);
       this.#rig(item);
@@ -134,6 +147,22 @@ export class WeaponView {
       arm.add(shell);
       rig.shell = shell;
       rig.port = new THREE.Vector3(0, -0.035, -0.07);
+    }
+    if (cfg.ram) {
+      // the charge in the left hand: a paper cartridge, or the cannon's ball
+      const charge = cfg.ram.charge === 'ball'
+        ? new THREE.Mesh(new THREE.IcosahedronGeometry(0.03, 1), new THREE.MeshStandardMaterial({ color: 0x1a1a1c, metalness: 0.7, roughness: 0.5, flatShading: true }))
+        : new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.045, 6), new THREE.MeshStandardMaterial({ color: 0xb8ab8a, roughness: 0.9, flatShading: true }));
+      charge.position.set(0, 0.035, -0.01);
+      charge.visible = false;
+      arm.add(charge);
+      rig.ram = { ...cfg.ram, charge, mouth: item.muzzle.position.clone() };
+      if (cfg.ram.rod) rig.ram.rod = moving(part(cfg.ram.rod));
+    }
+    if (cfg.hammer) {
+      rig.hammer = part(cfg.hammer);
+      rig.hammerRest = rig.hammer.rotation.x;
+      rig.fired = false; // the hammer is down until the next reload cocks it
     }
     item.rig = rig;
   }
@@ -220,12 +249,16 @@ export class WeaponView {
     // the view model camera sits at the camera origin, so the muzzle maps straight to world space
     const muzzleWorld = it.muzzle.getWorldPosition(new THREE.Vector3()).applyMatrix4(camera.matrixWorld);
     ev.points.slice(0, 3).forEach((p) => this.effects.tracer(muzzleWorld, p));
-    const heavy = ev.weapon === 'shotgun' || ev.weapon === 'sniper';
-    // the shotgun bucks hard and twists a little
-    this.kickBack = ev.weapon === 'shotgun' ? 0.14 : heavy ? 0.09 : 0.05;
-    this.kickRot = ev.weapon === 'shotgun' ? 0.38 : heavy ? 0.22 : 0.1;
-    if (ev.weapon === 'shotgun') this.kickRoll = (Math.random() < 0.5 ? -1 : 1) * 0.12;
+    const [back, rot, roll] = it.view.kick;
+    this.kickBack = back;
+    this.kickRot = rot;
+    if (roll) this.kickRoll = (Math.random() < 0.5 ? -1 : 1) * roll;
+    if (it.view.smoke) {
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion), k = it.view.smoke;
+      this.effects.burst(muzzleWorld, fwd, { count: Math.round(14 * k), color: new THREE.Color(0.16, 0.16, 0.15), speed: 2.5 * k, size: 0.2 * k, life: 1.1, grav: -0.6, spread: 0.6 });
+    }
     it.rig.actionT = 0;
+    it.rig.fired = true;
     this.flashTime = 0.05;
     it.flash.material.rotation = Math.random() * Math.PI;
   }
@@ -278,7 +311,12 @@ export class WeaponView {
       }
     }
     if (player.sprinting) { rx -= 0.35; ry += 0.5; pos.x -= 0.05; pos.y -= 0.03; }
-    if (loadout.reloading > 0) {
+    if (loadout.reloading > 0 && it.rig?.ram) {
+      // a muzzle-loader comes up, mouth high and toward the middle, so the rod can go down the barrel
+      const k = 1 - loadout.reloading / (loadout.reloadTotal || def.reload);
+      const tilt = seg(k, 0, 0.12) * (1 - seg(k, 0.88, 1));
+      rx += tilt * 0.45; rz -= tilt * 0.2; ry += tilt * 0.15; pos.x -= tilt * 0.07; pos.y -= tilt * 0.04; pos.z -= tilt * 0.02;
+    } else if (loadout.reloading > 0) {
       // tilted to show the magazine well (or the shotgun's loading port), held there while shells go in
       const k = 1 - loadout.reloading / (loadout.reloadTotal || def.reload);
       const tilt = def.shells ? 1 : Math.sin(Math.min(1, k) * Math.PI);
@@ -335,6 +373,28 @@ export class WeaponView {
         r.pump.position.z += back;
         arm.z += back;
       }
+    } else if (loadout.reloading > 0 && r.ram) {
+      // the hand brings the charge up to the mouth and drops it in, then draws the rod out, turns it
+      // over the bore and rams twice, and puts it back; the cannon's ball is only pushed in
+      const R = r.ram, mouth = R.mouth;
+      const w = seg(k, 0, 0.1) * (1 - seg(k, 0.9, 1));
+      const target = mouth.clone().add(new THREE.Vector3(0, 0.07 - seg(k, 0.22, 0.3) * 0.045, 0.03));
+      R.charge.visible = k > 0.06 && k < 0.3;
+      if (R.rod) {
+        const L = R.len, rest = r.moving.get(R.rod);
+        const out = seg(k, 0.34, 0.44) * (1 - seg(k, 0.86, 0.94));
+        const up = seg(k, 0.44, 0.5) * (1 - seg(k, 0.8, 0.86));
+        const ram = (pulse(k, 0.52, 0.64) + pulse(k, 0.64, 0.76)) * up;
+        R.rod.position.z += -(L + 0.03) * out + L * 0.7 * ram;
+        R.rod.position.y += (mouth.y - rest.y) * up;
+        // the hand holds the rod by its front end
+        if (k > 0.32) target.copy(R.rod.position).add(new THREE.Vector3(0, 0.02, -L / 2 - 0.01));
+      } else if (k > 0.3) {
+        target.copy(mouth).add(new THREE.Vector3(0, 0.03, 0.02 + pulse(k, 0.35, 0.65) * 0.06));
+      }
+      arm.lerp(target, w);
+      armTilt = w * 0.4;
+      if (r.prevK < 0.9 && k >= 0.9 && r.hammer) { r.fired = false; this.kickRot += 0.03; } // cocked
     } else if (loadout.reloading > 0 && r.mag) {
       // the hand takes the magazine down out of view, comes back with a full one and seats it
       const d = 0.35 * seg(k, 0.15, 0.38) * (1 - seg(k, 0.5, 0.72));
@@ -346,6 +406,11 @@ export class WeaponView {
       if (r.prevK < 0.72 && k >= 0.72) { this.kickRot += 0.05; this.kickBack += 0.012; } // seated
     }
     r.prevK = k;
+    if (r.ram && loadout.reloading <= 0) r.ram.charge.visible = false;
+    if (r.hammer) {
+      const aim = r.hammerRest - (r.fired ? 0.7 : 0);
+      r.hammer.rotation.x += (aim - r.hammer.rotation.x) * (1 - Math.exp(-(r.fired ? 60 : 20) * dt));
+    }
 
     // after a shot: the pistol's slide, the sniper's bolt, the shotgun's pump with the left hand riding it
     r.actionT += dt;
