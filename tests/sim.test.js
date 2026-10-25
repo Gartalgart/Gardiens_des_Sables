@@ -13,7 +13,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock', 'charge', 'overheat', 'vented', 'mineStick', 'latch', 'burst',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock', 'charge', 'overheat', 'vented', 'mineStick', 'latch', 'burst', 'ventOpen',
 ];
 let level;
 
@@ -796,11 +796,35 @@ describe('universes', () => {
     const station = levelOf('station');
     const sim = new Sim(station, { mode: 'sandbox', world: 'station' });
     const player = sim.addPlayer('p1');
-    expect(station.spawns.length).toBe(6);
+    expect(station.spawns.length).toBe(10);
     expect(station.airlocks.length).toBe(2);
+    player.pos.set(2, 0, 31); // in the hangar, open on three sides: no crowd jams a single door
     const runners = station.spawns.map((s) => pacify(sim.enemies.spawn('runner', s)));
-    run(sim, 25, () => emptyCommand());
-    for (const e of runners) expect(e.pos.distanceTo(player.pos)).toBeLessThan(3);
+    // each one gets close at some point (ten bodies end up crowding round the player)
+    const best = runners.map(() => Infinity);
+    run(sim, 25, () => {
+      player.health = player.maxHealth; // a dead player stops the hunt
+      runners.forEach((e, n) => { best[n] = Math.min(best[n], e.pos.distanceTo(player.pos)); });
+      return emptyCommand();
+    });
+    for (const d of best) expect(d).toBeLessThan(4);
+  });
+
+  it('the station: brutes get out of the hangar and through the tunnels to every district', () => {
+    const station = levelOf('station');
+    for (const [x, z] of [[36, 0], [-36, -2], [0, -33], [34, -28]]) {
+      const sim = new Sim(station, { mode: 'sandbox', world: 'station' });
+      const player = sim.addPlayer('p1');
+      player.pos.set(x, 0, z);
+      const brute = pacify(sim.enemies.spawn('tank', station.spawns[0]));
+      let best = Infinity;
+      run(sim, 40, () => {
+        player.health = player.maxHealth;
+        best = Math.min(best, brute.pos.distanceTo(player.pos));
+        return emptyCommand();
+      });
+      expect(best, `brute to (${x}, ${z})`).toBeLessThan(4);
+    }
   });
 
   describe('the station airlocks', () => {
@@ -838,7 +862,7 @@ describe('universes', () => {
       const player = sim.addPlayer('p1');
       const a = sim.airlocks[0];
       player.pos.set(a.lever.x - 1, 0, a.lever.z);
-      const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 35)));
+      const e = pacify(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 38)));
       e.T = { ...e.T, speed: 0 };
       pressUse(sim);
       const before = player.stats.kills;
@@ -851,17 +875,17 @@ describe('universes', () => {
       const sim = new Sim(station(), { mode: 'sandbox', world: 'station' });
       const player = sim.addPlayer('p1');
       sim.setAirlock(sim.airlocks[0], true);
-      player.pos.set(0, 0, 37);
+      player.pos.set(0, 0, 40);
       run(sim, 3, () => emptyCommand());
       expect(player.dead).toBe(true);
 
       const sim2 = new Sim(station(), { mode: 'sandbox', world: 'station' });
       const p2 = sim2.addPlayer('p1');
-      p2.pos.set(-4, 0, 20.5);
+      p2.pos.set(-4, 0, 27.5); // by the hangar's north door
       sim2.setAirlock(sim2.airlocks[0], true);
       run(sim2, 3, () => ({ ...emptyCommand(), moveZ: -1 })); // walking north, away from the door
       expect(p2.dead).toBe(false);
-      expect(p2.pos.z).toBeLessThan(20.5);
+      expect(p2.pos.z).toBeLessThan(27.5);
     });
 
     it('a new game closes the doors again', () => {
@@ -1202,6 +1226,18 @@ describe('pirate enemies', () => {
     trapped.T = { ...trapped.T, speed: 0 }; // stands still, 16 m away
     run(sim, 7, () => { player.health = 100; return emptyCommand(); });
     expect(sim.level.nav.inWorld(out.pos.x, out.pos.z)).toBe(true);
+    // in plain view it stays (it would vanish under the player's eyes)...
+    expect(trapped.pos.distanceTo(new THREE.Vector3(-6, 0, -12))).toBeLessThan(0.5);
+    // ...out of sight, it comes back through a gate
+    const eye = trapped.pos.clone().setY(trapped.T.height * 0.85);
+    let hide = null;
+    for (let x = -30; x <= 30 && !hide; x += 2)
+      for (let z = -30; z <= 30 && !hide; z += 2) {
+        const at = new THREE.Vector3(x, 0, z);
+        if (at.distanceTo(trapped.pos) > 10 && sim.level.nav.inWorld(x, z) && !sim.level.lineOfSight(eye, at.clone().setY(1))) hide = at;
+      }
+    player.pos.copy(hide);
+    run(sim, 7, () => { player.pos.copy(hide); player.health = 100; return emptyCommand(); });
     expect(trapped.pos.distanceTo(new THREE.Vector3(-6, 0, -12))).toBeGreaterThan(3);
   });
 
@@ -1449,6 +1485,18 @@ describe('station weapons', () => {
     for (const e of line) expect(sim.enemies.list).not.toContain(e);
   });
 
+  it('the railgun goes through two overlapping bodies once each (no endless ping-pong)', () => {
+    const { sim } = stationGame();
+    const a = still(pacify(sim.enemies.spawn('tank', new THREE.Vector3(0, 0, 24))));
+    const b = still(pacify(sim.enemies.spawn('tank', new THREE.Vector3(0.2, 0, 24.1))));
+    const from = new THREE.Vector3(0, 1, 34), dir = new THREE.Vector3(0, 0, -1);
+    const first = sim.enemies.raycast(from, dir, 100);
+    const second = sim.enemies.raycast(first.point, dir, 100, new Set([first.enemy]));
+    expect([a, b]).toContain(second.enemy);
+    expect(second.enemy).not.toBe(first.enemy);
+    expect(sim.enemies.raycast(second.point, dir, 100, new Set([a, b]))).toBeNull();
+  });
+
   it('the flamethrower sets what is in front on fire; the burn goes on after the flames', () => {
     const { sim, player } = stationGame();
     player.loadout.unlock('flamer');
@@ -1523,7 +1571,7 @@ describe('station enemies', () => {
     expect(sim.enemies.list.filter((e) => e.type === 'parasite').length).toBe(1);
   });
 
-  it("the brute's carapace stops most of a blow from the front, not from behind", () => {
+  it("the brute's carapace stops half a blow from the front, none from behind", () => {
     const { sim } = stationGame();
     const b = sim.enemies.spawn('brute', new THREE.Vector3(0, 0, 30));
     b.facing = 0; // facing +Z
@@ -1532,7 +1580,56 @@ describe('station enemies', () => {
     const front = hp - b.hp;
     sim.enemies.damage(b, 100, new THREE.Vector3(0, 0, 1), null); // in the back
     const back = hp - front - b.hp;
-    expect(front).toBeCloseTo(25);
+    expect(front).toBeCloseTo(50);
     expect(back).toBeCloseTo(100);
+  });
+});
+
+describe('station drones and duct crawlers', () => {
+  const levelOf = (w) => new Level(JSON.parse(readFileSync(new URL(`../public/${getWorld(w).files.levelData}`, import.meta.url), 'utf8')));
+  const station = () => {
+    const sim = new Sim(levelOf('station'), { mode: 'sandbox', world: 'station' });
+    const player = sim.addPlayer('p1');
+    return { sim, player };
+  };
+
+  it('a crawler climbs out of a vent, and badly hurt goes back into the ducts and out of another', () => {
+    const { sim, player } = station();
+    expect(sim.level.vents.length).toBe(13);
+    player.pos.set(14, 0, 0);
+    const at = sim.pickSpawn('crawler');
+    const e = sim.enemies.spawn('crawler', at);
+    e.T = { ...e.T, leap: null, melee: { ...e.T.melee, range: 0.01 } }; // no leap to lift it off the floor
+    expect(e.act?.kind).toBe('emerge');
+    expect(e.lift).toBeGreaterThan(0);
+    run(sim, 2.5); // from the reactor room's ceiling, 7 m up, it takes 1.4 s
+    expect(e.lift).toBe(0);
+    sim.enemies.damage(e, e.maxHp * 0.6, null, player);
+    let hid = false, out = null;
+    run(sim, 12, () => {
+      if (e.hidden) hid = true;
+      if (hid && !e.hidden && !out) out = e.pos.clone();
+      return emptyCommand();
+    });
+    expect(hid).toBe(true);
+    expect(out).toBeTruthy();
+    expect(sim.enemies.list).toContain(e);
+  });
+
+  it('a drone flies to a firing spot, fires a salvo of three bolts, then goes out of sight', () => {
+    const { sim, player } = station();
+    player.pos.set(34, 0, 28); // down the perimeter's south-east leg
+    const d = sim.enemies.spawn('drone', new THREE.Vector3(34, 2.2, 13));
+    d.fireCd = 0;
+    let shots = 0, coverSeen = false;
+    run(sim, 6, () => {
+      for (const ev of sim.events) if (ev.type === 'enemyFire') shots++;
+      if (d.droneState === 'cover') coverSeen = true;
+      player.health = 100;
+      return emptyCommand();
+    });
+    expect(shots).toBeGreaterThanOrEqual(3);
+    expect(coverSeen).toBe(true);
+    expect(d.pos.y).toBeGreaterThan(1.5); // still hovering under the ceiling
   });
 });

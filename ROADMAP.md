@@ -260,7 +260,7 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] Armes, ennemis et vagues : encore ceux du désert jusqu'aux phases suivantes.
 - [x] 87 tests automatisés, dont 5 nouveaux : les ennemis rejoignent le joueur depuis chaque point d'apparition, le levier ouvre et referme le sas (et il se referme seul), un ennemi aspiré dans le vide, un joueur aspiré devant la porte alors qu'un autre qui s'éloigne s'en sort, les portes refermées à la partie suivante.
 - **Validation :** se promener dans la station, ouvrir et refermer un sas. Validée le 24/10/2026, avec une demande : plus de détails, plus sombre, une horreur à la « Alien ».
-- [x] **Passe « Alien »** (`blender/station/horror.py`, à lancer après `station.py`) :
+- [x] **Passe « Alien »** (d'abord `horror.py`, remplacé par `blender/station/dressing.py` lors de la refonte en tunnels) :
   - couloirs nervurés (nervures murales alignées sur celles du plafond, chanfrein entre murs intérieurs et plafond), murs couverts de boîtiers, conduits, voyants et petits écrans ;
   - câbles qui pendent du plafond, panneaux de plafond arrachés qui crachent des étincelles, chaînes qui gouttent dans la salle des machines, flaques ;
   - l'infestation : résine noire biomécanique qui part du sas ouest (chambre, couloir), envahit le mur du fond de la serre, un coin de la salle des machines et du hangar ; deux nids d'œufs (serre, hangar) ;
@@ -290,6 +290,31 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] Cris : enregistrements du désert, joués plus aigus ou plus graves.
 - [x] 96 tests automatisés, dont 3 nouveaux : le parasite agrippé (les balles ne le touchent pas, la matraque l'arrache), le parasite qui sort d'un hôte, la carapace de la brute.
 - **Validation :** jouer les vagues 1 et 2. Validée le 24/10/2026.
+
+### U2 Phase 4 — Drone et rampant `[~]`
+- [x] **Drone de sécurité** (`blender/station/enemies.py`, sans squelette : le jeu fait tourner ses quatre rotors) : il vole sous le plafond, s'approche jusqu'à voir sa cible à portée, s'arrête, son œil rouge s'embrase, tire une rafale de trois traits laser, puis file se mettre hors de vue (le point le plus proche que le joueur ne voit pas) une à deux secondes avant de revenir. Un faisceau rouge sort de son œil.
+- [x] **Rampant des conduits** (riggé : long corps segmenté, six pattes, queue recourbée) : il sort des **13 grilles d'aération** (`VENT_n`, au plafond des tunnels, des puits de maintenance et de la salle des machines), en descendant le long du mur ou depuis le plafond, la grille claquant dans un nuage de poussière. Blessé à moitié, il court vers la grille la plus proche, disparaît dans les conduits, puis ressort d'une autre grille près du joueur, à moitié guéri.
+- [x] Vagues : rampants dès la vague 2, drones à partir de la vague 3 ; survie et cibles de l'Exploration ([N]) aussi.
+- [x] 98 tests automatisés, dont 2 nouveaux : le rampant qui sort d'une grille, rentre dans les conduits et ressort ; le drone qui tire sa rafale puis se met à couvert.
+- **Validation :** jouer les vagues 3 et 4.
+
+### Refonte de la carte en réseau de tunnels (24/10/2026) `[~]`
+Demandée par le joueur : la station se jouait comme une carte extérieure. Inspirée des cartes intérieures réussies (trois boucles, alternance couloir/salle, moyeu et rayons, lisibilité par la lumière, coudes et changements de matière, claustrophobie d'*Alien* et *Dead Space*).
+- [x] **Nouvelle carte** (`blender/station/station.py`, habillée par `blender/station/dressing.py`) :
+  - cinq districts : salle du réacteur au centre, serre au toit vitré au sud, hangar au nord, quartiers de l'équipage à l'est, laboratoires à l'ouest (sas au bout) ;
+  - quatre tunnels principaux coudés de 4 m (le moyeu et ses rayons), une boucle de tunnels de ceinture, et quatre puits de maintenance de 2 m de large, bas de plafond, qui raccourcissent les coins ;
+  - des cloisons de sas et des cadres colorés à chaque changement de zone ; nervures, tuyaux, chemins de câbles, panneaux arrachés, câbles pendants, fuites et vapeur ; trois nids d'œufs (serre, coins nord-ouest et sud-est) ;
+  - 10 points d'apparition, 73 néons, 10 bonbonnes d'oxygène, 13 grilles d'aération.
+- [x] **Les ennemis selon les lieux** (`spawnGates` dans `src/worlds/station.js`) : l'équipage infecté sort des quartiers, des labos, de la serre et du réacteur ; les parasites sortent des nids ; les brutes du hangar et des grands coins de la ceinture (trop larges pour les puits) ; les drones de leurs baies ; les rampants des grilles. Plus d'embuscade au hasard sur la station.
+- [x] Tests adaptés à la nouvelle carte.
+- [x] **Bugs relevés en partie (25/10/2026)** :
+  - le jeu gelait quand le canon électromagnétique traversait deux corps qui se chevauchent (le rayon repartait de l'un à l'autre sans fin) : chaque corps n'est touché qu'une fois ;
+  - les brutes « se téléportaient » : les tunnels de 3,6 m étaient presque fermés à leur couche de navigation, elles restaient bloquées et le filet de sécurité les renvoyait à une porte. La station leur laisse une marge d'une case au lieu de deux (`nav.bigClear`), et un ennemi coincé n'est plus déplacé sous les yeux du joueur ;
+  - 100 tests, dont 2 nouveaux (brutes du hangar vers chaque quartier, canon sur deux corps superposés).
+- [x] **Second gel à la manche 3 (25/10/2026)**, face à un drone : abattre un drone plantait l'affichage (l'éclatement du modèle voulait éteindre son faisceau rouge, qui n'a pas de matière éclairée), et une erreur dans la boucle d'image arrêtait le jeu pour de bon. Le faisceau n'est plus un débris, et la boucle d'image survit à une erreur (consignée dans la console). Au passage, les drones ne montent plus à travers le plafond quand ils survolent une caisse.
+- [x] **Brute allégée (25/10/2026)**, le joueur la trouvait trop résistante : 400 PV au lieu de 620, et sa carapace arrête la moitié d'un coup sur ±45° au lieu des trois quarts sur ±60°. Dans des tunnels on l'affronte presque toujours de face, elle encaissait l'équivalent de 2 500 PV.
+- [x] **Passe de lumière (25/10/2026)**, le joueur trouvait les sources trop fortes : néons à 4 au lieu de 8, torche à 9 au lieu de 16, soleil de la serre à 1 au lieu de 2,2, alarme et gyrophares adoucis, bloom plus discret (`ambiance.bloom`), et toutes les surfaces lumineuses de la carte (tubes, écrans, anneaux du réacteur, lampes de culture, bandes de couleur) à moitié de leur émission avec une base sombre et mate (`ambiance.emissiveScale`) : elles brillent d'elles-mêmes au lieu de renvoyer la torche en halo blanc.
+- **Validation :** se promener dans les tunnels, puis jouer les vagues 2 à 4 (et valider la phase 4 au passage).
 
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.

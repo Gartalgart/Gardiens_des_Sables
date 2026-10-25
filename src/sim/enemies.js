@@ -73,6 +73,11 @@ export class Enemies {
       trapClock: 0, // and the check that it still gets somewhere: where it stood a few seconds ago
       trapFrom: position.clone(),
     };
+    // a duct crawler comes out of the vent it was given (Sim#pickSpawn)
+    if (T.vent) {
+      const v = this.level.vents.find((o) => o.out.distanceTo(position) < 0.6);
+      if (v) this.#emerge(e, v);
+    }
     // while the chest is to be protected, some of the enemies that can loot go for it
     if (T.loot && this.sim.chest && Math.random() < this.sim.chest.looters) e.looter = true;
     this.list.push(e);
@@ -100,11 +105,12 @@ export class Enemies {
   get boss() { return this.list.find((e) => e.T.boss) || null; }
 
   // ---------- player attacks ----------
+  // skip: one enemy, or a Set of them (the railgun, through a whole line)
   raycast(origin, dir, maxDist, skip = null) {
     let best = null;
     for (const e of this.list) {
       // a parasite on a player's face is out of the line of fire (only a blow knocks it off)
-      if (e === skip || e.hidden || e.submerged || e.diving || e.latched) continue;
+      if (e === skip || skip?.has?.(e) || e.hidden || e.submerged || e.diving || e.latched) continue;
       const base = e.pos.y + e.lift - e.rise * e.T.height;
       const t = rayCylinder(origin, dir, e.pos, e.T.radius, base, base + e.T.height);
       if (t !== null && t < maxDist && (!best || t < best.dist)) {
@@ -256,6 +262,16 @@ export class Enemies {
     const T = e.T;
     if (T.kraken) return this.#kraken(e, dt, players);
     if (e.latched) return this.#latch(e, dt);
+    // the duct crawler: hurt, it goes back into the nearest vent, and comes out of another later
+    if (T.vent) {
+      if (e.ventHide > 0) return this.#inDuct(e, dt, players);
+      if (e.fleeTo) return this.#flee(e, dt);
+      if (!e.fled && !e.act && e.stun <= 0 && e.hp < e.maxHp * T.vent.retreat && this.level.vents.length) {
+        e.fled = true;
+        e.fleeTo = this.level.vents.reduce((a, b) => (a.out.distanceToSquared(e.pos) < b.out.distanceToSquared(e.pos) ? a : b));
+        return this.#flee(e, dt);
+      }
+    }
     if (T.tentacle) return this.#tentacle(e, dt, players);
     if (e.rise > 0) {
       e.rise = Math.max(0, e.rise - dt * 1.3);
@@ -277,14 +293,15 @@ export class Enemies {
     const toPlayer = _v.subVectors(player.pos, e.pos).setY(0);
     const dist = toPlayer.length();
     // caught in a trap of the scenery (the foot of a balustrade, a corner the nav grid gets wrong):
-    // far from every player and hardly moved in 6 s, it comes back through a gate too
+    // far from every player and hardly moved in 6 s, it comes back through a gate too; never under
+    // the player's eyes (it would vanish), only once out of sight
     if (!T.stay && !T.post) {
       e.trapClock += dt;
       if (e.trapClock >= 6) {
         const moved = Math.hypot(e.pos.x - e.trapFrom.x, e.pos.z - e.trapFrom.z) + Math.abs(e.pos.y - e.trapFrom.y);
         e.trapClock = 0;
         e.trapFrom.copy(e.pos);
-        if (moved < 1.5 && dist > 6 && !e.act && e.stun <= 0) return this.#relocate(e);
+        if (moved < 1.5 && dist > 6 && !e.hasLos && !e.act && e.stun <= 0) return this.#relocate(e);
       }
     }
     // a looter heads for the chest and empties it, unless a player is right there to fight
@@ -315,6 +332,7 @@ export class Enemies {
       e.knock.multiplyScalar(Math.exp(-7 * dt));
     }
 
+    if (T.drone) return this.#drone(e, dt, player, dist);
     if (T.fly) return this.#fly(e, dt, player, toPlayer, dist);
 
     let move = null;
@@ -443,6 +461,141 @@ export class Enemies {
     e.stun = 1.2;
     e.leapCd = Math.max(e.leapCd, 2);
     this.sim.emit('latch', { pid: p.id, id: e.id, on: false, pos: e.pos.clone() });
+  }
+
+  // ---------- the duct crawler ----------
+  #emerge(e, v) {
+    e.pos.copy(v.out);
+    e.rise = 0;
+    e.lift = Math.max(0, v.pos.y - v.out.y);
+    e.act = { kind: 'emerge', t: 0, dur: 0.4 + e.lift * 0.15, from: e.lift };
+    const away = v.out.clone().sub(v.pos).setY(0);
+    if (away.lengthSq() > 0.01) e.facing = Math.atan2(away.x, away.z);
+    this.sim.emit('ventOpen', { pos: v.pos.clone(), id: e.id });
+  }
+
+  // back to a vent along the nav grid, then into the ducts
+  #flee(e, dt) {
+    const T = e.T, v = e.fleeTo, nav = this.level.nav;
+    const to = new THREE.Vector3(v.out.x - e.pos.x, 0, v.out.z - e.pos.z);
+    if (to.length() < 0.7) {
+      e.fleeTo = null;
+      e.hidden = true;
+      e.act = null;
+      e.ventHide = rand(...T.vent.hide);
+      this.sim.emit('ventOpen', { pos: v.pos.clone(), id: e.id });
+      return;
+    }
+    const dir = nav.directionIn(nav.fieldTo(v.out), e.pos, new THREE.Vector3(), 'small') ?? to.normalize();
+    const speed = T.speed * this.speedMul * 1.2;
+    const bx = e.pos.x, bz = e.pos.z;
+    this.level.moveBody(e.pos, dir.x * speed * dt, dir.z * speed * dt, T.radius, T.height);
+    e.pos.y = this.level.groundAt(e.pos.x, e.pos.z, T.radius, e.pos.y);
+    e.speed = Math.hypot(e.pos.x - bx, e.pos.z - bz) / dt;
+    e.facing = Math.atan2(dir.x, dir.z);
+    e.trapClock = 0;
+  }
+
+  // in the ducts: a few seconds, its wounds half healed, then out of a vent near a player
+  #inDuct(e, dt, players) {
+    e.ventHide -= dt;
+    if (e.ventHide > 0) return;
+    e.ventHide = 0;
+    e.hidden = false;
+    e.fled = false;
+    e.hp = Math.max(e.hp, e.maxHp * 0.75);
+    const near = this.level.vents.filter((v) => players.some((p) => { const d = v.out.distanceTo(p.pos); return d > 5 && d < 18; }));
+    const pool = near.length ? near : this.level.vents;
+    this.#emerge(e, pool[Math.floor(Math.random() * pool.length)]);
+  }
+
+  // ---------- the security drone ----------
+  // It hovers under the ceiling, closes in until it sees its target in range, stops, fires a salvo
+  // of laser bolts, then slips out of sight for a moment before coming back.
+  #drone(e, dt, player, dist) {
+    const T = e.T, F = T.fly, R = T.ranged, Dr = T.drone;
+    if (e.stun > 0) { e.stun -= dt; e.speed = 0; return; }
+    const center = e.pos.clone().setY(e.pos.y + T.height / 2);
+    const to = player.center.setY(player.pos.y + 1.2).sub(center);
+    let want = null, speed = T.speed * this.speedMul;
+    e.droneT = (e.droneT ?? 0) - dt;
+    e.droneState ??= 'approach';
+    if (e.droneState === 'approach') {
+      if (e.hasLos && dist < Dr.range && e.fireCd <= 0) {
+        e.droneState = 'aim';
+        e.droneT = R.windup;
+        e.shots = R.salvo;
+        this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type });
+      } else if (e.hasLos && dist < Dr.range * 0.7) {
+        // in range, waiting to fire again: it drifts from side to side
+        want = new THREE.Vector3(-to.z * e.strafe, 0, to.x * e.strafe);
+        e.strafeTimer -= dt;
+        if (e.strafeTimer <= 0) { e.strafe *= -1; e.strafeTimer = rand(1, 2); }
+        speed *= 0.4;
+      } else if (e.hasLos) want = to.clone().setY(0);
+      else {
+        const ground = e.pos.clone().setY(this.level.groundAt(e.pos.x, e.pos.z, 0.2, e.pos.y + 0.5));
+        want = this.level.nav.direction(ground, new THREE.Vector3(), 'small') ?? to.clone().setY(0);
+      }
+    } else if (e.droneState === 'aim') {
+      if (e.droneT <= 0) {
+        if (e.shots > 0 && e.hasLos) {
+          this.#fire(e, player);
+          e.shots--;
+          e.droneT = R.gap;
+        } else {
+          e.fireCd = R.cd * this.D.fireCd * rand(0.8, 1.2);
+          e.droneState = 'cover';
+          e.cover = this.#coverSpot(e, center, player);
+          e.droneT = rand(...Dr.hide);
+        }
+      }
+    } else {
+      if (e.cover) { want = e.cover.clone().sub(center).setY(0); if (want.length() < 0.4) want = null; }
+      if (e.droneT <= 0) e.droneState = 'approach';
+    }
+    // it faces its target while aiming or in range, else where it flies
+    const face = e.droneState === 'aim' || (e.hasLos && dist < Dr.range) ? to : want;
+    if (face && (face.x || face.z)) {
+      let dA = Math.atan2(face.x, face.z) - e.facing;
+      dA = Math.atan2(Math.sin(dA), Math.cos(dA));
+      e.facing += dA * Math.min(1, dt * 8);
+    }
+    e.speed = 0;
+    if (want && want.lengthSq() > 1e-4) {
+      want.normalize();
+      const step = speed * dt;
+      // the first of these directions with nothing in the way: straight on, then turning aside
+      for (const turn of [0, 0.7, -0.7, 1.4, -1.4]) {
+        const c = want.clone().applyAxisAngle(UP, turn);
+        if (!this.level.raycast(center, c, step + T.radius)) { e.pos.addScaledVector(c, step); e.speed = speed; break; }
+      }
+    }
+    // it hovers at its height over the floor under it, bobbing a little, but never up into the
+    // ceiling (over a crate it would climb, take the ceiling for its floor and leave the tunnel)
+    let hover = this.level.groundAt(e.pos.x, e.pos.z, 0.2, e.pos.y + 0.5) + F.height - T.height / 2;
+    const roof = this.level.raycast(center, UP, F.height + 1);
+    if (roof) hover = Math.min(hover, roof.point.y - T.height / 2 - 0.15);
+    e.pos.y += (hover + Math.sin(e.phase * 2) * 0.08 - e.pos.y) * Math.min(1, dt * 3);
+    e.phase += dt;
+  }
+
+  // the nearest spot round the drone, out of the player's sight, that it can fly to in a straight line
+  #coverSpot(e, center, player) {
+    let best = null, bd = Infinity;
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      for (const r of [3, 5, 7]) {
+        if (r >= bd) break;
+        const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+        if (this.level.raycast(center, dir, r + e.T.radius)) break;
+        const p = center.clone().addScaledVector(dir, r);
+        if (!this.level.nav.inWorld(p.x, p.z, 'small') || this.level.lineOfSight(p, player.eye)) continue;
+        bd = r;
+        best = p;
+      }
+    }
+    return best;
   }
 
   // ---------- the Kraken ----------
@@ -781,6 +934,11 @@ export class Enemies {
           e.songCd = rand(...T.song.rest);
           this.sim.emit('song', { id: e.id, pos: e.pos.clone(), on: false });
         }
+        return { move: null };
+      case 'emerge':
+        // climbing down out of its vent (see #emerge)
+        e.lift = a.from * (1 - Math.min(1, a.t / a.dur));
+        if (a.t >= a.dur) { e.act = null; e.lift = 0; }
         return { move: null };
       case 'prime':
         // blows up when the fuse ends (killing it earlier blows it up too, see #kill)

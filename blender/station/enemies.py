@@ -5,6 +5,9 @@
 #             and wraps itself round a face ("hold")
 #   brute     the armoured brute (colossus build): a hunched dark hide, a bone carapace in front of
 #             its head and shoulders, long arms with claws; charges head down
+#   drone     (phase 4) the security drone, not rigged: four rotors (Rotor0..3, spun by the game), a
+#             red eye (DEye) and a laser under it
+#   crawler   (phase 4) the duct crawler: a long segmented body low on six legs, a curled tail
 # Models face -Y and stand at the origin. Each rigid part follows one bone (no deformation).
 # Built in the "Enemies" scene of station.blend, exported to public/models/station/<type>.glb.
 # Usage inside Blender, after helpers.py and the parts of rig.py written below without `re` or
@@ -29,6 +32,13 @@ mat("BruteShell", (0.32, 0.28, 0.2), rough=0.4, metal=0.1)
 mat("BruteClaw", (0.55, 0.5, 0.4), rough=0.35)
 mat("BruteEye", (1.0, 0.4, 0.1), emit=(1.0, 0.35, 0.05), strength=8.0)
 mat("BruteMaw", (0.35, 0.05, 0.05), rough=0.4)
+mat("DroneBody", (0.2, 0.21, 0.22), rough=0.4, metal=0.6)
+mat("DroneDark", (0.03, 0.03, 0.035), rough=0.5, metal=0.5)
+mat("DroneStripe", (0.8, 0.55, 0.04), rough=0.6)
+mat("DroneEye", (1.0, 0.1, 0.05), emit=(1.0, 0.08, 0.03), strength=6.0)
+mat("CrawlerShell", (0.035, 0.03, 0.028), rough=0.25, metal=0.3)
+mat("CrawlerBelly", (0.3, 0.26, 0.2), rough=0.6)
+mat("CrawlerMaw", (0.4, 0.06, 0.05), rough=0.4)
 
 
 def base_name(name):
@@ -197,6 +207,71 @@ def build_brute():
     return c, bones, parts
 
 
+# ---------------------------------------------------------------- the security drone
+def build_drone():
+    M = bpy.data.materials
+    c = get_coll("Enemy_Drone", clear=True)
+    root = empty("Drone", c)
+    box("DBody", c, (0.46, 0.5, 0.22), (0, 0, 0.25), M["DroneBody"], root)
+    box("DStripe", c, (0.47, 0.51, 0.05), (0, 0, 0.25), M["DroneStripe"], root)
+    box("DDome", c, (0.3, 0.32, 0.1), (0, 0.02, 0.4), M["DroneDark"], root)
+    box("DEyeRim", c, (0.16, 0.04, 0.14), (0, -0.26, 0.25), M["DroneDark"], root)
+    box("DEye", c, (0.09, 0.02, 0.08), (0, -0.28, 0.25), M["DroneEye"], root)
+    box("DGun", c, (0.05, 0.3, 0.05), (0, -0.15, 0.1), M["DroneDark"], root)
+    box("DGunTip", c, (0.03, 0.04, 0.03), (0, -0.31, 0.1), M["DroneEye"], root)
+    box("DAntenna", c, (0.015, 0.015, 0.2), (0.12, 0.15, 0.52), M["DroneDark"], root)
+    for i, (x, y) in enumerate(((-0.34, -0.34), (0.34, -0.34), (-0.34, 0.34), (0.34, 0.34))):
+        box("DArm%d" % i, c, (abs(x) * 1.2, 0.04, 0.04), (x * 0.55, y * 0.55, 0.32), M["DroneBody"], root, rot=(0, 0, 45 if x * y > 0 else -45))
+        box("DPod%d" % i, c, (0.08, 0.08, 0.08), (x, y, 0.34), M["DroneDark"], root)
+        r = empty("Rotor%d" % i, c, (x, y, 0.4), root)
+        box("DBlade%da" % i, c, (0.3, 0.035, 0.008), (0, 0, 0), M["DroneDark"], r)
+        box("DBlade%db" % i, c, (0.035, 0.3, 0.008), (0, 0, 0), M["DroneDark"], r)
+    return c
+
+
+# ---------------------------------------------------------------- the duct crawler
+def build_crawler():
+    M = bpy.data.materials
+    c = get_coll("Enemy_Crawler", clear=True)
+    root = empty("Crawler", c)
+    # a long blind head with a red maw and mandibles, three plated segments, a tail curling up
+    box("CrHead", c, (0.26, 0.4, 0.18), (0, -0.55, 0.32), M["CrawlerShell"], root, rot=(-8, 0, 0))
+    box("CrMaw", c, (0.16, 0.06, 0.08), (0, -0.76, 0.26), M["CrawlerMaw"], root)
+    for x in (-0.07, 0.07):
+        box("CrMandible", c, (0.03, 0.14, 0.03), (x, -0.8, 0.22), M["CrawlerBelly"], root, rot=(0, 0, 20 if x > 0 else -20))
+    for i, (y, w) in enumerate(((-0.25, 0.34), (0.05, 0.38), (0.35, 0.32))):
+        box("CrSeg%d" % i, c, (w, 0.3, 0.2), (0, y, 0.3), M["CrawlerShell"], root)
+        box("CrBelly%d" % i, c, (w * 0.8, 0.28, 0.06), (0, y, 0.18), M["CrawlerBelly"], root)
+        box("CrSpine%d" % i, c, (0.05, 0.2, 0.08), (0, y, 0.43), M["CrawlerBelly"], root)
+    for i in range(4):
+        box("CrTail%d" % i, c, (0.12 - i * 0.02, 0.18, 0.1 - i * 0.015), (0, 0.6 + i * 0.15, 0.32 + i * i * 0.05), M["CrawlerShell"], root, rot=(-i * 18, 0, 0))
+    box("CrSting", c, (0.03, 0.03, 0.18), (0, 1.12, 0.78), M["CrawlerBelly"], root, rot=(-30, 0, 0))
+    for side, x in (("L", -1), ("R", 1)):
+        for name, y in (("F", -0.25), ("M", 0.05), ("B", 0.35)):
+            box("CrLeg%s%s" % (name, side), c, (0.32, 0.04, 0.04), (0.3 * x, y, 0.38), M["CrawlerShell"], root, rot=(0, -30 * x, 0))
+            box("CrFoot%s%s" % (name, side), c, (0.03, 0.03, 0.36), (0.46 * x, y, 0.18), M["CrawlerBelly"], root, rot=(0, 12 * x, 0))
+    bones = [
+        ("Hips", None, (0, 0.05, 0.2), (0, 0.05, 0.4)),
+        ("Head", "Hips", (0, -0.35, 0.3), (0, -0.8, 0.3)),
+        ("Tail", "Hips", (0, 0.5, 0.3), (0, 1.2, 0.8)),
+    ]
+    for name, y in (("F", -0.25), ("M", 0.05), ("B", 0.35)):
+        for side, x in (("L", -1), ("R", 1)):
+            bones.append(("Leg_%s_%s" % (name, side), "Hips", (0.2 * x, y, 0.4), (0.2 * x, y, 0.0)))
+    parts = {"CrHead": "Head", "CrMaw": "Head", "CrMandible": "Head", "CrSting": "Tail"}
+    for i in range(3):
+        parts["CrSeg%d" % i] = "Hips"
+        parts["CrBelly%d" % i] = "Hips"
+        parts["CrSpine%d" % i] = "Hips"
+    for i in range(4):
+        parts["CrTail%d" % i] = "Tail"
+    for name in "FMB":
+        for s in "LR":
+            parts["CrLeg%s%s" % (name, s)] = "Leg_%s_%s" % (name, s)
+            parts["CrFoot%s%s" % (name, s)] = "Leg_%s_%s" % (name, s)
+    return c, bones, parts
+
+
 # ---------------------------------------------------------------- rigging (rig.py, safe-mode form)
 def build_rig(coll_name, root_name, rig_name, bones, parts):
     coll = bpy.data.collections[coll_name]
@@ -298,6 +373,17 @@ def export_animated(coll_name, rig_name, prefix, filename):
     bpy.ops.export_scene.gltf(filepath=MODELS + "\\" + filename, export_format="GLB", use_selection=True, export_apply=True,
                               export_yup=True, export_animations=True, export_animation_mode='NLA_TRACKS',
                               export_force_sampling=True, export_def_bones=False, use_active_scene=True)
+    bpy.ops.object.select_all(action="DESELECT")
+
+
+def export_static(coll_name, filename):
+    """a model without a rig (the drone: the game spins its rotors)"""
+    bpy.ops.object.select_all(action="DESELECT")
+    for ob in bpy.data.collections[coll_name].all_objects:
+        ob.hide_set(False)
+        ob.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=MODELS + "\\" + filename, export_format="GLB", use_selection=True, export_apply=True,
+                              export_yup=True, use_active_scene=True)
     bpy.ops.object.select_all(action="DESELECT")
 
 
@@ -422,6 +508,25 @@ def brute_actions(rig, p):
     add_action(rig, p + "hit", [(0, {}), (0.06, {"Spine": (-10, 0, 0)}), (0.25, {})], loop=False)
 
 
+def crawler_actions(rig, p):
+    """a fast tripod scuttle (the crab's), the head darting forward to bite, the tail lashing"""
+    a = {"Leg_F_L": (0, 25, 0), "Leg_M_R": (0, -25, 0), "Leg_B_L": (0, 25, 0),
+         "Leg_F_R": (0, 25, 0), "Leg_M_L": (0, -25, 0), "Leg_B_R": (0, 25, 0), "Tail": (0, 0, 10), "_loc_Hips": (0, 0, 0)}
+    b = {}
+    for k, v in a.items():
+        if k.startswith("Leg"):
+            b[k] = (0, -v[1], 0)
+    b["Tail"] = (0, 0, -10)
+    b["_loc_Hips"] = (0, 0.03, 0)
+    add_action(rig, p + "walk", [(0, a), (0.2, b), (0.4, a)])
+    add_action(rig, p + "run", [(0, a), (0.11, b), (0.22, a)])
+    add_action(rig, p + "idle", [(0, {"Head": (0, 10, 0), "Tail": (10, 0, 0)}), (0.6, {"Head": (5, -10, 0), "Tail": (-10, 0, 0)}), (1.2, {"Head": (0, 10, 0), "Tail": (10, 0, 0)})])
+    add_action(rig, p + "attack", [(0, {}), (0.1, {"Head": (-20, 0, 0), "_loc_Hips": (0, -0.05, 0)}), (0.15, {"Head": (15, 0, 0), "Tail": (35, 0, 0)}), (0.4, {})], loop=False)
+    add_action(rig, p + "leap", [(0, {"Head": (-15, 0, 0), "Tail": (30, 0, 0)}), (0.4, {"Head": (10, 0, 0), "Tail": (-20, 0, 0)})], loop=False)
+    add_action(rig, p + "stun", [(0, {"Hips": (0, 0, 15)}), (0.3, {"Hips": (0, 0, -15)}), (0.6, {"Hips": (0, 0, 15)})])
+    add_action(rig, p + "hit", [(0, {}), (0.05, {"Hips": (-12, 0, 0)}), (0.2, {})], loop=False)
+
+
 def build_all(export=True):
     scene = bpy.data.scenes.get("Enemies") or bpy.data.scenes.new("Enemies")
     bpy.context.window.scene = scene
@@ -434,7 +539,13 @@ def build_all(export=True):
     c, bones, parts = build_brute()
     rig = build_rig(c.name, "Brute", "BruteRig", bones, parts)
     brute_actions(rig, "brute_")
+    build_drone()
+    c, bones, parts = build_crawler()
+    rig = build_rig(c.name, "Crawler", "CrawlerRig", bones, parts)
+    crawler_actions(rig, "crawler_")
     if export:
+        export_animated("Enemy_Crawler", "CrawlerRig", "crawler_", r"station\crawler.glb")
+        export_static("Enemy_Drone", r"station\drone.glb")
         export_animated("Enemy_Host", "HostRig", "host_", r"station\host.glb")
         export_animated("Enemy_Parasite", "ParasiteRig", "parasite_", r"station\parasite.glb")
         export_animated("Enemy_Brute", "BruteRig", "brute_", r"station\brute.glb")

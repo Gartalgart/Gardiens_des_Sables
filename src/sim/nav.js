@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { STEP } from './constants.js';
 
 // ---------- Navigation: floor heights on a 0.5 m grid + Dijkstra flow fields towards the player ----------
-// Two layers: one for normal bodies, one for big bodies (tanks, boss) that keeps ~1 m away from walls.
+// Two layers: one for normal bodies, one for big bodies (tanks, boss) that keeps ~1 m away from walls
+// (bigClear cells; the station's narrow tunnels ask for 1: see `nav` in src/worlds/station.js).
 export class NavGrid {
-  constructor(level) {
+  constructor(level, { bigClear = 2 } = {}) {
     this.level = level;
     this.size = 0.5;
     this.half = 60;
@@ -40,16 +41,16 @@ export class NavGrid {
         open[i] = ok ? 1 : 0;
       }
 
-    // big bodies: no wall (floor jump > 1 m) or closed cell within 2 cells
+    // big bodies: no wall (floor jump > 1 m) or closed cell within bigClear cells
     const openBig = new Uint8Array(N);
-    const n = this.n;
-    for (let iz = 2; iz < n - 2; iz++)
-      for (let ix = 2; ix < n - 2; ix++) {
+    const n = this.n, c = bigClear;
+    for (let iz = c; iz < n - c; iz++)
+      for (let ix = c; ix < n - c; ix++) {
         const i = iz * n + ix;
         if (!open[i]) continue;
         let ok = true;
-        for (let dz = -2; dz <= 2 && ok; dz++)
-          for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -c; dz <= c && ok; dz++)
+          for (let dx = -c; dx <= c; dx++) {
             const j = (iz + dz) * n + ix + dx;
             if (!open[j] || Math.abs(this.floor[j] - this.floor[i]) > 1.0) { ok = false; break; }
           }

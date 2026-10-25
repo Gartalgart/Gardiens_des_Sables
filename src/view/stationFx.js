@@ -15,9 +15,10 @@ export class StationFx {
 
     // ---------- beacons ----------
     const housing = new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: 0.5, metalness: 0.6 });
-    const dome = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.2, roughness: 0.3 });
+    const dome = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.8, roughness: 0.3 });
     // two soft beams out of the bulb, aimed a little down, short enough to stay in a corridor
-    const beamMat = beamMaterial(color, 0.55, 1.4);
+    const beamMat = beamMaterial(color, look.beacon?.beam ?? 0.55, 1.4);
+    this.spotPower = look.beacon?.spot ?? 30;
     const tilt = 0.3, beamDir = (s) => new THREE.Vector3(s * Math.cos(tilt), -Math.sin(tilt), 0);
     this.beacons = beacons.map((pos) => {
       const g = new THREE.Group();
@@ -73,7 +74,7 @@ export class StationFx {
       const ang = near.spin.rotation.y;
       this.spot.position.copy(near.g.position);
       this.spot.target.position.copy(near.g.position).add(new THREE.Vector3(Math.cos(ang) * 4, -1.6, -Math.sin(ang) * 4));
-      this.spot.intensity = 30;
+      this.spot.intensity = this.spotPower;
     } else this.spot.intensity = 0;
 
     // sparks: a burst, falling and fading, then a wait
@@ -106,7 +107,7 @@ export class StationFx {
       s.pts.material.opacity = Math.min(1, s.t * 2);
       if (s.t > 0.6 && (!view || s.pos.distanceToSquared(view) < 30 * 30)) { flash = Math.max(flash, (s.t - 0.6) / 0.3); this.sparkLight.position.copy(s.pos); }
     }
-    this.sparkLight.intensity = flash * 12 * (0.6 + 0.4 * Math.random());
+    this.sparkLight.intensity = flash * 8 * (0.6 + 0.4 * Math.random());
 
     // drips: a drop falls from the ceiling and vanishes on the floor
     for (const d of this.drips) {

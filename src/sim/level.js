@@ -22,7 +22,21 @@ export class Level {
     }));
     for (const a of this.airlocks) this.boxes.push(a.door);
     this.#buildBoxGrid();
-    this.nav = new NavGrid(this);
+    // optional (the station): air vents, where duct crawlers come out and go back in; `out` is the
+    // floor in front of a vent in a wall, or under one in a ceiling
+    this.vents = (data.vents ?? []).map((p) => {
+      const pos = new THREE.Vector3(...p);
+      let hit = null;
+      for (const d of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+        const h = this.raycast(pos, new THREE.Vector3(...d), 0.45); // a wall vent sits 0.3 m off its wall
+        if (h && (!hit || h.dist < hit.dist)) hit = h;
+      }
+      const out = hit ? pos.clone().addScaledVector(hit.normal, 0.7) : pos.clone();
+      out.y = this.groundAt(out.x, out.z, 0.3, 0.3);
+      return { pos, out };
+    });
+    this.navOptions = {};
+    this.nav = new NavGrid(this, this.navOptions);
     this.original = null; // the boxes before a part of the map was broken (see breakArea)
   }
 
@@ -33,7 +47,7 @@ export class Level {
     this.boxes = this.boxes.filter((b) => !(b.min.x >= minX && b.max.x <= maxX && b.min.z >= minZ && b.max.z <= maxZ && b.max.y <= maxY));
     for (const [a, b, c, d, e, f] of add) this.boxes.push(new THREE.Box3(new THREE.Vector3(a, b, c), new THREE.Vector3(d, e, f)));
     this.#buildBoxGrid();
-    this.nav = new NavGrid(this);
+    this.nav = new NavGrid(this, this.navOptions);
   }
 
   // An airlock's door opens (its box goes) or closes; the nav grid stays as it is: a door gives on
@@ -48,6 +62,13 @@ export class Level {
     this.#buildBoxGrid();
   }
 
+  // the universe's own nav settings (NavGrid's options); the grid is worked out again if they change
+  setNavOptions(options = {}) {
+    if (JSON.stringify(options) === JSON.stringify(this.navOptions)) return;
+    this.navOptions = options;
+    this.nav = new NavGrid(this, options);
+  }
+
   // back as exported, for a new game
   restore() {
     this.airlocks.forEach((a, i) => this.setDoor(i, false));
@@ -55,7 +76,7 @@ export class Level {
     this.boxes = this.original;
     this.original = null;
     this.#buildBoxGrid();
-    this.nav = new NavGrid(this);
+    this.nav = new NavGrid(this, this.navOptions);
   }
 
   #buildBoxGrid() {

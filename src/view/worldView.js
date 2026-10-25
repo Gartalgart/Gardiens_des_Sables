@@ -138,7 +138,7 @@ export class WorldView {
     this.neonBeams = [];
     if (look.fire.neon)
       this.neonBeams = this.braziers.map((p) => {
-        const mat = beamMaterial(look.fire.light, 0.08, 1.3);
+        const mat = beamMaterial(look.fire.light, 0.045, 1.3);
         const beam = makeBeam(mat, 0.55, 2.2, p.y, p.clone().setY(p.y + 0.1), new THREE.Vector3(0, -1, 0));
         this.scene.add(beam);
         return mat;
@@ -302,12 +302,23 @@ export class WorldView {
     root.updateMatrixWorld(true);
     const byMaterial = new Map();
     const fires = [];
+    const scaled = new Set();
 
     root.traverse((o) => {
       if (o.name.startsWith('FX_Steam')) this.steamAt.push(o.getWorldPosition(new THREE.Vector3()));
       const fx = /^FX_(Beacon|Spark|Drip)_/.exec(o.name);
       if (fx) this.fxAt[fx[1].toLowerCase() + 's'].push(o.getWorldPosition(new THREE.Vector3()));
       if (!o.isMesh) return;
+      // the universe's lit surfaces, dimmed as a whole (look.emissiveScale), each material once;
+      // they shine by their own light, not by reflecting the torch: a dark, matt base colour
+      if (this.look.emissiveScale && o.material && !scaled.has(o.material)) {
+        scaled.add(o.material);
+        o.material.emissiveIntensity *= this.look.emissiveScale;
+        if (o.material.emissiveIntensity > 0) {
+          o.material.color.multiplyScalar(0.35);
+          o.material.roughness = Math.max(o.material.roughness, 0.6);
+        }
+      }
       if (o.material?.name?.startsWith('S_Alarm')) this.alarmMats.add(o.material);
       // an airlock's door and a neon tube move or flicker on their own
       const door = /^D_Airlock_(\d+)/.exec(o.name), neon = /^L_DecoNeon_(\d+)/.exec(o.name);
@@ -549,13 +560,13 @@ export class WorldView {
       if (!m) return;
       const k = WorldView.neonLevel(t, i + 1);
       m.material.emissiveIntensity = m.userData.base * k;
-      if (this.neonBeams[i]) this.neonBeams[i].uniforms.strength.value = 0.08 * k;
-      if (this.halos[i]) this.halos[i].material.opacity = 0.08 * k;
+      if (this.neonBeams[i]) this.neonBeams[i].uniforms.strength.value = 0.045 * k;
+      if (this.halos[i]) this.halos[i].material.opacity = 0.05 * k;
     });
     if (this.alarm) {
       const A = this.look.alarm, pulse = 0.5 + 0.5 * Math.sin((t / A.period) * Math.PI * 2);
       this.alarm.intensity = A.intensity * pulse * pulse;
-      for (const m of this.alarmMats) m.emissiveIntensity = 0.3 + 1.2 * pulse;
+      for (const m of this.alarmMats) m.emissiveIntensity = 0.2 + 0.8 * pulse;
     }
     this.#updateAirlocks(t, dt);
     this.#updateSteam(dt);

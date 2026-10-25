@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { makeGlowTexture } from './worldView.js';
+import { beamMaterial, makeBeam } from './lightBeams.js';
 
 // Colours of each enemy type: glow, particles, minimap dot.
 export const ENEMY_LOOK = {
@@ -31,6 +32,7 @@ const ACT_CLIPS = {
   prime: ['prime', 0], transform: ['transform', 0], sing: ['sing', 0],
   // the Kraken's tentacles: the strike is warned by a red circle for its whole windup
   strike: ['attack', 0.4], grab: ['grab', 0.4], hold: ['hold', 0],
+  emerge: ['walk', 0], // a duct crawler climbing down out of its vent
 };
 // speed (m/s) at which the walk / run clips play at their authored pace
 const GAIT = {
@@ -49,6 +51,7 @@ const GAIT = {
   parasite: { run: 3, walkRef: 2.5, runRef: 8 },
   host: { run: 99, walkRef: 1.6, runRef: 3 },
   brute: { run: 99, walkRef: 2.0, runRef: 5 },
+  crawler: { run: 3, walkRef: 2.5, runRef: 7.5 },
 };
 // a swarm (the bats): this many copies of the one-bat model, flapping around the swarm's centre
 const SWARM = 12;
@@ -96,7 +99,7 @@ export class EnemyView {
 
   #createView(e) {
     const look = ENEMY_LOOK[e.type];
-    const mesh = e.T.fly ? this.#swarm(e) : SkeletonUtils.clone(this.assets[e.type]);
+    const mesh = e.T.fly && !e.T.drone ? this.#swarm(e) : SkeletonUtils.clone(this.assets[e.type]);
     const mats = [];
     // small variations so that a crowd is not made of copies: shade and hue drift, picked from the id
     const vary = e.T.boss ? 0 : ((e.id * 2654435761) % 1000) / 1000;
@@ -128,6 +131,13 @@ export class EnemyView {
     this.scene.add(blob);
     if (e.T.fly) {
       const v = { mesh, mats, blob, phase: Math.random() * 10, flash: 0, last: e, mixer: null, actions: {}, current: null, actRef: null };
+      if (e.T.drone) {
+        // the drone: rotors to spin, and a red searchlight out of its eye, sweeping ahead and down
+        v.rotors = [0, 1, 2, 3].map((i) => mesh.getObjectByName(`Rotor${i}`)).filter(Boolean);
+        const beam = makeBeam(beamMaterial(0xff2a18, 0.1, 1.2), 0.04, 1.4, 7, new THREE.Vector3(0, 0.25, 0.3), new THREE.Vector3(0, -0.35, 1).normalize());
+        beam.userData.light = true; // light, not a part: it goes out with the drone, no debris
+        mesh.add(beam);
+      }
       this.views.set(e.id, v);
       return v;
     }
@@ -366,7 +376,8 @@ export class EnemyView {
   #shatter(v, pos, dir) {
     v.mesh.updateMatrixWorld(true);
     const parts = [];
-    v.mesh.traverse((o) => { if (o.isMesh) parts.push(o); });
+    // only real parts with a lit material break off (a drone's searchlight beam is a shader, no emissive)
+    v.mesh.traverse((o) => { if (o.isMesh && !o.userData.light && o.material?.emissive) parts.push(o); });
     const push = dir ? dir.clone().setY(0).normalize() : new THREE.Vector3();
     for (const o of parts) {
       this.scene.attach(o);
@@ -471,7 +482,12 @@ export class EnemyView {
     const hover = T.hover ?? (T.boss ? 0.4 : 0);
     v.mesh.position.set(e.pos.x + shake, e.pos.y + e.lift + hover - e.rise * T.height, e.pos.z);
     v.mesh.rotation.y = e.facing;
-    if (T.fly) {
+    if (v.rotors) {
+      // the drone: rotors spinning, leaning into its motion
+      for (const r of v.rotors) r.rotation.y += dt * 45;
+      v.mesh.rotation.z = THREE.MathUtils.lerp(v.mesh.rotation.z, 0, Math.min(1, dt * 4));
+      v.mesh.rotation.x = THREE.MathUtils.lerp(v.mesh.rotation.x, Math.min(0.3, e.speed * 0.05), Math.min(1, dt * 4));
+    } else if (T.fly) {
       // each bat circles the swarm's centre, bobbing, its wings beating
       v.mesh.position.y += T.height / 2;
       for (const b of v.mesh.userData.bats) {
@@ -487,7 +503,7 @@ export class EnemyView {
     if (e.diving && e.rise < 0.9 && Math.random() < 0.4) this.effects.emit(e.pos.clone().setY(0.4), new THREE.Vector3((Math.random() - 0.5) * 3, 4, (Math.random() - 0.5) * 3), new THREE.Color(0.6, 0.75, 0.8), 0.2, 0.6, 9);
     // a climbing scarab stands up against the wall
     v.mesh.rotation.order = 'YXZ';
-    v.mesh.rotation.x += ((e.climbing ? -Math.PI / 2 : 0) - v.mesh.rotation.x) * Math.min(1, dt * 12);
+    if (!v.rotors) v.mesh.rotation.x += ((e.climbing ? -Math.PI / 2 : 0) - v.mesh.rotation.x) * Math.min(1, dt * 12);
     // a parasite on the local player's own face is drawn as a screen overlay instead (src/main.js)
     v.mesh.visible = !e.hidden && !(e.latched && e.latched.id === this.localId);
     v.blob.visible = !e.hidden && !T.fly;
@@ -500,6 +516,7 @@ export class EnemyView {
     // glow ramps up while winding up a ranged attack; a primed mummy blinks faster and faster
     let charge = a?.kind === 'ranged' || a?.kind === 'slam' ? p : 0;
     if (a?.kind === 'prime') charge = 1.5 + Math.sin(v.phase * (12 + p * 40)) * 1.5;
+    if (e.droneState === 'aim') charge = 1.5; // the drone's eye flares before a salvo
     for (const m of v.mats) {
       if (v.flash > 0) { m.m.emissive.setRGB(1, 0.9, 0.8); m.m.emissiveIntensity = 0.6; }
       else { m.m.emissive.copy(m.emissive); m.m.emissiveIntensity = m.ei * (1 + charge * 2); }

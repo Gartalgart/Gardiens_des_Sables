@@ -130,6 +130,8 @@ window.__game = game; // handy for debugging from the console
 let savedWorld = null;
 try { savedWorld = localStorage.getItem('gds-world'); } catch {}
 const world = getWorld(savedWorld);
+// a universe may ask for its own bloom (the station: gentler, see src/worlds/station.js)
+Object.assign(bloom, world.ambiance.bloom ?? {});
 game.world = world;
 sound.setVoices(world.voices);
 $('menu-title').innerHTML = `${world.title[0]}<br /><span>${world.title[1]}</span>`;
@@ -183,6 +185,7 @@ const torchBeam = makeBeam(beamMaterial(0xffe8c8, 0.08, 1.1), 0.03, 2.6, 16, new
 torchBeam.visible = false;
 camera.add(torchBeam);
 game.torch = !!world.ambiance.flashlight;
+const torchPower = world.ambiance.flashlight?.intensity ?? 16;
 for (const el of document.querySelectorAll('.torch-only')) el.classList.toggle('hidden', !world.ambiance.flashlight);
 sound.setSurf(!!world.ambiance.surf);
 sound.setHum(!!world.ambiance.hum);
@@ -651,6 +654,11 @@ function handleEvents() {
         }
         break;
       case 'burst': enemyView.onEvent(ev); sound.growl(pan(ev.pos), vol(ev.pos, 40), false, 'parasite'); sound.crumble(pan(ev.pos), vol(ev.pos, 40)); break;
+      case 'ventOpen':
+        // a grille kicked open: a clang and a puff of dust
+        sound.thud(pan(ev.pos), vol(ev.pos, 35));
+        effects.burst(ev.pos, new THREE.Vector3(0, -1, 0), { count: 18, color: new THREE.Color(0.35, 0.32, 0.28), speed: 2.5, size: 0.3, life: 0.9, grav: 2, spread: 1.2 });
+        break;
       case 'mineStick': sound.thud(pan(ev.pos), 0.5 * vol(ev.pos, 30)); break;
       case 'grenadeBounce': sound.thud(pan(ev.pos), Math.min(1, ev.speed / 12) * vol(ev.pos, 40)); break;
       case 'points': if (mine) hud.points(ev.amount, ev.label); break;
@@ -721,6 +729,7 @@ function handleEvents() {
       case 'enemyFire':
         // the ghost gunner's swivel gun booms like the hand cannon, further off
         if (world.enemies[ev.enemyType]?.ranged?.lob) sound.shot('cannon', pan(ev.pos), 0.7 * Math.max(0.2, vol(ev.pos, 80)));
+        else if (world.enemies[ev.enemyType]?.drone) sound.shot('laser', pan(ev.pos), 0.6 * Math.max(0.15, vol(ev.pos, 60)));
         else sound.enemyFire(pan(ev.pos), vol(ev.pos));
         break;
       case 'enemyHit':
@@ -833,7 +842,12 @@ function frame(ts) {
     fpsMeter.frames = 0;
     fpsMeter.time = 0;
   }
-  tick(Math.min(timer.getDelta(), 0.05), timer.getElapsed());
+  // one bad frame must not stop the game: an error is logged (once per message) and the loop goes on
+  try {
+    tick(Math.min(timer.getDelta(), 0.05), timer.getElapsed());
+  } catch (err) {
+    if (!frame.seen?.has(String(err))) { (frame.seen ??= new Set()).add(String(err)); console.error('frame error', err); }
+  }
   requestAnimationFrame(frame);
 }
 
@@ -846,7 +860,7 @@ function tick(dt, now = (tickClock += dt)) {
   // the torch: on while playing, a faint flicker when the battery is old
   const torchOn = game.torch && game.state === 'playing' && !game.player?.dead;
   torchBeam.visible = torchOn;
-  flashlight.intensity = torchOn ? 16 * (0.97 + 0.03 * Math.sin(now * 31) * Math.sin(now * 7.3)) : 0;
+  flashlight.intensity = torchOn ? torchPower * (0.97 + 0.03 * Math.sin(now * 31) * Math.sin(now * 7.3)) : 0;
   const sim = game.sim;
   // co-op: the shared world goes on while this player is in the pause menu
   if (sim && game.player && (game.state === 'playing' || (game.net && game.state === 'paused'))) {

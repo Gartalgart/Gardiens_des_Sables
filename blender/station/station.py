@@ -1,27 +1,26 @@
-# U2 phase 1: the derelict space station ("Station spatiale infestée"), built in blender/station/station.blend.
-# Usage inside Blender, after helpers.py:
-#   exec(open(r"<path>/blender/station/station.py").read())
-# (with the Blender MCP in safe mode, exec/open are refused: send helpers.py and this file as one script)
+# U2: the derelict space station ("Station spatiale infestée"), a network of tunnels, built in
+# blender/station/station.blend. Then blender/station/dressing.py dresses it (send both as one
+# script: the MCP's safe mode allows no exec, no open, no lambda).
+# Usage inside Blender, after helpers.py: this file, then dressing.py.
 #
-# Layout, in game coordinates (three.js: X east, Y up, Z south), everything indoors under ceilings:
-# - the engine room in the middle (20 x 20 m, 8 m high) round the reactor column, joined by four
-#   short spokes to a ring of corridors (5 m wide, 4 m high, portholes on the outside walls);
-# - off the ring: the hydroponic greenhouse (north, glass roof), the hangar (south, a shuttle and the
-#   bay door on the void), the observation deck (east, a glass wall on the planet) and a small
-#   airlock chamber (west);
-# - the two airlocks are D_Airlock_n doors worked by the LEVER_n levers: open, they pull bodies
-#   towards the void (src/sim/sim.js).
-# The nav grid has a single floor per (x, z) cell: no walkway over a room, every floor is at 0.
+# Level design (U2 rework, from research on corridor and horror level design: loops so fights can
+# move round, the corridor/arena rhythm, a few distinct districts, readable turns and thresholds):
+# - three loops: round the reactor, through the main tunnels and the maintenance shafts, and the
+#   perimeter tunnel that joins the four districts;
+# - main tunnels 4 m wide and 3.6 m high, bent once or twice so sight lines stay short; maintenance
+#   shafts 2 m wide (the brutes do not fit, parasites and crawlers flank through them);
+# - five districts with their own light colour: the reactor (circular arena, cyan), the greenhouse
+#   (glass roof, magenta), the hangar (the one big arena, amber), the crew quarters (bunks and mess,
+#   tight rooms, warm) and the labs (glass partitions, green), plus a west airlock chamber;
+# - every threshold between two spaces is a bulkhead frame with hazard stripes and the colour of the
+#   room beyond.
+# Walls, ceilings and lintels come from a 1 m grid of walkable cells: a wall wherever a walkable cell
+# meets the void, a lintel wherever two walkable cells have different ceilings. The nav grid has a
+# single floor per cell: every floor is at 0, nothing is built over anything.
 #
-# Naming, on top of the desert's and the port's (L_Deco* no collision, C_* collision only, SPAWN_n,
-# BRAZIER_n, KEG_n, PLAYER_START):
-# - D_Airlock_n : an airlock's outer door, solid while closed, slid up by the client when open;
-# - LEVER_n : the lever that works airlock n;
-# - BRAZIER_n : a ceiling light; its tube in the Decor collection is L_DecoNeon_n (flickers with it);
-# - KEG_n : an oxygen bottle (blows up when shot, like the port's powder kegs);
-# - FX_Steam_n (Decor) : an empty where steam leaks from a pipe.
-# Floors and every bit of dressing are in the Decor collection (decor.glb, no collision); the floor
-# of the collisions is the ground plane at 0.
+# Naming (src/sim/level.js, scripts/level-json-from-glb.mjs): L_Deco* no collision, C_* collision
+# only, D_Airlock_n doors, SPAWN_n, BRAZIER_n (light; its tube L_DecoNeon_n), KEG_n (oxygen bottle),
+# LEVER_n, VENT_n (duct crawlers), PLAYER_START; FX_* empties in the Decor collection.
 import bpy
 import math
 import random
@@ -48,10 +47,18 @@ M = {
     "solar": mat("S_Solar", (0.03, 0.06, 0.16), 0.25, 0.6),
     "neon": mat("S_Neon", (0.85, 0.92, 1.0), 0.5, emit=(0.8, 0.9, 1.0), strength=3.0),
     "alarm": mat("S_Alarm", (1.0, 0.05, 0.03), 0.5, emit=(1.0, 0.04, 0.02), strength=2.0),
-    "screen": mat("S_Screen", (0.05, 0.4, 0.15), 0.3, emit=(0.15, 0.95, 0.35), strength=0.8),  # green CRT phosphor
+    "screen": mat("S_Screen", (0.05, 0.4, 0.15), 0.3, emit=(0.15, 0.95, 0.35), strength=0.8),
     "core": mat("S_Core", (0.2, 0.8, 1.0), 0.3, emit=(0.2, 0.75, 1.0), strength=1.2),
     "grow": mat("S_Grow", (1.0, 0.3, 0.8), 0.5, emit=(1.0, 0.25, 0.75), strength=1.5),
-    "green": mat("S_GreenLight", (0.2, 1.0, 0.3), 0.5, emit=(0.2, 1.0, 0.3), strength=4.0),
+    "hole": mat("S_Void", (0.0, 0.0, 0.0), 1.0),
+}
+# the colour of each district, on the strips over its thresholds and along its walls
+ACCENT = {
+    "core": mat("S_AccCore", (0.2, 0.8, 1.0), 0.4, emit=(0.15, 0.7, 1.0), strength=1.6),
+    "hydro": mat("S_AccHydro", (1.0, 0.3, 0.8), 0.4, emit=(1.0, 0.2, 0.7), strength=1.6),
+    "hangar": mat("S_AccHangar", (1.0, 0.6, 0.1), 0.4, emit=(1.0, 0.55, 0.08), strength=1.6),
+    "crew": mat("S_AccCrew", (1.0, 0.45, 0.2), 0.4, emit=(1.0, 0.4, 0.15), strength=1.6),
+    "labs": mat("S_AccLabs", (0.3, 1.0, 0.6), 0.4, emit=(0.25, 1.0, 0.55), strength=1.6),
 }
 _n = [0]
 
@@ -83,22 +90,85 @@ def P(x, y, z):
     return (x, -z, y)
 
 
-# ---------------------------------------------------------------- walls
+# ---------------------------------------------------------------- the plan
+TH, MH = 3.6, 2.8  # ceilings of the main tunnels and the maintenance shafts
+# (name, x0, x1, z0, z1, ceiling, district)
+REGIONS = [
+    ("core", -9, 9, -9, 9, 7.0, "core"),
+    ("hydro", -12, 12, -40, -26, 5.5, "hydro"),
+    ("hangar", -13, 13, 26, 44, 9.0, "hangar"),
+    ("crew", 28, 44, -10, 10, 3.4, "crew"),
+    ("labs", -44, -28, -10, 10, 3.4, "labs"),
+    ("airlock", -50, -44, -2, 2, 3.2, "airlock"),
+    # main tunnels from the reactor, each bent on the way
+    ("tn", -2, 2, -20, -9, TH, "tunnel"), ("tn", -2, 6, -20, -16, TH, "tunnel"), ("tn", 2, 6, -26, -16, TH, "tunnel"),
+    ("ts", -2, 2, 9, 20, TH, "tunnel"), ("ts", -6, 2, 16, 20, TH, "tunnel"), ("ts", -6, -2, 16, 26, TH, "tunnel"),
+    ("te", 9, 20, -2, 2, TH, "tunnel"), ("te", 16, 20, -2, 6, TH, "tunnel"), ("te", 16, 28, 2, 6, TH, "tunnel"),
+    ("tw", -20, -9, -2, 2, TH, "tunnel"), ("tw", -20, -16, -6, 2, TH, "tunnel"), ("tw", -28, -16, -6, -2, TH, "tunnel"),
+    # the perimeter loop between the districts
+    ("ne", 12, 36, -32, -28, TH, "tunnel"), ("ne", 32, 36, -32, -10, TH, "tunnel"),
+    ("se", 32, 36, 10, 34, TH, "tunnel"), ("se", 13, 36, 30, 34, TH, "tunnel"),
+    ("sw", -36, -13, 30, 34, TH, "tunnel"), ("sw", -36, -32, 10, 34, TH, "tunnel"),
+    ("nw", -36, -32, -32, -10, TH, "tunnel"), ("nw", -36, -12, -32, -28, TH, "tunnel"),
+    # maintenance shafts: shortcuts from the main tunnels' bends to the perimeter
+    ("mne", 6, 22, -19, -17, MH, "maint"), ("mne", 20, 22, -28, -17, MH, "maint"),
+    ("mse", 18, 20, 6, 30, MH, "maint"),
+    ("msw", -22, -6, 17, 19, MH, "maint"), ("msw", -22, -20, 19, 30, MH, "maint"),
+    ("mnw", -20, -18, -28, -6, MH, "maint"),
+]
+WALL_MAT = {"core": "plate", "hydro": "panel", "hangar": "plate", "crew": "panel", "labs": "white",
+            "airlock": "plate", "tunnel": "panel", "maint": "plate"}
+FLOOR_MAT = {"core": "deck", "hydro": "deck", "hangar": "deck", "crew": "couch", "labs": "white",
+             "airlock": "grating", "tunnel": "grating", "maint": "grating"}
+
+# openings cut in the generated walls: (line, at) -> [(from, to, bottom, top, kind)]; a line 'x' runs
+# along X at z = at, a line 'z' along Z at x = at; kind 'win' (glass) or 'open' (an airlock's door)
+PH0, PH1 = 1.2, 2.4  # portholes
+HOLES = {
+    ("x", 44): [(-5, 5, 0, 6, "open")],  # the hangar's bay door
+    ("z", -50): [(-1.5, 1.5, 0, 3, "open")],  # the west airlock's outer door
+    ("z", 44): [(-4, 4, 0.9, 2.8, "win")],  # the mess's window on the planet
+    ("x", -40): [(-8, -3, 1.0, 4.4, "win"), (3, 8, 1.0, 4.4, "win")],  # the greenhouse's back wall
+    ("z", 36): [(-26, -24, PH0, PH1, "win"), (-18, -16, PH0, PH1, "win"), (16, 18, PH0, PH1, "win"), (24, 26, PH0, PH1, "win")],
+    ("z", -36): [(-26, -24, PH0, PH1, "win"), (-18, -16, PH0, PH1, "win"), (16, 18, PH0, PH1, "win"), (24, 26, PH0, PH1, "win")],
+    ("x", -32): [(-29, -27, PH0, PH1, "win"), (-22, -20, PH0, PH1, "win"), (20, 22, PH0, PH1, "win"), (27, 29, PH0, PH1, "win")],
+    ("x", 34): [(-29, -27, PH0, PH1, "win"), (-22, -20, PH0, PH1, "win"), (20, 22, PH0, PH1, "win"), (27, 29, PH0, PH1, "win")],
+    ("z", 13): [(37, 41, 6.0, 8.0, "win")],
+    ("z", -13): [(37, 41, 6.0, 8.0, "win")],
+}
+# walls inside the rooms: (line, at, from, to, height, district, openings as above, kind 'door' too)
+PARTITIONS = [
+    ("x", -6, 28, 44, 3.4, "crew", [(39, 42, 0, 2.4, "door")]),
+    ("x", 7, 28, 44, 3.4, "crew", [(39, 42, 0, 2.4, "door")]),
+    ("x", -7, -44, -28, 3.4, "labs", [(-42, -39, 0, 2.4, "door"), (-35, -30, 1.0, 2.4, "win")]),
+    ("x", 6, -44, -28, 3.4, "labs", [(-42, -39, 0, 2.4, "door"), (-35, -30, 1.0, 2.4, "win")]),
+]
+
+# walkable cells: (i, j) -> [ceiling, district], cell (i, j) covering x in [i, i+1], z in [j, j+1]
+CELLS = {}
+for name, x0, x1, z0, z1, h, zone in REGIONS:
+    for i in range(x0, x1):
+        for j in range(z0, z1):
+            c = CELLS.get((i, j))
+            if c is None or h > c[0]:
+                CELLS[(i, j)] = [h, zone]
+
+# ---------------------------------------------------------------- walls from the grid
 T = 0.4  # wall thickness
+RUNS = []  # every generated wall: (line, at, a, b, bottom, top, kind, side toward the walkable cell, district)
 
 
-def seg(ax, at, a, b, y0, y1, m):
-    """a wall piece along X (ax 'x': at = its Z) or along Z (at = its X), from a to b"""
+def seg(ax, at, a, b, y0, y1, m, name="Wall"):
     if b - a <= 0.01 or y1 - y0 <= 0.01:
         return
     if ax == "x":
-        B("Wall", a, b, y0, y1, at - T / 2, at + T / 2, m)
+        B(name, a, b, y0, y1, at - T / 2, at + T / 2, m)
     else:
-        B("Wall", at - T / 2, at + T / 2, y0, y1, a, b, m)
+        B(name, at - T / 2, at + T / 2, y0, y1, a, b, m)
 
 
 def glass(ax, at, c0, c1, h0, h1):
-    """a window in a wall: an invisible pane stops bodies and shots, a tinted pane and a frame are drawn"""
+    """a window: an invisible pane stops bodies and shots, a tinted pane and a frame are drawn"""
     f, e = 0.12, T / 2 + 0.06
     if ax == "x":
         C(c0, c1, h0, h1, at - T / 2, at + T / 2)
@@ -116,355 +186,291 @@ def glass(ax, at, c0, c1, h0, h1):
         D("WinFrame", at - e, at + e, h0, h1, c1, c1 + f, M["frame"])
 
 
-def doorframe(ax, at, c0, c1, h):
-    """a heavy frame with hazard stripes round an opening"""
-    f, e = 0.25, T / 2 + 0.1
+def frame(ax, at, c0, c1, h, zone):
+    """a bulkhead frame round an opening: hazard posts, a dark beam, the district's colour on top"""
+    f, e = 0.3, T / 2 + 0.12
     if ax == "x":
-        D("DoorFrame", c0 - f, c0, 0, h, at - e, at + e, M["hazard"])
-        D("DoorFrame", c1, c1 + f, 0, h, at - e, at + e, M["hazard"])
-        D("DoorFrame", c0 - f, c1 + f, h, h + f, at - e, at + e, M["frame"])
+        D("Bulkhead", c0, c0 + f, 0, h, at - e, at + e, M["hazard"])
+        D("Bulkhead", c1 - f, c1, 0, h, at - e, at + e, M["hazard"])
+        D("BulkheadTop", c0, c1, h - 0.25, h, at - e, at + e, M["frame"])
+        if zone in ACCENT:
+            D("Accent", c0 + f, c1 - f, h - 0.33, h - 0.25, at - e - 0.02, at + e + 0.02, ACCENT[zone])
     else:
-        D("DoorFrame", at - e, at + e, 0, h, c0 - f, c0, M["hazard"])
-        D("DoorFrame", at - e, at + e, 0, h, c1, c1 + f, M["hazard"])
-        D("DoorFrame", at - e, at + e, h, h + f, c0 - f, c1 + f, M["frame"])
+        D("Bulkhead", at - e, at + e, 0, h, c0, c0 + f, M["hazard"])
+        D("Bulkhead", at - e, at + e, 0, h, c1 - f, c1, M["hazard"])
+        D("BulkheadTop", at - e, at + e, h - 0.25, h, c0, c1, M["frame"])
+        if zone in ACCENT:
+            D("Accent", at - e - 0.02, at + e + 0.02, h - 0.33, h - 0.25, c0 + f, c1 - f, ACCENT[zone])
 
 
-def wall(ax, at, a, b, y0, y1, m, holes=None):
-    """a wall from a to b with holes (c0, c1, h0, h1, kind): 'door' is left open, 'win' gets glass"""
+def build_run(ax, at, a, b, y0, y1, m, kind, side, zone):
+    """one straight wall (or lintel) with the openings of its line cut out"""
+    RUNS.append((ax, at, a, b, y0, y1, kind, side, zone))
+    if kind == "wall":
+        a, b = a - T / 2, b + T / 2  # closes the corners
     cur = a
-    for h in sorted(holes or []):
-        c0, c1, h0, h1, kind = h
+    for c0, c1, h0, h1, k in sorted(HOLES.get((ax, at), [])):
+        if c1 <= a or c0 >= b or h0 >= y1:
+            continue
         seg(ax, at, cur, c0, y0, y1, m)
-        seg(ax, at, c0, c1, y0, h0, m)
+        seg(ax, at, c0, c1, y0, max(y0, h0), m)
         seg(ax, at, c0, c1, h1, y1, m)
-        if kind == "win":
+        if k == "win":
             glass(ax, at, c0, c1, h0, h1)
-        if kind == "door":
-            doorframe(ax, at, c0, c1, h1)
         cur = c1
     seg(ax, at, cur, b, y0, y1, m)
 
 
-def floor(x0, x1, z0, z1, m):
-    D("Floor", x0, x1, -0.1, 0, z0, z1, m)
+def edge(a, b):
+    """what stands between two cells (either may be None): ('wall', 0, top, district, side) or
+    ('lintel', bottom, top, district of the taller one, district of the lower one) or None"""
+    if a and b:
+        if abs(a[0] - b[0]) < 0.01:
+            return None
+        hi = a if a[0] > b[0] else b
+        lo = b if hi is a else a
+        return ("lintel", lo[0], hi[0] + 0.3, hi[1], lo[1])
+    if a or b:
+        c = a or b
+        return ("wall", 0, c[0] + 0.3, c[1], 1 if b else -1)
+    return None
 
 
-def ceiling(x0, x1, y, z0, z1, m=None):
-    B("Ceiling", x0, x1, y, y + 0.3, z0, z1, m or M["panel"])
+xs = [k[0] for k in CELLS]
+zs = [k[1] for k in CELLS]
+X0, X1, Z0, Z1 = min(xs), max(xs) + 1, min(zs), max(zs) + 1
+EDGES = []
+for ln in ("z", "x"):
+    for at in range(X0 if ln == "z" else Z0, (X1 if ln == "z" else Z1) + 1):
+        cur = None  # the run being extended: [start, end, info]
+        for t in range((Z0 if ln == "z" else X0) - 1, (Z1 if ln == "z" else X1) + 1):
+            if ln == "z":
+                info = edge(CELLS.get((at - 1, t)), CELLS.get((at, t)))
+            else:
+                info = edge(CELLS.get((t, at - 1)), CELLS.get((t, at)))
+            if cur and info == cur[2]:
+                cur[1] = t + 1
+                continue
+            if cur:
+                EDGES.append((ln, at, cur[0], cur[1], cur[2]))
+            cur = [t, t + 1, info] if info else None
+        if cur:
+            EDGES.append((ln, at, cur[0], cur[1], cur[2]))
+for ln, at, a, b, info in EDGES:
+    if info[0] == "wall":
+        build_run(ln, at, a, b, info[1], info[2], M[WALL_MAT[info[3]]], "wall", info[4], info[3])
+    else:
+        build_run(ln, at, a, b, info[1], info[2], M[WALL_MAT[info[3]]], "lintel", 0, info[3])
+        frame(ln, at, a, b, info[1], info[3])
+
+for ln, at, a, b, h, zone, holes in PARTITIONS:
+    m = M[WALL_MAT[zone]]
+    cur = a
+    for c0, c1, h0, h1, k in sorted(holes):
+        seg(ln, at, cur, c0, 0, h, m)
+        seg(ln, at, c0, c1, 0, h0, m)
+        seg(ln, at, c0, c1, h1, h, m)
+        if k == "win":
+            glass(ln, at, c0, c1, h0, h1)
+        if k == "door":
+            frame(ln, at, c0, c1, h1, zone)
+        cur = c1
+    seg(ln, at, cur, b, 0, h, m)
+
+# ceilings and floors, region by region (the greenhouse's ceiling is a glass roof)
+for name, x0, x1, z0, z1, h, zone in REGIONS:
+    D("Floor", x0, x1, -0.1, 0, z0, z1, M[FLOOR_MAT[zone]])
+    if zone == "hydro":
+        C(x0, x1, h, h + 0.3, z0, z1)
+        D("Glass", x0, x1, h + 0.1, h + 0.14, z0, z1, M["glass"])
+        for x in range(x0, x1 + 1, 4):
+            D("RoofBeam", x - 0.15, x + 0.15, h - 0.3, h + 0.3, z0, z1, M["frame"])
+        for z in range(z0, z1 + 1, 3):
+            D("RoofBeam", x0, x1, h - 0.2, h + 0.3, z - 0.12, z + 0.12, M["frame"])
+    else:
+        B("Ceiling", x0 - 0.2, x1 + 0.2, h, h + 0.3, z0 - 0.2, z1 + 0.2, M["plate" if zone in ("maint", "hangar", "core") else "panel"])
+
+# ---------------------------------------------------------------- lights
+LIGHTS = []
 
 
-def light(i, x, y, z, along="x"):
-    """a ceiling neon at (x, y, z): the housing, the tube (flickers with its light) and the light's empty"""
+def light_at(x, y, z, along="x", force=False):
+    for lx, ly, lz, la in LIGHTS:
+        if not force and abs(lx - x) + abs(lz - z) < 3.5:
+            return
+    LIGHTS.append((x, y, z, along))
+
+
+for x, y, z in ((-5.5, 6.65, -5.5), (5.5, 6.65, -5.5), (-5.5, 6.65, 5.5), (5.5, 6.65, 5.5),
+                (-6, 5.05, -33), (6, 5.05, -33),
+                (-8, 6.2, 30), (8, 6.2, 30), (-8, 6.2, 39), (8, 6.2, 39),
+                (32, 3.05, 0), (40, 3.05, 0), (36, 3.05, -8), (36, 3.05, 8.5),
+                (-36, 3.05, 0), (-36, 3.05, -8.5), (-36, 3.05, 8), (-47, 2.85, 0)):
+    light_at(x, y, z, force=True)
+for name, x0, x1, z0, z1, h, zone in REGIONS:
+    if zone not in ("tunnel", "maint"):
+        continue
+    step = 7 if zone == "tunnel" else 6
+    if x1 - x0 >= z1 - z0:
+        n = max(1, round((x1 - x0) / step))
+        for k in range(n):
+            light_at(x0 + (k + 0.5) * (x1 - x0) / n, h - 0.35, (z0 + z1) / 2, "x")
+    else:
+        n = max(1, round((z1 - z0) / step))
+        for k in range(n):
+            light_at((x0 + x1) / 2, h - 0.35, z0 + (k + 0.5) * (z1 - z0) / n, "z")
+for i, (x, y, z, along) in enumerate(LIGHTS):
     if along == "x":
         D("NeonHousing", x - 0.8, x + 0.8, y, y + 0.22, z - 0.16, z + 0.16, M["frame"])
-        tube = B("L_DecoNeon", x - 0.7, x + 0.7, y - 0.07, y, z - 0.06, z + 0.06, M["neon"], DECOR)
+        tube = B("Neon", x - 0.7, x + 0.7, y - 0.07, y, z - 0.06, z + 0.06, M["neon"], DECOR)
     else:
         D("NeonHousing", x - 0.16, x + 0.16, y, y + 0.22, z - 0.8, z + 0.8, M["frame"])
-        tube = B("L_DecoNeon", x - 0.06, x + 0.06, y - 0.07, y, z - 0.7, z + 0.7, M["neon"], DECOR)
-    tube.name = "L_DecoNeon_%d" % i
-    empty("BRAZIER_%d" % i, LEVEL, P(x, y - 0.15, z))
+        tube = B("Neon", x - 0.06, x + 0.06, y - 0.07, y, z - 0.7, z + 0.7, M["neon"], DECOR)
+    tube.name = "L_DecoNeon_%d" % (i + 1)
+    empty("BRAZIER_%d" % (i + 1), LEVEL, P(x, y - 0.15, z))
+# the hangar's lights hang on rods from its high ceiling
+for x, z in ((-8, 30), (8, 30), (-8, 39), (8, 39)):
+    for dx in (-0.6, 0.6):
+        D("Rod", x + dx - 0.02, x + dx + 0.02, 6.42, 9.0, z - 0.02, z + 0.02, M["cable"])
 
 
-def pipe(x0, x1, y, z0, z1, r=0.12, m="pipe"):
-    """a straight pipe between two points of the same height, along X or along Z"""
-    if abs(x1 - x0) > abs(z1 - z0):
-        cyl(nm("L_DecoPipe"), DECOR, r, abs(x1 - x0), P((x0 + x1) / 2, y, z0), M[m], rot=(0, 90, 0), verts=8)
-    else:
-        cyl(nm("L_DecoPipe"), DECOR, r, abs(z1 - z0), P(x0, y, (z0 + z1) / 2), M[m], rot=(90, 0, 0), verts=8)
+# ---------------------------------------------------------------- furniture and machines
+def crate(x, z, s=1.4, y=0):
+    B("Crate", x - s / 2, x + s / 2, y, y + s, z - s / 2, z + s / 2, M["crate"])
+    D("CrateBand", x - s / 2 - 0.02, x + s / 2 + 0.02, y + s * 0.42, y + s * 0.58, z - s / 2 - 0.02, z + s / 2 + 0.02, M["frame"])
 
 
 def vpipe(x, z, y0, y1, r=0.15, m="pipe"):
     cyl(nm("L_DecoPipe"), DECOR, r, y1 - y0, P(x, (y0 + y1) / 2, z), M[m], verts=8)
 
 
-def crate(x, z, s=1.4, y=0):
-    B("Crate", x - s / 2, x + s / 2, y, y + s, z - s / 2, z + s / 2, M["crate"])
-    D("CrateBand", x - s / 2 - 0.02, x + s / 2 + 0.02, y + s * 0.42, y + s * 0.58, z - s / 2 - 0.02, z + s / 2 + 0.02, M["frame"])
-
-
-def console(x0, x1, z0, z1, facing):
-    """a desk with a screen tilted toward 'facing' ('n', 's', 'e', 'w')"""
+def console(x0, x1, z0, z1, screen_side):
+    """a desk; its monitor faces the side given ('n', 's', 'e', 'w')"""
     B("Console", x0, x1, 0, 1.0, z0, z1, M["plate"])
-    if facing in ("n", "s"):
-        zz = z0 + 0.1 if facing == "n" else z1 - 0.1
-        D("Screen", x0 + 0.15, x1 - 0.15, 1.0, 1.02, min(zz, (z0 + z1) / 2), max(zz, (z0 + z1) / 2), M["screen"])
-        D("Monitor", x0 + 0.2, x1 - 0.2, 1.0, 1.8, (z0 + z1) / 2 - 0.05, (z0 + z1) / 2 + 0.05, M["frame"])
-        D("MonitorScreen", x0 + 0.3, x1 - 0.3, 1.1, 1.7, (z0 + z1) / 2 + (-0.07 if facing == "n" else 0.05), (z0 + z1) / 2 + (-0.05 if facing == "n" else 0.07), M["screen"])
+    cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+    if screen_side in ("n", "s"):
+        D("Monitor", x0 + 0.2, x1 - 0.2, 1.0, 1.8, cz - 0.05, cz + 0.05, M["frame"])
+        d = -0.07 if screen_side == "n" else 0.05
+        D("MonitorScreen", x0 + 0.3, x1 - 0.3, 1.1, 1.7, cz + d, cz + d + 0.02, M["screen"])
     else:
-        xx = x0 + 0.1 if facing == "w" else x1 - 0.1
-        D("Screen", min(xx, (x0 + x1) / 2), max(xx, (x0 + x1) / 2), 1.0, 1.02, z0 + 0.15, z1 - 0.15, M["screen"])
-        D("Monitor", (x0 + x1) / 2 - 0.05, (x0 + x1) / 2 + 0.05, 1.0, 1.8, z0 + 0.2, z1 - 0.2, M["frame"])
-        D("MonitorScreen", (x0 + x1) / 2 + (-0.07 if facing == "w" else 0.05), (x0 + x1) / 2 + (-0.05 if facing == "w" else 0.07), 1.1, 1.7, z0 + 0.3, z1 - 0.3, M["screen"])
+        D("Monitor", cx - 0.05, cx + 0.05, 1.0, 1.8, z0 + 0.2, z1 - 0.2, M["frame"])
+        d = -0.07 if screen_side == "w" else 0.05
+        D("MonitorScreen", cx + d, cx + d + 0.02, 1.1, 1.7, z0 + 0.3, z1 - 0.3, M["screen"])
 
 
-# ---------------------------------------------------------------- the engine room (middle)
-EH = 8
-for ax, at in (("x", -10), ("x", 10), ("z", -10), ("z", 10)):
-    wall(ax, at, -10.2, 10.2, 0, EH + 0.3, M["plate"], [(-2, 2, 0, 3, "door")])
-ceiling(-10.2, 10.2, EH, -10.2, 10.2)
-floor(-10, 10, -10, 10, M["deck"])
-# the reactor: a column from floor to ceiling, glowing rings round it
-cyl("Reactor", LEVEL, 2.4, EH, P(0, EH / 2, 0), M["plate"], verts=16)
+# the reactor: a column from floor to ceiling, glowing rings, four generators round it
+cyl("Reactor", LEVEL, 2.2, 7.0, P(0, 3.5, 0), M["plate"], verts=16)
 for y in (1.2, 2.8, 4.4, 6.0):
-    cyl(nm("L_DecoCoreRing"), DECOR, 2.55, 0.22, P(0, y, 0), M["core"], verts=16)
-    cyl(nm("L_DecoCoreBand"), DECOR, 2.5, 0.5, P(0, y + 0.45, 0), M["frame"], verts=16)
+    cyl(nm("L_DecoCoreRing"), DECOR, 2.35, 0.22, P(0, y, 0), M["core"], verts=16)
+    cyl(nm("L_DecoCoreBand"), DECOR, 2.3, 0.5, P(0, y + 0.45, 0), M["frame"], verts=16)
 for a in range(8):
     an = a / 8 * math.tau
-    vpipe(math.cos(an) * 2.55, math.sin(an) * 2.55, 0, EH, 0.12, "frame")
-# four generators in the corners, their pipes up into the ceiling
+    vpipe(math.cos(an) * 2.35, math.sin(an) * 2.35, 0, 7.0, 0.12, "frame")
 for sx in (-1, 1):
     for sz in (-1, 1):
-        x, z = 6 * sx, 6 * sz
-        B("Generator", x - 1.5, x + 1.5, 0, 2.6, z - 1.5, z + 1.5, M["plate"])
-        D("GenTop", x - 1.2, x + 1.2, 2.6, 2.9, z - 1.2, z + 1.2, M["frame"])
-        D("GenLight", x - 1.52, x + 1.52, 1.7, 1.85, z - 1.52, z + 1.52, M["core"])
-        D("GenStripe", x - 1.53, x + 1.53, 0, 0.3, z - 1.53, z + 1.53, M["hazard"])
-        vpipe(x - 0.6 * sx, z, 2.9, EH, 0.28)
-        vpipe(x, z - 0.6 * sz, 2.9, EH, 0.2, "frame")
-        # a duct from the generator to the reactor, under the ceiling
-        pipe(x - 0.6 * sx, 0, 6.8, z, z, 0.22)
-lightI = [0]
-
-
-def L(x, y, z, along="x"):
-    lightI[0] += 1
-    light(lightI[0], x, y, z, along)
-
-
-for sx in (-1, 1):
-    for sz in (-1, 1):
-        L(6 * sx, EH - 0.25, 6 * sz)
-# consoles along the walls, between the doors and the generators
-console(-9.6, -8.6, -3.8, -2.6, "e")
-console(8.6, 9.6, 2.6, 3.8, "w")
-console(2.6, 3.8, -9.6, -8.6, "s")
-console(-3.8, -2.6, 8.6, 9.6, "n")
-# cable bundles from the reactor to the walls, on the floor
-D("FloorCable", 2.4, 9.8, 0, 0.12, -0.4, -0.2, M["cable"])
-D("FloorCable", -9.8, -2.4, 0, 0.12, 0.2, 0.4, M["cable"])
-empty("KEG_1", LEVEL, P(8.7, 0, 8.7))
-empty("KEG_2", LEVEL, P(-8.7, 0, -8.7))
-empty("SPAWN_1", LEVEL, P(-6, 0, 0))
-
-# ---------------------------------------------------------------- spokes (engine room <-> ring)
-# north and south spokes run along Z, east and west along X
-wall("z", -2, -14, -10, 0, 4.3, M["panel"])
-wall("z", 2, -14, -10, 0, 4.3, M["panel"])
-wall("z", -2, 10, 14, 0, 4.3, M["panel"])
-wall("z", 2, 10, 14, 0, 4.3, M["panel"])
-wall("x", -2, -14, -10, 0, 4.3, M["panel"])
-wall("x", 2, -14, -10, 0, 4.3, M["panel"])
-wall("x", -2, 10, 14, 0, 4.3, M["panel"])
-wall("x", 2, 10, 14, 0, 4.3, M["panel"])
-ceiling(-2.2, 2.2, 4, -14, -10)
-ceiling(-2.2, 2.2, 4, 10, 14)
-ceiling(-14, -10, 4, -2.2, 2.2)
-ceiling(10, 14, 4, -2.2, 2.2)
-floor(-2, 2, -14, -10, M["grating"])
-floor(-2, 2, 10, 14, M["grating"])
-floor(-14, -10, -2, 2, M["grating"])
-floor(10, 14, -2, 2, M["grating"])
-
-# ---------------------------------------------------------------- the ring of corridors
-RI, RO, RH = 14, 19, 4
-for ax, at in (("x", -RI), ("x", RI), ("z", -RI), ("z", RI)):
-    wall(ax, at, -RI - 0.2, RI + 0.2, 0, RH + 0.3, M["panel"], [(-2, 2, 0, 3, "door")])
-W1, W2 = 1.2, 2.6  # porthole sill and top
-wall("x", -RO, -RO - 0.2, RO + 0.2, 0, RH + 0.3, M["panel"],
-     [(-17, -15, W1, W2, "win"), (-9, -5, 0, 3.2, "door"), (5, 9, 0, 3.2, "door"), (15, 17, W1, W2, "win")])
-wall("x", RO, -RO - 0.2, RO + 0.2, 0, RH + 0.3, M["panel"],
-     [(-18.2, -16.8, W1, W2, "win"), (-10, -6, 0, 3.4, "door"), (6, 10, 0, 3.4, "door"), (16.8, 18.2, W1, W2, "win")])
-wall("z", -RO, -RO, RO, 0, RH + 0.3, M["panel"],
-     [(-14, -11, W1, W2, "win"), (-8, -5, W1, W2, "win"), (-1.5, 1.5, 0, 3, "door"), (5, 8, W1, W2, "win"), (11, 14, W1, W2, "win")])
-wall("z", RO, -RO, RO, 0, RH + 0.3, M["panel"],
-     [(-15, -12, W1, W2, "win"), (-6, -2, 0, 3.2, "door"), (2, 6, 0, 3.2, "door"), (12, 15, W1, W2, "win")])
-ceiling(-RO - 0.2, RO + 0.2, RH, -RO - 0.2, -RI)
-ceiling(-RO - 0.2, RO + 0.2, RH, RI, RO + 0.2)
-ceiling(-RO - 0.2, -RI, RH, -RI, RI)
-ceiling(RI, RO + 0.2, RH, -RI, RI)
-floor(-RO, RO, -RO, -RI, M["grating"])
-floor(-RO, RO, RI, RO, M["grating"])
-floor(-RO, -RI, -RI, RI, M["grating"])
-floor(RI, RO, -RI, RI, M["grating"])
-# ribs across the ceiling every 4 m, a cable tray down the middle, two pipes along the outer wall
-for v in range(-16, 17, 4):
-    D("Rib", v - 0.15, v + 0.15, RH - 0.3, RH, -RO, -RI, M["frame"])
-    D("Rib", v - 0.15, v + 0.15, RH - 0.3, RH, RI, RO, M["frame"])
-    if abs(v) < RI:
-        D("Rib", -RO, -RI, RH - 0.3, RH, v - 0.15, v + 0.15, M["frame"])
-        D("Rib", RI, RO, RH - 0.3, RH, v - 0.15, v + 0.15, M["frame"])
-C0 = (RI + RO) / 2
-D("CableTray", -RO, RO, RH - 0.45, RH - 0.35, -C0 - 0.3, -C0 + 0.3, M["cable"])
-D("CableTray", -RO, RO, RH - 0.45, RH - 0.35, C0 - 0.3, C0 + 0.3, M["cable"])
-D("CableTray", -C0 - 0.3, -C0 + 0.3, RH - 0.45, RH - 0.35, -RI, RI, M["cable"])
-D("CableTray", C0 - 0.3, C0 + 0.3, RH - 0.45, RH - 0.35, -RI, RI, M["cable"])
-for y, r in ((3.35, 0.12), (3.65, 0.09)):
-    pipe(-RO + 0.4, RO - 0.4, y, -RO + 0.35, -RO + 0.35, r)
-    pipe(-RO + 0.4, RO - 0.4, y, RO - 0.35, RO - 0.35, r)
-    pipe(-RO + 0.35, -RO + 0.35, y, -RO + 0.4, RO - 0.4, r)
-    pipe(RO - 0.35, RO - 0.35, y, -RO + 0.4, RO - 0.4, r)
-# red emergency strips on the ring side of the inner walls
-for v in (-11, -6, 6, 11):
-    e = RI + 0.2
-    D("Alarm", v - 0.5, v + 0.5, 2.9, 3.05, -e - 0.06, -e, M["alarm"])
-    D("Alarm", v - 0.5, v + 0.5, 2.9, 3.05, e, e + 0.06, M["alarm"])
-    D("Alarm", -e - 0.06, -e, 2.9, 3.05, v - 0.5, v + 0.5, M["alarm"])
-    D("Alarm", e, e + 0.06, 2.9, 3.05, v - 0.5, v + 0.5, M["alarm"])
-for x, z in ((-C0, -C0), (C0, -C0), (-C0, C0), (C0, C0)):
-    L(x, RH - 0.5, z)
-for x, z, al in ((0, -C0, "x"), (0, C0, "x"), (-C0, 0, "z"), (C0, 0, "z")):
-    L(x, RH - 0.5, z, al)
-# wall lockers and cabinets in the corners (solid), O2 bottles
-for x, z in ((-17.9, -11), (17.9, 11)):
-    B("Locker", x - 0.5, x + 0.5, 0, 2.2, z - 1.2, z + 1.2, M["plate"])
-    D("LockerLine", x - 0.52, x + 0.52, 1.1, 1.14, z - 1.2, z + 1.2, M["frame"])
-empty("KEG_3", LEVEL, P(18.2, 0, -10.5))
-empty("KEG_4", LEVEL, P(-18.2, 0, 10.5))
-empty("SPAWN_2", LEVEL, P(-16.5, 0, 16.5))
-empty("SPAWN_3", LEVEL, P(16.5, 0, -16.5))
-for i, (x, y, z) in enumerate(((-RO + 0.4, 3.35, -8), (RO - 0.4, 3.35, 9), (5, 3.35, -RO + 0.4))):
-    empty("FX_Steam_%d" % (i + 1), DECOR, P(x, y, z))
-
-# ---------------------------------------------------------------- the hydroponic greenhouse (north)
-GX, GZ0, GZ1, GH = 13, -34, -RO, 6
-seg("x", -RO, -GX, GX, RH + 0.3, GH + 0.3, M["panel"])  # above the ring's wall
-wall("z", -GX, GZ0, GZ1, 0, GH + 0.3, M["panel"], [(-31, -27, 1.0, 4.6, "win"), (-25, -21, 1.0, 4.6, "win")])
-wall("z", GX, GZ0, GZ1, 0, GH + 0.3, M["panel"], [(-31, -27, 1.0, 4.6, "win"), (-25, -21, 1.0, 4.6, "win")])
-wall("x", GZ0, -GX - 0.2, GX + 0.2, 0, GH + 0.3, M["panel"], [(-9, -4, 1.0, 4.6, "win"), (4, 9, 1.0, 4.6, "win")])
-# a glass roof: invisible slab, tinted panes, a grid of beams
-C(-GX, GX, GH, GH + 0.3, GZ0, GZ1)
-D("Glass", -GX, GX, GH + 0.1, GH + 0.14, GZ0, GZ1, M["glass"])
-for x in range(-GX, GX + 1, 13 // 2):
-    D("RoofBeam", x - 0.15, x + 0.15, GH - 0.3, GH + 0.3, GZ0, GZ1, M["frame"])
-for z in range(GZ0, GZ1 + 1, 3):
-    D("RoofBeam", -GX, GX, GH - 0.2, GH + 0.3, z - 0.12, z + 0.12, M["frame"])
-floor(-GX, GX, GZ0, GZ1, M["deck"])
-# four beds of plants under pink grow lights
-for x in (-9, -3, 3, 9):
-    B("Bed", x - 1, x + 1, 0, 0.9, -31, -23, M["plate"])
-    D("Soil", x - 0.9, x + 0.9, 0.9, 0.96, -30.9, -23.1, M["soil"])
-    for z in range(-30, -23):
-        for dx in (-0.45, 0.45):
+        x, z = 5.5 * sx, 5.5 * sz
+        B("Generator", x - 1.3, x + 1.3, 0, 2.4, z - 1.3, z + 1.3, M["plate"])
+        D("GenTop", x - 1.0, x + 1.0, 2.4, 2.7, z - 1.0, z + 1.0, M["frame"])
+        D("GenLight", x - 1.32, x + 1.32, 1.6, 1.75, z - 1.32, z + 1.32, M["core"])
+        D("GenStripe", x - 1.33, x + 1.33, 0, 0.3, z - 1.33, z + 1.33, M["hazard"])
+        vpipe(x, z, 2.7, 7.0, 0.25)
+console(-8.6, -7.6, 3.2, 4.4, "e")
+console(7.6, 8.6, -4.4, -3.2, "w")
+# the greenhouse: four beds of plants under pink grow lights, water tanks at the back
+for x in (-9, -4.5, 4.5, 9):
+    B("Bed", x - 0.8, x + 0.8, 0, 0.9, -37, -29, M["plate"])
+    D("Soil", x - 0.7, x + 0.7, 0.9, 0.96, -36.9, -29.1, M["soil"])
+    for z in range(-36, -29):
+        for dx in (-0.35, 0.35):
             h = random.uniform(0.5, 1.1)
             cyl(nm("L_DecoStalk"), DECOR, 0.03, h, P(x + dx, 0.95 + h / 2, z + 0.5), M["leaf"], verts=4)
-            sphere(nm("L_DecoLeaves"), DECOR, random.uniform(0.22, 0.38), P(x + dx, 0.95 + h, z + 0.5), M["leaf"],
+            sphere(nm("L_DecoLeaves"), DECOR, random.uniform(0.2, 0.34), P(x + dx, 0.95 + h, z + 0.5), M["leaf"],
                    scale=(1, 1, random.uniform(0.6, 1.0)))
-    D("GrowLight", x - 0.6, x + 0.6, 2.7, 2.8, -30.5, -23.5, M["grow"])
-    D("GrowHousing", x - 0.7, x + 0.7, 2.8, 2.95, -30.6, -23.4, M["frame"])
-    for z in (-30, -24):
-        D("Wire", x - 0.02, x + 0.02, 2.95, GH - 0.3, z - 0.02, z + 0.02, M["cable"])
-    pipe(x, x, 0.6, -31, -23, 0.06, "frame")  # the irrigation line along the bed
-for x in (-6, 6):
-    L(x, GH - 0.45, -27, "z")
-empty("KEG_5", LEVEL, P(-12.2, 0, -21.5))
-empty("SPAWN_4", LEVEL, P(0, 0, -32.5))
-# water tanks along the back wall
+    D("GrowLight", x - 0.5, x + 0.5, 2.7, 2.8, -36.5, -29.5, M["grow"])
+    D("GrowHousing", x - 0.6, x + 0.6, 2.8, 2.95, -36.6, -29.4, M["frame"])
+    for z in (-36, -30):
+        D("Wire", x - 0.02, x + 0.02, 2.95, 5.2, z - 0.02, z + 0.02, M["cable"])
 for x in (-11, 11):
-    cyl(nm("WaterTank"), LEVEL, 0.7, 2.4, P(x, 1.2, -32.8), M["white"], verts=12)
-
-# ---------------------------------------------------------------- the hangar (south) and its bay door
-HX, HZ0, HZ1, HH = 16, RO, 42, 10
-seg("x", RO, -HX, HX, RH + 0.3, HH + 0.3, M["plate"])
-wall("z", -HX, HZ0, HZ1, 0, HH + 0.3, M["plate"], [(25, 29, 6.5, 8.5, "win"), (33, 37, 6.5, 8.5, "win")])
-wall("z", HX, HZ0, HZ1, 0, HH + 0.3, M["plate"], [(25, 29, 6.5, 8.5, "win"), (33, 37, 6.5, 8.5, "win")])
-BD = 6  # half width of the bay door, its height
-wall("x", HZ1, -HX - 0.2, HX + 0.2, 0, HH + 0.3, M["plate"], [(-BD, BD, 0, BD, "door")])
-B("Door", -BD, BD, 0, BD, HZ1 - 0.15, HZ1 + 0.15, M["hazard"]).name = "D_Airlock_1"
-ceiling(-HX - 0.2, HX + 0.2, HH, HZ0, HZ1 + 0.2, M["plate"])
-floor(-HX, HX, HZ0, HZ1, M["deck"])
-for z in (39.6, 40.4, 41.2):
-    D("FloorStripe", -BD, BD, 0, 0.012, z, z + 0.4, M["hazard"])
-for x in (-BD - 0.6, BD + 0.6):
-    sphere(nm("L_DecoBeacon"), DECOR, 0.22, P(x, BD + 0.6, HZ1 - 0.4), M["alarm"], scale=(1, 1, 0.7))
-# the ceiling: girders and a crane rail
-for z in range(22, 42, 5):
-    D("Girder", -HX, HX, HH - 0.7, HH, z - 0.25, z + 0.25, M["frame"])
-D("CraneRail", -HX, HX, HH - 1.2, HH - 0.7, 30.8, 31.2, M["hazard"])
-D("CraneHook", -1.3, -0.7, 4.5, HH - 1.2, 30.9, 31.1, M["cable"])
-D("CraneHookBlock", -1.6, -0.4, 4.0, 4.5, 30.7, 31.3, M["hazard"])
-for x, z in ((-9, 25), (9, 25), (-9, 36), (9, 36)):
-    L(x, HH - 3, z)  # hung low on rods, or the floor stays dark
-    for dx in (-0.6, 0.6):
-        D("Rod", x + dx - 0.02, x + dx + 0.02, HH - 2.78, HH - 0.7, z - 0.02, z + 0.02, M["cable"])
-# the shuttle on its skids: a solid hull, wings low enough to stop bodies, a cockpit facing the bay door
-SX0, SX1, SZ0, SZ1 = -13, -7, 23, 36
-B("Shuttle", SX0, SX1, 0, 3.6, SZ0, SZ1, M["white"])
-B("ShuttleWing", -15.4, -4.6, 1.6, 1.9, 28, 33, M["white"])
-D("ShuttleNose", SX0 + 0.5, SX1 - 0.5, 0.4, 3.0, SZ1, SZ1 + 2.5, M["white"])
-D("Cockpit", SX0 + 1.0, SX1 - 1.0, 2.0, 2.9, SZ1 + 1.6, SZ1 + 2.55, M["screen"])
-D("ShuttleStripe", SX0 - 0.02, SX1 + 0.02, 2.2, 2.5, SZ0, SZ1, M["hazard"])
-D("ShuttleRoof", SX0 + 0.6, SX1 - 0.6, 3.6, 4.1, SZ0 + 1, SZ1 - 1, M["plate"])
-for x in (SX0 + 0.6, SX1 - 0.6):
-    D("Engine", x - 0.7, x + 0.7, 0.8, 2.6, SZ0 - 1.2, SZ0, M["frame"])
-    D("EngineGlow", x - 0.5, x + 0.5, 1.0, 2.4, SZ0 - 1.25, SZ0 - 1.2, M["core"])
-D("Ramp", SX0 + 1.5, SX1 - 1.5, 0, 0.25, SZ0 - 2.8, SZ0, M["plate"], rot=(-6, 0, 0))
-# cargo on the east side, a fuel cart, O2 bottles
-for x, z, y, s in ((10, 30, 0, 1.5), (11.6, 30, 0, 1.5), (10.8, 30.3, 1.5, 1.4), (12.5, 36.5, 0, 1.6),
-                   (8.5, 24.5, 0, 1.3), (-2, 39, 0, 1.2), (13.2, 22, 0, 1.4), (13.2, 23.5, 0, 1.4)):
+    cyl(nm("WaterTank"), LEVEL, 0.6, 2.4, P(x, 1.2, -39), M["white"], verts=12)
+# the hangar: the shuttle on its skids, cargo, a fuel cart
+B("Shuttle", -11, -5, 0, 3.4, 30, 41, M["white"])
+B("ShuttleWing", -12.6, -3.4, 1.6, 1.9, 34, 38, M["white"])
+D("ShuttleNose", -10.5, -5.5, 0.4, 2.9, 41, 43.2, M["white"])
+D("Cockpit", -10, -6, 2.0, 2.8, 42.2, 43.15, M["screen"])
+D("ShuttleStripe", -11.02, -4.98, 2.1, 2.4, 30, 41, M["hazard"])
+for x in (-10.4, -5.6):
+    D("Engine", x - 0.6, x + 0.6, 0.8, 2.5, 28.8, 30, M["frame"])
+    D("EngineGlow", x - 0.45, x + 0.45, 1.0, 2.3, 28.75, 28.8, M["core"])
+for x, z, y, s in ((8, 32, 0, 1.4), (9.5, 32, 0, 1.4), (8.75, 32.2, 1.4, 1.3), (10.5, 38, 0, 1.6), (2, 41.5, 0, 1.2), (11.2, 28.5, 0, 1.2)):
     crate(x, z, s, y)
-B("Cart", 3, 6, 0, 1.2, 33, 35, M["hazard"])
-D("CartTank", 3.2, 5.8, 1.2, 2.0, 33.3, 34.7, M["white"])
-empty("KEG_6", LEVEL, P(14.6, 0, 27))
-empty("KEG_7", LEVEL, P(14.6, 0, 39))
-empty("KEG_8", LEVEL, P(-14.6, 0, 40))
-empty("SPAWN_5", LEVEL, P(0, 0, 29))
-# the lever of the bay door, on the east wall, and its panel
-empty("LEVER_1", LEVEL, P(HX - 0.35, 1.3, 24))
-D("LeverPanel", HX - 0.26, HX - 0.2, 0.8, 1.9, 23.4, 24.6, M["frame"])
-D("LeverSign", HX - 0.28, HX - 0.26, 2.0, 2.3, 23.4, 24.6, M["hazard"])
-empty("FX_Steam_4", DECOR, P(HX - 0.4, 8, 32))
+B("Cart", 2, 5, 0, 1.2, 35, 37, M["hazard"])
+D("CartTank", 2.2, 4.8, 1.2, 2.0, 35.3, 36.7, M["white"])
+for z in (41.2, 42, 42.8):
+    D("FloorStripe", -5, 5, 0, 0.012, z, z + 0.4, M["hazard"])
+B("Door", -5, 5, 0, 6, 43.85, 44.15, M["hazard"]).name = "D_Airlock_1"
+empty("LEVER_1", LEVEL, P(12.65, 1.3, 36))
+D("LeverPanel", 12.74, 12.8, 0.8, 1.9, 35.4, 36.6, M["frame"])
+D("LeverSign", 12.72, 12.74, 2.0, 2.3, 35.4, 36.6, M["hazard"])
+# the crew quarters: a mess with two long tables, bunk rooms either side, lockers
+for z0, z1 in ((-4, -3), (3, 4)):
+    B("MessTable", 31, 38, 0, 0.75, z0, z1, M["plate"])
+for z in (-9.85, 9.0):
+    for x0 in (28.3, 37.0, 40.5):
+        B("Bunk", x0, x0 + 2, 0, 1.6, z, z + 0.85, M["plate"])
+        D("Mattress", x0 + 0.05, x0 + 1.95, 0.5, 0.62, z + 0.05, z + 0.8, M["couch"])
+        D("Mattress", x0 + 0.05, x0 + 1.95, 1.4, 1.52, z + 0.05, z + 0.8, M["couch"])
+for z in (-5.2, 4.4):
+    B("Locker", 43.0, 43.8, 0, 2.2, z - 0.6, z + 0.6, M["plate"])
+console(28.4, 29.4, -2.5, -1.3, "e")
+# the labs: benches in the hall, cryo tubes in the north lab, beds in the infirmary
+B("Bench", -38, -33, 0, 0.95, 1.6, 2.6, M["white"])
+D("BenchTop", -38.05, -32.95, 0.95, 1.0, 1.55, 2.65, M["frame"])
+for x in (-42.6, -29.6):
+    cyl(nm("Cryo"), LEVEL, 0.55, 2.2, P(x, 1.1, -8.6), M["frame"], verts=10)
+    cyl(nm("L_DecoCryoGlass"), DECOR, 0.48, 1.6, P(x, 1.2, -8.6), M["screen"], verts=10)
+for x0 in (-43.4, -31.0):
+    B("MedBed", x0, x0 + 2, 0, 0.8, 8.4, 9.7, M["white"])
+console(-43.6, -42.6, -5.5, -4.3, "e")
+console(-29.4, -28.4, 2.6, 3.8, "w")
+empty("LEVER_2", LEVEL, P(-43.65, 1.3, 4))
+D("LeverPanel", -43.8, -43.74, 0.8, 1.9, 3.4, 4.6, M["frame"])
+D("LeverSign", -43.74, -43.72, 2.0, 2.3, 3.4, 4.6, M["hazard"])
+# the airlock chamber
+B("Door", -50.15, -49.85, 0, 3, -1.5, 1.5, M["hazard"]).name = "D_Airlock_2"
+for x in (-48.5, -46.5):
+    D("FloorStripe", x, x + 0.5, 0, 0.012, -2, 2, M["hazard"])
+for x in (-48.6, -47.4, -46.2):
+    D("SuitLocker", x - 0.5, x + 0.5, 0.3, 2.6, -1.8, -1.55, M["frame"])
+    D("Suit", x - 0.3, x + 0.3, 0.6, 2.0, -1.7, -1.45, M["white"])
 
-# ---------------------------------------------------------------- the observation deck (east)
-OX0, OX1, OZ, OH = RO, 32, 9, 5
-seg("z", RO, -OZ, OZ, RH + 0.3, OH + 0.3, M["panel"])
-wall("x", -OZ, OX0, OX1 + 0.2, 0, OH + 0.3, M["panel"], [(24, 28, 1.2, 3.8, "win")])
-wall("x", OZ, OX0, OX1 + 0.2, 0, OH + 0.3, M["panel"], [(24, 28, 1.2, 3.8, "win")])
-wall("z", OX1, -OZ, OZ, 0, OH + 0.3, M["panel"], [(-8, -3, 0.8, 4.4, "win"), (-2.5, 2.5, 0.8, 4.4, "win"), (3, 8, 0.8, 4.4, "win")])
-ceiling(OX0, OX1 + 0.2, OH, -OZ - 0.2, OZ + 0.2)
-floor(OX0, OX1, -OZ, OZ, M["couch"])
-for z0, z1 in ((-7, -3), (3, 7)):
-    B("Couch", 28, 29.4, 0, 0.5, z0, z1, M["couch"])
-    D("CouchBack", 28.9, 29.4, 0.5, 1.1, z0, z1, M["couch"])
-B("Table", 24.2, 25.8, 0, 0.7, -1, 1, M["plate"])
-D("TableTop", 24.1, 25.9, 0.7, 0.75, -1.1, 1.1, M["frame"])
-D("TableScreen", 24.5, 25.5, 0.75, 0.76, -0.6, 0.6, M["screen"])
-console(20, 22.5, -8.6, -7.6, "s")
-console(20, 22.5, 7.6, 8.6, "n")
-for z in (-5, 5):
-    L(25.5, OH - 0.25, z)
-empty("KEG_9", LEVEL, P(31.2, 0, -8.2))
-empty("PLAYER_START", LEVEL, P(22.5, 0, 0))
+# ---------------------------------------------------------------- gameplay
+# spawn gates (src/worlds/station.js spawnGates says which kind comes through which):
+# 1-2 the hangar (the shuttle, the cargo), 3 the greenhouse's back, 4 the north lab, 5 the north
+# bunks, 6 the reactor, 7-10 the perimeter's corners (drone docks, nests)
+for i, (x, z) in enumerate(((-2, 36), (9, 41), (0, -38), (-40, -8.5), (36, -8), (-7.5, 0),
+                            (34, -30), (-34, 32), (-33.5, -29), (33.5, 31))):
+    empty("SPAWN_%d" % (i + 1), LEVEL, P(x, 0, z))
+empty("PLAYER_START", LEVEL, P(34, 0, 0))
+for i, (x, z) in enumerate(((7.8, 7.8), (-7.8, -7.8), (11.2, -26.8), (12.2, 28.2), (-12.2, 42.6),
+                            (43.3, 6.3), (-43.3, 5.5), (35.3, -31.3), (-35.3, 33.3), (17.2, -1.2))):
+    empty("KEG_%d" % (i + 1), LEVEL, P(x, 0, z))
+# vents in the ceilings of the shafts and tunnels
+VENTS = [(12, MH - 0.08, -18), (21, MH - 0.08, -24), (19, MH - 0.08, 12), (19, MH - 0.08, 24),
+         (-12, MH - 0.08, 18), (-21, MH - 0.08, 25), (-19, MH - 0.08, -12), (-19, MH - 0.08, -22),
+         (13, TH - 0.08, -1.2), (-13, TH - 0.08, 1.2), (0.8, TH - 0.08, -13), (-0.8, TH - 0.08, 13), (5, 6.92, -2)]
+for i, (x, y, z) in enumerate(VENTS):
+    empty("VENT_%d" % (i + 1), LEVEL, P(x, y, z))
+    D("Vent", x - 0.5, x + 0.5, y + 0.02, y + 0.06, z - 0.35, z + 0.35, M["frame"])
+    for k in range(5):
+        D("VentSlat", x - 0.45, x + 0.45, y, y + 0.02, z - 0.3 + k * 0.14, z - 0.26 + k * 0.14, M["hole"])
 
-# ---------------------------------------------------------------- the airlock chamber (west)
-AX0, AX1, AZ, AH = -25, -RO, 2.5, 3.5
-wall("x", -AZ, AX0 - 0.2, AX1, 0, AH + 0.3, M["plate"])
-wall("x", AZ, AX0 - 0.2, AX1, 0, AH + 0.3, M["plate"])
-wall("z", AX0, -AZ, AZ, 0, AH + 0.3, M["plate"], [(-1.5, 1.5, 0, 3, "door")])
-B("Door", AX0 - 0.15, AX0 + 0.15, 0, 3, -1.5, 1.5, M["hazard"]).name = "D_Airlock_2"
-ceiling(AX0 - 0.2, AX1, AH, -AZ - 0.2, AZ + 0.2, M["plate"])
-floor(AX0, AX1, -AZ, AZ, M["grating"])
-for x in (-23.5, -21.5):
-    D("FloorStripe", x, x + 0.5, 0, 0.012, -AZ, AZ, M["hazard"])
-for z in (-1.9, 1.9):
-    sphere(nm("L_DecoBeacon"), DECOR, 0.18, P(AX0 + 0.35, 3.2, z), M["alarm"], scale=(1, 1, 0.7))
-# suits hanging in lockers along the chamber walls (dressing only)
-for x in (-23.8, -22.6, -21.4):
-    D("SuitLocker", x - 0.5, x + 0.5, 0.3, 2.6, -AZ + 0.2, -AZ + 0.45, M["frame"])
-    D("Suit", x - 0.3, x + 0.3, 0.6, 2.0, -AZ + 0.3, -AZ + 0.55, M["white"])
-L(-22, AH - 0.2, 0, "z")
-empty("SPAWN_6", LEVEL, P(-22.5, 0, 0))
-empty("LEVER_2", LEVEL, P(-RO + 0.35, 1.3, 4))
-D("LeverPanel", -RO + 0.2, -RO + 0.26, 0.8, 1.9, 3.4, 4.6, M["frame"])
-D("LeverSign", -RO + 0.26, -RO + 0.28, 2.0, 2.3, 3.4, 4.6, M["hazard"])
-
-# ---------------------------------------------------------------- outside: seen through the windows
-# a solar array east of the observation deck, a mast and dish north of the greenhouse
-D("Truss", 34, 70, 2.3, 2.7, -0.2, 0.2, M["frame"])
-for x in range(38, 70, 8):
+# outside, seen through the windows: a solar array east of the mess, a mast north of the greenhouse
+D("Truss", 46, 80, 2.3, 2.7, -0.2, 0.2, M["frame"])
+for x in range(50, 80, 8):
     for z0, z1 in ((-9, -0.6), (0.6, 9)):
         D("SolarPanel", x - 3.5, x + 3.5, 2.45, 2.55, z0, z1, M["solar"])
         D("SolarRib", x - 3.5, x + 3.5, 2.4, 2.6, (z0 + z1) / 2 - 0.05, (z0 + z1) / 2 + 0.05, M["frame"])
-D("Mast", -0.3, 0.3, 0, 22, -48, -47.4, M["frame"])
-sphere("L_DecoDish", DECOR, 3.0, P(0, 20, -47.7), M["white"], scale=(1, 0.35, 1))
-sphere("L_DecoMastLight", DECOR, 0.3, P(0, 22.3, -47.7), M["alarm"])
-print("level objects:", len(LEVEL.all_objects), "decor objects:", len(DECOR.all_objects), "lights:", lightI[0])
+D("Mast", -0.3, 0.3, 0, 22, -54, -53.4, M["frame"])
+sphere("L_DecoDish", DECOR, 3.0, P(0, 20, -53.7), M["white"], scale=(1, 0.35, 1))
+sphere("L_DecoMastLight", DECOR, 0.3, P(0, 22.3, -53.7), M["alarm"])
+print("level:", len(LEVEL.all_objects), "decor:", len(DECOR.all_objects), "lights:", len(LIGHTS), "walls:", len(RUNS))

@@ -1,8 +1,9 @@
 import { SABLES } from './sables.js';
 
 // "Station spatiale infestée" (U2): an orbital station gone dark, over a ringed planet.
-// The map is its own (blender/station/station.py): a ring of corridors round the engine room, the
-// greenhouse, the hangar, the observation deck, and two airlocks on the void. The weapons
+// The map is its own (blender/station/station.py, dressed by dressing.py): a network of tunnels in
+// three loops (round the reactor, through the main tunnels and the maintenance shafts, and the
+// perimeter), five districts (reactor, greenhouse, hangar, crew quarters, labs) and two airlocks. The weapons
 // (blender/station/weapons.py) and the enemies (blender/station/enemies.py) are its own; the boss
 // is still the desert's pharaoh until the hive queen is made.
 export const STATION = {
@@ -28,6 +29,8 @@ export const STATION = {
       parasite: 'models/station/parasite.glb',
       host: 'models/station/host.glb',
       brute: 'models/station/brute.glb',
+      drone: 'models/station/drone.glb',
+      crawler: 'models/station/crawler.glb',
     },
   },
   props: null,
@@ -64,6 +67,20 @@ export const STATION = {
   startUnlocked: ['baton', 'laser'],
   unlocks: { 2: 'plasma', 3: 'flamer', 5: 'railgun' },
   grenade: 'mine', // G: sticky mines (MINE in src/sim/sim.js)
+  // Where each kind comes from (SPAWN_n of the map, 1-based; see blender/station/station.py):
+  // the infected crew from the quarters, the labs, the greenhouse and the reactor; parasites from
+  // the nests of eggs; brutes from the hangar and the wide perimeter corners (the maintenance shafts
+  // are too narrow for them); drones from their docks. Crawlers use the vents (Sim#pickSpawn).
+  // the tunnels are 3.6 m inside: big bodies (the brute, 0.95 m round) keep one cell off the walls,
+  // not two, or the hangar's brutes find no way out of it
+  nav: { bigClear: 1 },
+  spawnGates: {
+    host: [1, 3, 4, 5, 6, 9],
+    parasite: [3, 9, 10],
+    brute: [1, 2, 8, 10],
+    drone: [2, 7, 8],
+    boss: [1],
+  },
 
   // ---------- enemies (models: blender/station/enemies.py) ----------
   enemies: {
@@ -85,39 +102,65 @@ export const STATION = {
       swarm: 2,
       burst: { type: 'parasite', chance: 0.3 },
     },
-    // the armoured brute: a carapace in front stops most of a blow; it charges in a straight line
+    // the armoured brute: a carapace in front stops half a blow; it charges in a straight line.
+    // In tunnels you mostly meet it head on, so it is lighter than the desert's tank and its
+    // carapace narrower than the crab's (it took whole magazines before, 25/10/2026)
     brute: {
-      hp: 620, speed: 3.0, radius: 0.95, height: 2.6, headY: 2.0,
+      hp: 400, speed: 3.0, radius: 0.95, height: 2.6, headY: 2.0,
       melee: { range: 2.8, dmg: 32, windup: 0.5, cd: 1.6 },
       charge: { min: 5, max: 22, wind: 0.75, speed: 13, dur: 1.3, dmg: 30, cd: [5, 7] },
-      armor: { mul: 0.25, arc: 0.5 }, // damage × mul within ±60° of its face
+      armor: { mul: 0.5, arc: 0.7 }, // damage × mul within ±45° of its face
       big: true,
+    },
+    // the security drone, gone rogue: it hovers under the ceiling, fires salvos of laser bolts when
+    // it sees you in range, then slips out of sight for a moment (Enemies#drone)
+    drone: {
+      hp: 90, speed: 5.5, radius: 0.45, height: 0.5, headY: 0.3,
+      fly: { height: 2.4, reach: 0, spawn: 2.2 }, // hovering height of its middle, height over a gate when it comes
+      melee: { range: 0.01, dmg: 0, windup: 1, cd: 99 },
+      ranged: { min: 0, max: 30, cd: 2.4, windup: 0.5, speed: 30, dmg: 7, count: 1, spread: 0, salvo: 3, gap: 0.15 },
+      drone: { range: 22, hide: [1.5, 2.6] }, // fires within range; seconds out of sight between salvos
+      muzzle: [0, 0.1, 0.32],
+      load: 0.7,
+    },
+    // the duct crawler: comes out of the air vents in the walls and ceilings, fast and low; badly
+    // hurt, it runs back into the nearest vent and comes out of another one a few seconds later
+    crawler: {
+      hp: 60, speed: 7.2, radius: 0.38, height: 0.6, headY: 0.45,
+      melee: { range: 1.4, dmg: 9, windup: 0.15, cd: 0.7 },
+      leap: { min: 3, max: 6, dur: 0.4, dmg: 10, cd: [2.5, 4] },
+      vent: { retreat: 0.5, hide: [2.5, 4] }, // flees below that share of its health; seconds in the ducts
+      load: 0.5,
     },
     boss: { ...SABLES.enemies.boss, summon: 'parasite' },
   },
   waves: [
     { host: 6, parasite: 6 },
-    { host: 8, parasite: 9, brute: 1 },
-    { host: 10, parasite: 9, brute: 2 },
-    { host: 12, parasite: 12, brute: 3 },
-    { host: 6, parasite: 9, brute: 2, boss: 1 },
+    { host: 8, parasite: 9, brute: 1, crawler: 2 },
+    { host: 9, parasite: 9, brute: 2, drone: 3, crawler: 3 },
+    { host: 10, parasite: 12, brute: 3, drone: 4, crawler: 4 },
+    { host: 6, parasite: 9, brute: 2, drone: 2, crawler: 2, boss: 1 },
   ],
   survival: [
     { type: 'host', cost: 2, from: 1, count: 2 }, // a pair
     { type: 'parasite', cost: 1.5, from: 1, count: 3 }, // a whole group
     { type: 'brute', cost: 4, from: 2 },
+    { type: 'crawler', cost: 1.5, from: 2 },
+    { type: 'drone', cost: 2.5, from: 3 },
   ],
   arenaGuards: ['host', 'host', 'brute'],
-  targets: [['host', 2], ['parasite', 3], ['brute', 1]],
+  targets: [['host', 2], ['parasite', 3], ['brute', 1], ['drone', 2], ['crawler', 2]],
   // the creatures' cries: the desert's recordings, pitched (src/audio.js setVoices)
   voices: {
-    growls: { parasite: 'enemies/scarab_skitter', host: 'enemies/mummy_groan', brute: 'enemies/tank_roar' },
-    rates: { parasite: 1.5, host: 0.8, brute: 0.75 },
+    growls: { parasite: 'enemies/scarab_skitter', host: 'enemies/mummy_groan', brute: 'enemies/tank_roar', crawler: 'enemies/runner_screech' },
+    rates: { parasite: 1.5, host: 0.8, brute: 0.75, crawler: 1.4 },
   },
   looks: {
     parasite: { color: [0.85, 0.72, 0.5], dot: '#e0c08a' },
     host: { color: [0.55, 0.9, 0.35], dot: '#9de070' },
     brute: { color: [1, 0.35, 0.15], dot: '#ff5a2a' },
+    drone: { color: [1, 0.15, 0.1], dot: '#ff3020' },
+    crawler: { color: [0.6, 0.85, 0.3], dot: '#a0e050' },
   },
 
   texts: {
@@ -147,20 +190,25 @@ export const STATION = {
     sky: { zenith: [0.0, 0.0, 0.004], horizon: [0.004, 0.006, 0.014], haze: [0.03, 0.01, 0.04], glow: [0.5, 0.45, 0.35] },
     stars: 0xe8eeff,
     // the sun, high in the south-west: it comes in through the greenhouse roof and lights the planet's face
-    moon: { dir: [-0.35, 0.65, 0.5], disc: '#fff6e0', light: 0xdfe8ff, intensity: 2.2 },
-    hemi: { sky: 0x1c2228, ground: 0x050506, intensity: 0.22 },
+    moon: { dir: [-0.35, 0.65, 0.5], disc: '#fff6e0', light: 0xdfe8ff, intensity: 1.0 },
+    hemi: { sky: 0x1c2228, ground: 0x050506, intensity: 0.16 },
     // the ceiling neons: cold white tubes, many of them dying or dead; intensity of a working one
-    fire: { light: 0xbcd4ff, halo: 0xb8d0ff, glow: '#d8e6ff', neon: true, intensity: 8 },
+    fire: { light: 0xbcd4ff, halo: 0xb8d0ff, glow: '#d8e6ff', neon: true, intensity: 4 },
+    // the lit surfaces of the map (tubes, screens, the reactor's rings, the grow lamps, the accent
+    // bands) at half what Blender exports: the bloom does the rest
+    emissiveScale: 0.5,
+    // a gentler bloom than the other universes: only the brightest sources flare
+    bloom: { strength: 0.4, threshold: 0.9 },
     space: {
       planet: { dir: [0.9, -0.1, 0.25], size: 170, color: '#c98a52', band: '#7a4a2c', ring: '#d6c3a0', atmosphere: '#7fb4ff' },
     },
     // the emergency lighting: a red glow over everything that pulses slowly
-    alarm: { color: 0xff1a10, intensity: 0.28, period: 3.2 },
+    alarm: { color: 0xff1a10, intensity: 0.18, period: 3.2 },
     // rotating amber beacons and their sweeping beams (FX_Beacon_n), sparks, drips
-    beacon: { color: 0xff5a10 },
-    flashlight: true, // the dark: a torch on the gun, F to turn it off
+    beacon: { color: 0xff5a10, spot: 12, beam: 0.3 },
+    flashlight: { intensity: 9 }, // the dark: a torch on the gun, F to turn it off
     // shafts of sunlight through the greenhouse's glass roof (y: the roof, at: where they come in)
-    sunShafts: { y: 6.1, at: [[-9, -31], [-3, -27], [3, -31], [9, -27], [-7, -23.5], [5, -23.5]], radius: 1.0, strength: 0.07 },
+    sunShafts: { y: 5.6, at: [[-9, -38], [-4, -33], [4, -38], [9, -33], [-7, -28.5], [6, -28.5]], radius: 1.0, strength: 0.045 },
     film: true, // grain, vignette and scanlines over the picture
     // the hum of the machines instead of the wind
     hum: true,

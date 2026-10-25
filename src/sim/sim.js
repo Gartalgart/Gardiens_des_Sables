@@ -73,6 +73,7 @@ export class Sim {
     // the Level is shared by the games: a pier the Kraken broke stands again, and the nav grid
     // forgets the previous game's targets
     level.restore();
+    level.setNavOptions(this.world.nav);
     level.nav.lastCell = null;
     level.nav.timer = 0;
     this.mode = new MODES[mode](this, arena);
@@ -268,12 +269,15 @@ export class Sim {
     }
     if (eh && def.pierceAll) {
       // the railgun: through every enemy on its line, up to the wall
+      // (each one once: two bodies overlapping would otherwise send the ray back and forth forever)
       let at = eh, from = origin, done = 0;
+      const pierced = new Set();
       while (at) {
+        pierced.add(at.enemy);
         this.#hitEnemy(player, { ...at, dist: done + at.dist }, dir, def, 1);
         done += at.dist;
         from = at.point;
-        at = this.enemies.raycast(from, dir, maxD - done, at.enemy);
+        at = this.enemies.raycast(from, dir, maxD - done, pierced);
       }
       if (wh) this.emit('impactWall', { point: wh.point, normal: wh.normal });
       return { point: wh ? wh.point : origin.clone().addScaledVector(dir, 250), enemy: eh.enemy };
@@ -856,22 +860,33 @@ export class Sim {
     const players = this.alivePlayers();
     const T = this.world.enemies[type];
     if (T.kraken) return new THREE.Vector3(...T.kraken.anchor); // out in the deep water, between the piers
+    // the gates this kind comes through, when the universe says (the station: crew from the
+    // quarters and labs, parasites from the nests, brutes from the hangar, drones from their docks)
+    const gates = this.world.spawnGates?.[type]?.map((n) => this.level.spawns[n - 1]).filter(Boolean);
     if (T.post && this.world.posts?.length) {
       const free = this.world.posts.filter(([x, , z]) => !this.enemies.list.some((e) => e.T.post && Math.hypot(e.pos.x - x, e.pos.z - z) < 1.5));
       const pool = free.length ? free : this.world.posts;
       return new THREE.Vector3(...pool[Math.floor(Math.random() * pool.length)]);
     }
-    // flyers come over the cliffs: a gate, high up
+    // flyers come over the cliffs: a gate, high up (under the station's ceilings, not so high)
     if (T.fly) {
-      const s = this.level.spawns[Math.floor(Math.random() * this.level.spawns.length)].clone();
-      s.y += 6;
+      const pool = gates?.length ? gates : this.level.spawns;
+      const s = pool[Math.floor(Math.random() * pool.length)].clone();
+      s.y += T.fly.spawn ?? 6;
       return s;
+    }
+    // duct crawlers come out of a vent not too close to the players, nor too far
+    if (T.vent && this.level.vents.length) {
+      const vents = this.level.vents;
+      const ok = vents.filter((v) => players.every((pl) => v.out.distanceTo(pl.pos) > 6) && players.some((pl) => v.out.distanceTo(pl.pos) < 26));
+      const pool = ok.length ? ok : vents;
+      return pool[Math.floor(Math.random() * pool.length)].out.clone();
     }
     if (T.fromWater) {
       const p = this.level.nav.ambushPoint(8, 80, (c) => this.level.inWater(c.x, c.z, 0) && players.every((pl) => c.distanceTo(pl.pos) > 9), T.fromWater);
       if (p) return p;
     }
-    if (type !== 'boss' && Math.random() < D.ambush) {
+    if (type !== 'boss' && !gates?.length && Math.random() < D.ambush) {
       const p = this.level.nav.ambushPoint(D.ambushMin, 44, (c) => players.every((pl) =>
         c.distanceTo(pl.pos) > 14 && !this.level.lineOfSight(c.clone().setY(1.6), pl.eye)));
       if (p) return p;
@@ -881,10 +896,11 @@ export class Sim {
     // treasure cave or down the galleon's stairs
     const nav = this.level.nav;
     const layer = nav.layers[T.climber ? 'climb' : T.radius > 0.6 ? 'big' : 'small'];
-    const open = this.level.spawns.filter((s) => layer.dist[nav.index(s.x, s.z)] < Infinity);
-    const gates = open.length ? open : this.level.spawns;
-    const far = gates.filter((s) => minDist(s) > 25);
-    const pool = far.length ? far : gates;
+    const all = gates?.length ? gates : this.level.spawns;
+    const open = all.filter((s) => layer.dist[nav.index(s.x, s.z)] < Infinity);
+    const usable = open.length ? open : all;
+    const far = usable.filter((s) => minDist(s) > 25);
+    const pool = far.length ? far : usable;
     const s = pool[Math.floor(Math.random() * pool.length)].clone();
     // a little spread around the gate, unless that would put the body in a wall
     return this.spreadAround(s, type, 3);
