@@ -6,6 +6,19 @@ export const SABLES = {
   name: 'Gardiens des Sables',
   title: ['Gardiens', 'des Sables'], // the title screen's two lines
   lede: "La cité-temple s'est réveillée. Ses gardiens de pierre se lèvent à la tombée de la nuit.",
+  // the look of the in-game interface (HUD, pause, end screen; the title screen stays neutral):
+  // display font, accent colours, text, frames, buttons (top, bottom, text), the health bar,
+  // the grenade icons (colour, corner radius) and the minimap (ground, tint of the walls)
+  hud: {
+    font: '"Cinzel", serif',
+    accent: '#e8b45a', accentDim: '#9c7438', accentHi: '#ffd36b',
+    ink: '#f3e6cc', inkDim: '#b9a789',
+    line: 'rgba(232, 180, 90, 0.35)', panel: 'rgba(12, 10, 16, 0.78)',
+    button: ['#f2c773', '#c98f3a', '#1a1206'],
+    health: ['#c9452e', '#e8b45a'],
+    grenade: ['#8a4a22', '50% 50% 45% 45%'],
+    map: { ground: 'rgba(70, 55, 40, 0.35)', wall: [1.15, 1, 0.75] },
+  },
 
   files: {
     level: 'models/level.glb',
@@ -136,6 +149,7 @@ export const SABLES = {
     grenadeName: 'Pots de feu',
     grenadeHelp: 'Lancer un pot de feu (grenade)',
     killsLabel: 'Gardiens abattus',
+    guards: 'Gardiens', // the arena's wandering enemies: kill feed and scoreboard column
     tips: 'Les tirs à la tête infligent double dégâts. Le khépesh tranche tout ce qui est devant vous, et sa parade renvoie les orbes ennemis. Seuls les ennemis tués au corps à corps lâchent de la santé. De nouvelles armes se débloquent au fil des vagues. La santé se régénère après quelques secondes sans blessure.',
     victory: 'La cité-temple retrouve son silence. Les gardiens sont retournés au sable.',
     bossName: 'LE PHARAON ÉVEILLÉ', // over the boss health bar

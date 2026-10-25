@@ -1,12 +1,24 @@
+/* The neutral look, shared by every universe: the title screen and its sub-screens (options,
+   multiplayer, leaderboard). The HUD, the pause and the end screen take the universe's own look,
+   set on them from its `hud` (src/worlds/*.js, applied in src/main.js). */
 :root {
-  --gold: #e8b45a;
-  --gold-dim: #9c7438;
-  --ink: #f3e6cc;
-  --ink-dim: #b9a789;
+  --display: "Rajdhani", system-ui, sans-serif;
+  --accent: #eef1f5;
+  --accent-dim: #858e99;
+  --accent-hi: #ffffff;
+  --ink: #e6eaef;
+  --ink-dim: #9aa3ad;
   --blood: #d63a2a;
   --cyan: #6fe3ff;
-  --panel: rgba(12, 10, 16, 0.78);
-  --line: rgba(232, 180, 90, 0.35);
+  --panel: rgba(10, 12, 16, 0.82);
+  --line: rgba(255, 255, 255, 0.16);
+  --btn-hi: #f4f6f8;
+  --btn-lo: #c3cad2;
+  --btn-ink: #0c0f13;
+  --health-a: #c9452e;
+  --health-b: #eef1f5;
+  --grenade: #8a8f96;
+  --grenade-radius: 50%;
 }
 
 * { box-sizing: border-box; }
@@ -39,55 +51,55 @@ html, body {
 #minimap { width: 200px; height: 200px; display: block; border-radius: 50%; }
 
 #top-center { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); text-align: center; }
-#wave-label { font-family: "Cinzel", serif; font-weight: 800; font-size: 26px; letter-spacing: 0.18em; color: var(--gold); }
+#wave-label { font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: 0.18em; color: var(--accent); }
 #timer.low { color: var(--blood); }
 #timer { font-size: 20px; font-weight: 700; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
 
 #top-right { position: absolute; top: 18px; right: 24px; text-align: right; }
 #killfeed { position: absolute; top: 150px; right: 24px; text-align: right; font-size: 15px; letter-spacing: 0.06em; }
 #killfeed div { margin-bottom: 4px; padding: 3px 10px; background: rgba(0,0,0,0.45); border-right: 2px solid var(--line); transition: opacity 0.6s; }
-#killfeed div.me { border-right-color: var(--gold); }
-#killfeed .w { color: var(--gold-dim); margin: 0 8px; font-size: 12px; letter-spacing: 0.12em; }
-#killfeed .head { color: var(--gold); }
+#killfeed div.me { border-right-color: var(--accent); }
+#killfeed .w { color: var(--accent-dim); margin: 0 8px; font-size: 12px; letter-spacing: 0.12em; }
+#killfeed .head { color: var(--accent); }
 #scoreboard { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); min-width: 420px; padding: 16px 22px; background: rgba(8,8,14,0.82); border: 1px solid var(--line); }
-#scoreboard h3 { margin: 0 0 10px; font-family: "Cinzel", serif; letter-spacing: 0.18em; color: var(--gold); text-align: center; }
+#scoreboard h3 { margin: 0 0 10px; font-family: var(--display); letter-spacing: 0.18em; color: var(--accent); text-align: center; }
 #scoreboard .meta { text-align: center; color: var(--ink-dim); font-size: 14px; margin-bottom: 8px; letter-spacing: 0.1em; }
 #lobby-arena .seg-row { margin-bottom: 8px; }
 .lede.small { font-size: 14px; margin: 0 0 10px; }
-#enemies-left { font-family: "Cinzel", serif; font-size: 42px; font-weight: 800; line-height: 1; color: var(--ink); }
+#enemies-left { font-family: var(--display); font-size: 42px; font-weight: 800; line-height: 1; color: var(--ink); }
 
 #bottom-left { position: absolute; left: 24px; bottom: 22px; width: 300px; }
 #health-bar { position: relative; height: 14px; margin-top: 6px; background: rgba(0,0,0,0.55); border: 1px solid var(--line); transform: skewX(-18deg); overflow: hidden; }
 #health-fill, #health-ghost { position: absolute; inset: 0; transform-origin: left; }
 #health-ghost { background: rgba(255, 255, 255, 0.35); z-index: 0; transition: transform 0.6s ease 0.25s; }
-#health-fill { background: linear-gradient(90deg, #c9452e, #e8b45a); z-index: 1; transition: transform 0.08s linear; }
+#health-fill { background: linear-gradient(90deg, var(--health-a), var(--health-b)); z-index: 1; transition: transform 0.08s linear; }
 #health-fill.low { background: linear-gradient(90deg, #8c1a10, #d63a2a); animation: pulse 0.8s infinite alternate; }
 #health-num { font-size: 30px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
 
 #bottom-right { position: absolute; right: 24px; bottom: 22px; text-align: right; }
-#weapon-name { font-family: "Cinzel", serif; font-size: 16px; letter-spacing: 0.2em; color: var(--gold); }
+#weapon-name { font-family: var(--display); font-size: 16px; letter-spacing: 0.2em; color: var(--accent); }
 #ammo { font-size: 48px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 #ammo-mag.empty { color: var(--blood); }
 #reload-hint { font-size: 14px; letter-spacing: 0.2em; color: var(--blood); animation: pulse 0.6s infinite alternate; }
 #grenades { margin-top: 6px; font-size: 13px; letter-spacing: 0.15em; color: var(--ink-dim); }
-#grenades i { display: inline-block; width: 11px; height: 13px; margin-left: 4px; border-radius: 50% 50% 45% 45%; background: #8a4a22; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.35); vertical-align: -2px; }
+#grenades i { display: inline-block; width: 11px; height: 13px; margin-left: 4px; border-radius: var(--grenade-radius); background: var(--grenade); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.2); vertical-align: -2px; }
 #grenades i.empty { background: transparent; border: 1px dashed var(--line); }
 #points { position: absolute; left: calc(50% + 56px); top: calc(50% - 18px); text-align: left; pointer-events: none; }
-#points-total { font-family: "Cinzel", serif; font-weight: 800; font-size: 26px; color: var(--gold); text-shadow: 0 0 8px rgba(0,0,0,0.8); transition: opacity 0.4s; }
+#points-total { font-family: var(--display); font-weight: 800; font-size: 26px; color: var(--accent); text-shadow: 0 0 8px rgba(0,0,0,0.8); transition: opacity 0.4s; }
 #points-total.bump { animation: pointsBump 0.18s ease-out; }
 #points-list div { font-size: 14px; letter-spacing: 0.12em; color: var(--ink); text-shadow: 0 0 6px rgba(0,0,0,0.9); transition: opacity 0.4s; }
-#points-list b { color: var(--gold); margin-left: 6px; }
+#points-list b { color: var(--accent); margin-left: 6px; }
 #announce { position: absolute; top: 17%; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 14px; }
-#medal { text-align: center; font-family: "Cinzel", serif; font-weight: 800; font-size: 46px; letter-spacing: 0.12em; color: #ffd36b; text-shadow: 0 0 18px rgba(255,170,60,0.7), 0 2px 0 #5a3410; white-space: nowrap; }
+#medal { text-align: center; font-family: var(--display); font-weight: 800; font-size: 46px; letter-spacing: 0.12em; color: var(--accent-hi); text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 70%, transparent), 0 2px 0 #000; white-space: nowrap; }
 #medal.show { animation: medalIn 0.35s cubic-bezier(.2,1.6,.4,1); }
 #medal small { display: block; font-size: 15px; letter-spacing: 0.35em; color: var(--ink); text-shadow: none; }
 @keyframes pointsBump { from { transform: scale(1.25); } to { transform: scale(1); } }
 @keyframes medalIn { from { opacity: 0; transform: scale(1.6); } to { opacity: 1; transform: scale(1); } }
 #slots { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 .slot { font-size: 13px; padding: 3px 8px; border: 1px solid rgba(255,255,255,0.12); color: var(--ink-dim); background: rgba(0,0,0,0.35); }
-.slot b { color: var(--gold-dim); margin-right: 4px; }
-.slot.active { border-color: var(--gold); color: var(--ink); }
-.slot.active b { color: var(--gold); }
+.slot b { color: var(--accent-dim); margin-right: 4px; }
+.slot.active { border-color: var(--accent); color: var(--ink); }
+.slot.active b { color: var(--accent); }
 .slot.locked { opacity: 0.35; border-style: dashed; }
 .slot.locked::after { content: ' 🔒'; font-size: 10px; }
 
@@ -108,7 +120,7 @@ html, body {
   border-top: 5px solid rgba(214, 58, 42, 0.9); filter: blur(1px); transition: opacity 0.9s; }
 
 #banner { text-align: center; white-space: nowrap; animation: bannerIn 0.5s ease; }
-#banner-title { font-family: "Cinzel", serif; font-size: 64px; font-weight: 800; letter-spacing: 0.15em; color: var(--gold); }
+#banner-title { font-family: var(--display); font-size: 64px; font-weight: 800; letter-spacing: 0.15em; color: var(--accent); }
 #banner-sub { font-size: 20px; letter-spacing: 0.3em; color: var(--ink); }
 #pickup-msg { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); font-size: 18px; letter-spacing: 0.15em; color: var(--cyan); opacity: 0; transition: opacity 0.3s; }
 
@@ -158,16 +170,15 @@ html, body {
 /* ---------- Screens ---------- */
 .screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
   background: radial-gradient(ellipse at 50% 30%, rgba(30, 24, 40, 0.55), rgba(3, 3, 6, 0.9)); }
-.panel { scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
+.panel { scrollbar-width: thin; scrollbar-color: var(--accent-dim) transparent; }
 .panel { width: min(560px, 100%); max-height: 100%; overflow: auto; padding: 32px 36px; background: var(--panel); border: 1px solid var(--line); text-align: center; backdrop-filter: blur(4px); }
-h1 { font-family: "Cinzel", serif; font-weight: 800; font-size: 54px; line-height: 1; margin: 0 0 14px; letter-spacing: 0.08em; color: var(--gold); }
-h1 span { font-size: 34px; color: var(--ink); }
-h2 { font-family: "Cinzel", serif; font-size: 40px; margin: 0 0 16px; color: var(--gold); letter-spacing: 0.1em; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 54px; line-height: 1; margin: 0 0 14px; letter-spacing: 0.08em; color: var(--accent); }
+h2 { font-family: var(--display); font-size: 40px; margin: 0 0 16px; color: var(--accent); letter-spacing: 0.1em; }
 .lede { color: var(--ink-dim); font-size: 18px; margin: 0 0 22px; }
 .lede b { color: var(--ink); }
-button { font-family: "Cinzel", serif; font-weight: 800; font-size: 20px; letter-spacing: 0.15em; text-transform: uppercase;
+button { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: 0.15em; text-transform: uppercase;
   display: block; width: 100%; margin: 0 0 10px; padding: 14px; cursor: pointer;
-  color: #1a1206; background: linear-gradient(180deg, #f2c773, #c98f3a); border: 0; }
+  color: var(--btn-ink); background: linear-gradient(180deg, var(--btn-hi), var(--btn-lo)); border: 0; }
 button:hover:not(:disabled) { filter: brightness(1.12); }
 button:disabled { opacity: 0.5; cursor: wait; }
 button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); font-size: 16px; }
@@ -175,51 +186,51 @@ button.secondary { background: transparent; color: var(--ink); border: 1px solid
 .opts { display: grid; grid-template-columns: auto 1fr; gap: 12px 18px; align-items: center; margin: 0 0 22px; text-align: left; font-size: 16px; }
 .opts label { color: var(--ink-dim); }
 .opt-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-.opt-row input[type=range] { flex: 1; accent-color: var(--gold); }
-.opt-row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--gold); }
+.opt-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.opt-row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
 .opt-row output { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
 .seg { gap: 6px; }
 .seg button { flex: 1; margin: 0; padding: 7px 4px; font-size: 13px; background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
-.seg button.active { color: #1a1206; background: var(--gold); border-color: var(--gold); }
+.seg button.active { color: var(--btn-ink); background: var(--accent); border-color: var(--accent); }
 #fps { position: fixed; top: 224px; left: 18px; width: 200px; text-align: center; font-size: 13px; color: var(--ink-dim); pointer-events: none; font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) { .opts { grid-template-columns: 1fr; } }
 #objective { margin-top: 4px; font-size: 14px; letter-spacing: 0.06em; color: var(--ink-dim); }
-#objective b { color: var(--gold); font-weight: 700; }
+#objective b { color: var(--accent); font-weight: 700; }
 #objective.done { color: #9be36b; }
-#score { font-family: "Cinzel", serif; font-size: 24px; font-weight: 800; color: var(--gold); line-height: 1.1; }
+#score { font-family: var(--display); font-size: 24px; font-weight: 800; color: var(--accent); line-height: 1.1; }
 
 /* upgrade cards between waves */
 #cards { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: min(980px, 94vw); text-align: center; text-shadow: none; }
-#cards-title { font-family: "Cinzel", serif; font-size: 30px; font-weight: 800; letter-spacing: 0.12em; color: var(--gold); text-shadow: 0 2px 8px #000; }
+#cards-title { font-family: var(--display); font-size: 30px; font-weight: 800; letter-spacing: 0.12em; color: var(--accent); text-shadow: 0 2px 8px #000; }
 #cards-sub { font-size: 15px; letter-spacing: 0.1em; color: #9be36b; min-height: 20px; margin-bottom: 10px; text-shadow: 0 1px 4px #000; }
 #cards-list { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-.card { width: 210px; padding: 18px 16px 16px; background: rgba(12, 10, 16, 0.88); border: 1px solid var(--line); border-top: 3px solid var(--gold); text-align: left; }
-.card .key { display: inline-block; font-family: "Cinzel", serif; font-weight: 800; color: #1a1206; background: var(--gold); padding: 1px 9px; margin-bottom: 10px; }
-.card .name { font-family: "Cinzel", serif; font-size: 18px; font-weight: 800; color: var(--ink); margin-bottom: 6px; }
+.card { width: 210px; padding: 18px 16px 16px; background: rgba(12, 10, 16, 0.88); border: 1px solid var(--line); border-top: 3px solid var(--accent); text-align: left; }
+.card .key { display: inline-block; font-family: var(--display); font-weight: 800; color: var(--btn-ink); background: var(--accent); padding: 1px 9px; margin-bottom: 10px; }
+.card .name { font-family: var(--display); font-size: 18px; font-weight: 800; color: var(--ink); margin-bottom: 6px; }
 .card .desc { font-size: 15px; color: var(--ink-dim); line-height: 1.35; }
-.card .count { font-size: 12px; letter-spacing: 0.15em; color: var(--gold-dim); margin-top: 10px; }
+.card .count { font-size: 12px; letter-spacing: 0.15em; color: var(--accent-dim); margin-top: 10px; }
 
 .seg-row { display: flex; gap: 8px; margin: 0 0 10px; }
 .seg-row button { flex: 1; margin: 0; padding: 9px 4px; font-size: 14px; background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
-.seg-row button.active { color: #1a1206; background: var(--gold); border-color: var(--gold); }
+.seg-row button.active { color: var(--btn-ink); background: var(--accent); border-color: var(--accent); }
 .opt-row input[type=text] { flex: 1; padding: 6px 8px; font: inherit; font-size: 16px; color: var(--ink); background: rgba(0,0,0,0.4); border: 1px solid var(--line); }
 
-#end-score { font-family: "Cinzel", serif; font-size: 34px; font-weight: 800; color: var(--gold); margin: -6px 0 14px; }
+#end-score { font-family: var(--display); font-size: 34px; font-weight: 800; color: var(--accent); margin: -6px 0 14px; }
 #end-score small { display: block; font-family: "Rajdhani", sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 0.1em; color: #9be36b; }
 .board { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 15px; font-variant-numeric: tabular-nums; }
 .board th { font-weight: 500; font-size: 12px; letter-spacing: 0.12em; color: var(--ink-dim); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .board td { padding: 4px 6px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .board td.num, .board th.num { text-align: right; }
-.board tr.me td { color: var(--gold); font-weight: 700; }
+.board tr.me td { color: var(--accent); font-weight: 700; }
 .board .empty { color: var(--ink-dim); text-align: center; padding: 14px; }
 
 #difficulty { display: flex; gap: 8px; margin: 0 0 12px; }
 #difficulty button { flex: 1; margin: 0; padding: 9px 4px; font-size: 14px; background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
-#difficulty button.active { color: #1a1206; background: var(--gold); border-color: var(--gold); }
+#difficulty button.active { color: var(--btn-ink); background: var(--accent); border-color: var(--accent); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; font-size: 16px; align-items: center; }
 .keys div:nth-child(odd) { text-align: right; color: var(--ink-dim); }
 kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 0 2px; font-family: inherit; font-size: 13px; text-align: center;
-  border: 1px solid var(--gold-dim); border-bottom-width: 3px; border-radius: 3px; color: var(--ink); background: rgba(0,0,0,0.4); }
+  border: 1px solid var(--accent-dim); border-bottom-width: 3px; border-radius: 3px; color: var(--ink); background: rgba(0,0,0,0.4); }
 .tips { color: var(--ink-dim); font-size: 14px; margin: 14px 0 0; text-align: center; }
 #stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; margin: 0 0 22px; font-size: 18px; }
 #stats div:nth-child(odd) { text-align: right; color: var(--ink-dim); }
@@ -241,18 +252,18 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 0 2px; f
 .status.ok { color: var(--ink-dim); }
 #c-code { text-transform: uppercase; letter-spacing: 0.3em; }
 #c-code::placeholder { text-transform: none; letter-spacing: normal; color: var(--ink-dim); opacity: 0.6; }
-#coop .rooms-title { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold-dim); text-align: left; }
+#coop .rooms-title { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent-dim); text-align: left; }
 #coop-rooms { list-style: none; margin: 0 0 14px; padding: 0; text-align: left; max-height: 180px; overflow-y: auto; }
 #coop-rooms li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 16px; }
 #coop-rooms li.empty { color: var(--ink-dim); font-size: 15px; }
-#coop-rooms li .code { color: var(--gold); letter-spacing: 0.2em; min-width: 4.5em; }
+#coop-rooms li .code { color: var(--accent); letter-spacing: 0.2em; min-width: 4.5em; }
 #coop-rooms li .info { flex: 1; color: var(--ink-dim); font-size: 14px; }
 #coop-rooms li button { width: auto; margin: 0; padding: 6px 14px; font-size: 13px; }
-#lobby-code { color: var(--gold); letter-spacing: 0.25em; }
+#lobby-code { color: var(--accent); letter-spacing: 0.25em; }
 #lobby-players { list-style: none; margin: 0 0 14px; padding: 0; text-align: left; }
 #lobby-players li { padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 17px; }
-#lobby-players li .tag { float: right; color: var(--gold-dim); font-size: 13px; letter-spacing: 0.15em; }
-#lobby-players li.me { color: var(--gold); }
+#lobby-players li .tag { float: right; color: var(--accent-dim); font-size: 13px; letter-spacing: 0.15em; }
+#lobby-players li.me { color: var(--accent); }
 .seg-row.locked button { pointer-events: none; }
 .seg-row.locked button:not(.active) { opacity: 0.35; }
 
@@ -265,7 +276,17 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 0 2px; f
 
 #prompt { position: absolute; left: 50%; top: 60%; transform: translateX(-50%); padding: 6px 14px; font-size: 18px; letter-spacing: 0.12em; color: var(--ink); background: rgba(0,0,0,0.45); border: 1px solid var(--line); }
 #downed { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); text-align: center; }
-#downed .downed-title { font-family: "Cinzel", serif; font-size: 52px; font-weight: 800; letter-spacing: 0.15em; color: var(--blood); }
+#downed .downed-title { font-family: var(--display); font-size: 52px; font-weight: 800; letter-spacing: 0.15em; color: var(--blood); }
 #downed-sub { font-size: 18px; letter-spacing: 0.2em; color: var(--ink); }
 .revive-bar { width: 260px; height: 6px; margin: 12px auto 0; background: rgba(255,255,255,0.15); }
-.revive-bar div { height: 100%; width: 0; background: var(--gold); }
+.revive-bar div { height: 100%; width: 0; background: var(--accent); }
+
+/* ---------- title screen: the universe picker ----------
+   one card per universe, its name in that universe's own font and accent (set inline from its
+   `hud`), the picked one lit up; the rest of the title screen stays neutral */
+h1 span { letter-spacing: 0.3em; text-transform: uppercase; font-size: 18px; color: var(--ink-dim); }
+#world { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 0 0 8px; }
+#world button { margin: 0; padding: 12px 8px; min-height: 64px; font-size: 15px; letter-spacing: 0.02em; line-height: 1.15; text-transform: none;
+  color: var(--w-accent); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-top: 3px solid color-mix(in srgb, var(--w-accent) 35%, transparent); }
+#world button.active { background: color-mix(in srgb, var(--w-accent) 14%, rgba(0, 0, 0, 0.45)); border-color: color-mix(in srgb, var(--w-accent) 55%, transparent); border-top-color: var(--w-accent); }
+#menu-lede { min-height: 2.6em; }

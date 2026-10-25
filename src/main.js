@@ -135,7 +135,15 @@ const voiceEvents = world.voices?.events ?? {}; // this universe's recorded even
 Object.assign(bloom, world.ambiance.bloom ?? {});
 game.world = world;
 sound.setVoices(world.voices);
-$('menu-title').innerHTML = `${world.title[0]}<br /><span>${world.title[1]}</span>`;
+// the in-game interface takes the universe's look (src/worlds/*.js `hud`); the title screen and
+// its sub-screens keep the neutral one of src/style.css
+const themeVars = (t) => ({
+  '--display': t.font, '--accent': t.accent, '--accent-dim': t.accentDim, '--accent-hi': t.accentHi,
+  '--ink': t.ink, '--ink-dim': t.inkDim, '--line': t.line, '--panel': t.panel,
+  '--btn-hi': t.button[0], '--btn-lo': t.button[1], '--btn-ink': t.button[2],
+  '--health-a': t.health[0], '--health-b': t.health[1], '--grenade': t.grenade[0], '--grenade-radius': t.grenade[1],
+});
+for (const id of ['hud', 'pause', 'end']) for (const [k, v] of Object.entries(themeVars(world.hud))) $(id).style.setProperty(k, v);
 // the texts of the HUD and the help that name the universe's weapons
 world.weapons.forEach((w, i) => { const el = document.querySelector(`.slot[data-slot="${i}"]`); if (el) el.innerHTML = `<b>${i + 1}</b> ${w.short ?? w.name}`; });
 $('grenades').title = `${world.texts.grenadeName} [G]`;
@@ -143,8 +151,8 @@ for (const el of document.querySelectorAll('.t-melee')) el.textContent = world.t
 for (const el of document.querySelectorAll('.t-grenade')) el.textContent = world.texts.grenadeHelp;
 for (const el of document.querySelectorAll('.t-tips')) el.textContent = world.texts.tips;
 $('menu-lede').textContent = world.lede;
-document.title = world.name;
-$('world').innerHTML = Object.values(WORLDS).map((w) => `<button data-world="${w.id}" class="${w === world ? 'active' : ''}">${w.name}</button>`).join('');
+$('world').innerHTML = Object.values(WORLDS).map((w) =>
+  `<button data-world="${w.id}" class="${w === world ? 'active' : ''}" style="--w-accent:${w.hud.accent};font-family:${w.hud.font.replace(/"/g, "'")}">${w.name}</button>`).join('');
 $('world').addEventListener('click', (e) => {
   const id = e.target.closest('button[data-world]')?.dataset.world;
   if (!id || id === world.id) return;
@@ -190,7 +198,7 @@ const torchPower = world.ambiance.flashlight?.intensity ?? 16;
 for (const el of document.querySelectorAll('.torch-only')) el.classList.toggle('hidden', !world.ambiance.flashlight);
 sound.setSurf(!!world.ambiance.surf);
 sound.setHum(!!world.ambiance.hum);
-const hud = new Hud(level, world.texts.bossName, !!world.ambiance.indoor);
+const hud = new Hud(level, world);
 Object.assign(game, { level, assets, worldView, propsView, playerView, weaponView, enemyView, camera, input, renderer, composer, effects, hud });
 
 // ---------- settings ----------
@@ -569,7 +577,7 @@ function endArena(winnerId) {
   $('btn-again').textContent = 'Retour au salon';
   $('end-score').innerHTML = `${p.stats.frags} élimination${p.stats.frags > 1 ? 's' : ''}<small>${ranked.indexOf(p) + 1}${ranked.indexOf(p) === 0 ? 'er' : 'e'} sur ${ranked.length}</small>`;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">CLASSEMENT DE LA PARTIE</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">Gardiens</th></tr>${
+  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">CLASSEMENT DE LA PARTIE</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">${world.texts.guards}</th></tr>${
     ranked.map((o, i) => `<tr class="${o === p ? 'me' : ''}"><td>${i + 1}</td><td>${esc(o.name)}</td><td class="num">${o.stats.frags}</td><td class="num">${o.stats.deaths}</td><td class="num">${o.stats.kills}</td></tr>`).join('')}</table>`;
   const rows = [
     ['Temps', fmtTime(sim.mode.timeLimit - sim.mode.timeLeft)],

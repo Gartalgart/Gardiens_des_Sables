@@ -12,6 +12,17 @@ export const STATION = {
   name: 'Station spatiale infestée',
   title: ['Station spatiale', 'infestée'],
   lede: "La station Hélios ne répond plus. Dans ses couloirs plongés dans le rouge des secours, quelque chose s'est réveillé.",
+  // a helmet display: cold blue lines, a squared font; the mines are small boxes with a red light
+  hud: {
+    font: '"Orbitron", sans-serif',
+    accent: '#7fd4ff', accentDim: '#3b7896', accentHi: '#c6efff',
+    ink: '#e2ecf4', inkDim: '#8ea4b6',
+    line: 'rgba(127, 212, 255, 0.3)', panel: 'rgba(4, 9, 14, 0.84)',
+    button: ['#b4e8ff', '#4f9cc4', '#04121c'],
+    health: ['#d8302a', '#7fd4ff'],
+    grenade: ['#d8402a', '2px'],
+    map: { ground: 'rgba(28, 40, 56, 0.45)', wall: [0.8, 0.95, 1.15] },
+  },
 
   files: {
     level: 'models/station/level.glb',
@@ -251,6 +262,7 @@ export const STATION = {
     grabbed: 'LA QUEUE DE LA REINE VOUS TIENT — TIREZ-LUI DESSUS !',
     latched: 'UN PARASITE VOUS AGRIPPE — MATRAQUE [1] !',
     killsLabel: 'Créatures abattues',
+    guards: 'Créatures',
     airlockOpen: 'Sas ouvert — dépressurisation !',
     airlockClosed: 'Sas refermé',
     airlockUse: '[E] Ouvrir le sas',

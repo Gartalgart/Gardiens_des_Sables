@@ -8,13 +8,17 @@ const HALF = 60;
 
 export class Hud {
   // level: collision data of the level (boxes and braziers are drawn on the minimap)
-  // bossName: over the boss health bar, from the universe's texts
-  // indoor: the map has ceilings, left out of the minimap (anything starting 3 m up)
-  constructor(level, bossName, indoor = false) {
+  // world: the universe, for its texts (the boss's name, its enemies in the arena) and its look
+  // (src/worlds/*.js `hud`: the minimap's colours); an indoor map has ceilings, left out of the
+  // minimap (anything starting 3 m up)
+  constructor(level, world) {
     this.el = $('hud');
     this.mm = $('minimap');
     this.ctx = this.mm.getContext('2d');
-    this.map = this.#renderMap(level, indoor);
+    this.theme = world.hud;
+    this.guards = world.texts.guards;
+    this.map = this.#renderMap(level, !!world.ambiance.indoor, world.ambiance.fire.glow);
+    const bossName = world.texts.bossName;
     this.hitTimer = 0;
     this.bannerTimer = 0;
     this.pickupTimer = 0;
@@ -27,9 +31,9 @@ export class Hud {
     this.bossBar.style.cssText = 'position:absolute;top:92px;left:50%;transform:translateX(-50%);width:min(520px,60vw);text-align:center;display:none';
     this.el.appendChild(this.bossBar);
     const st = document.createElement('style');
-    st.textContent = `.boss-name{font-family:Cinzel,serif;font-weight:800;letter-spacing:.2em;color:#ffd36b;font-size:15px;margin-bottom:4px}
-      .boss-track{height:10px;background:rgba(0,0,0,.6);border:1px solid rgba(232,180,90,.5)}
-      .boss-fill{height:100%;background:linear-gradient(90deg,#8c1a10,#ffb347);transform-origin:left;transition:transform .15s}`;
+    st.textContent = `.boss-name{font-family:var(--display);font-weight:800;letter-spacing:.2em;color:var(--accent-hi);font-size:15px;margin-bottom:4px}
+      .boss-track{height:10px;background:rgba(0,0,0,.6);border:1px solid var(--line)}
+      .boss-fill{height:100%;background:linear-gradient(90deg,#8c1a10,var(--accent));transform-origin:left;transition:transform .15s}`;
     document.head.appendChild(st);
   }
 
@@ -79,7 +83,7 @@ export class Hud {
     el.className = mine ? 'me' : '';
     el.innerHTML = killer
       ? `${esc(killer)}<span class="w${head ? ' head' : ''}">${WEAPON_LABEL[weapon] ?? weapon}${head ? ' · TÊTE' : ''}</span>${esc(victim)}`
-      : `${esc(victim)}<span class="w">${weapon === 'guardian' ? 'GARDIENS' : weapon === 'grenade' ? 'SA GRENADE' : 'CHUTE'}</span>`;
+      : `${esc(victim)}<span class="w">${weapon === 'guardian' ? this.guards.toUpperCase() : weapon === 'grenade' ? 'SA GRENADE' : 'CHUTE'}</span>`;
     el.dataset.life = 5;
     const feed = $('killfeed');
     feed.prepend(el);
@@ -103,27 +107,30 @@ export class Hud {
     el.classList.toggle('hidden', !rows);
     if (!rows) return;
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const html = `<h3>Arène</h3><div class="meta">${meta}</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">Gardiens</th></tr>${
+    const html = `<h3>Arène</h3><div class="meta">${meta}</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">${this.guards}</th></tr>${
       rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td class="num">${r.frags}</td><td class="num">${r.deaths}</td><td class="num">${r.kills}</td></tr>`).join('')}</table>`;
     if (this.boardHtml !== html) { el.innerHTML = html; this.boardHtml = html; }
   }
 
-  #renderMap(level, indoor) {
+  // the ground and walls in the universe's colours (walls lighter the taller they are), its lights
+  // (braziers, lanterns, neons) as dots of their glow
+  #renderMap(level, indoor, glow) {
     const c = document.createElement('canvas');
     c.width = c.height = HALF * 2 * MAP_PX;
     const g = c.getContext('2d');
-    g.fillStyle = 'rgba(70, 55, 40, 0.35)';
+    const { ground, wall } = this.theme.map;
+    g.fillStyle = ground;
     g.fillRect(0, 0, c.width, c.height);
     const boxes = [...level.boxes].sort((a, b) => a.max.y - b.max.y);
     for (const b of boxes) {
       if (b.max.y < 0.8 || (indoor && b.min.y >= 3)) continue;
       const h = Math.min(1, b.max.y / 9);
-      const l = Math.round(70 + h * 110);
-      g.fillStyle = `rgb(${l + 20}, ${l}, ${Math.round(l * 0.75)})`;
+      const l = 70 + h * 110;
+      g.fillStyle = `rgb(${wall.map((k) => Math.min(255, Math.round(l * k))).join(', ')})`;
       g.fillRect((b.min.x + HALF) * MAP_PX, (b.min.z + HALF) * MAP_PX, (b.max.x - b.min.x) * MAP_PX, (b.max.z - b.min.z) * MAP_PX);
     }
     for (const p of level.braziers) {
-      g.fillStyle = '#ff9a40';
+      g.fillStyle = glow;
       g.beginPath(); g.arc((p.x + HALF) * MAP_PX, (p.z + HALF) * MAP_PX, 3, 0, Math.PI * 2); g.fill();
     }
     return c;
@@ -218,7 +225,7 @@ export class Hud {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const [label, x, z] of dirs) {
       const sx = x * cos - z * sin, sy = x * sin + z * cos;
-      g.fillStyle = label === 'N' ? '#e8b45a' : 'rgba(243, 230, 204, 0.75)';
+      g.fillStyle = label === 'N' ? this.theme.accent : this.theme.inkDim;
       g.fillText(label, R + sx * (R - 12), R + sy * (R - 12));
     }
 

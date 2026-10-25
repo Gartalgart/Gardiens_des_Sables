@@ -9,6 +9,17 @@ export const PIRATES = {
   name: "L'Île des pirates maudits",
   title: ["L'Île des", 'pirates maudits'],
   lede: 'Un port pirate en ruine, noyé dans la brume. Sous la lune maudite, les morts reprennent leur poste.',
+  // old print and verdigris, like a sea chart left out in the mist; round black bombs
+  hud: {
+    font: '"IM Fell English SC", serif',
+    accent: '#7fd8b8', accentDim: '#3f8a75', accentHi: '#b8ffe2',
+    ink: '#ece6cf', inkDim: '#a3b4a6',
+    line: 'rgba(127, 216, 184, 0.32)', panel: 'rgba(6, 16, 16, 0.8)',
+    button: ['#a6ecd2', '#4fa88c', '#06140f'],
+    health: ['#a8302a', '#d8b46a'],
+    grenade: ['#1d1d1f', '50%'],
+    map: { ground: 'rgba(30, 62, 58, 0.4)', wall: [0.85, 1, 0.92] },
+  },
 
   files: {
     level: 'models/pirates/level.glb',
@@ -200,6 +211,7 @@ export const PIRATES = {
     grenadeName: 'Bombes à mèche',
     grenadeHelp: 'Lancer une bombe à mèche',
     killsLabel: 'Ennemis abattus',
+    guards: 'Équipage',
     tips: "Les tirs à la tête infligent double dégâts. Le sabre tranche tout ce qui est devant vous, et sa parade renvoie les tirs ennemis. Les armes à feu se rechargent par la bouche : un coup, puis la baguette. Un tir sur un baril de poudre le fait sauter. Seuls les ennemis tués au corps à corps lâchent de la santé. La santé se régénère après quelques secondes sans blessure.",
     bossName: 'LE KRAKEN',
     bossKill: 'KRAKEN TERRASSÉ',
