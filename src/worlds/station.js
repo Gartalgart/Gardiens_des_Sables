@@ -76,6 +76,11 @@ export const STATION = {
   // the tunnels are 3.6 m inside: big bodies (the brute, 0.95 m round) keep one cell off the walls,
   // not two, or the hangar's brutes find no way out of it
   nav: { bigClear: 1 },
+  // the station's own wave objectives (src/sim/progression.js WORLD_OBJECTIVES): the reactor to keep
+  // from the saboteurs (the hosts: `loot`), and the airlocks that blow, to shut in time
+  objectives: ['reactor', 'breaches'],
+  chest: { pos: [0, 0, 0], ring: 2.9, looters: 0.35 }, // the reactor, reached from all round
+  breaches: { first: 12, every: [22, 30], close: 15 },
   spawnGates: {
     host: [1, 3, 4, 5, 6, 9],
     parasite: [3, 9, 10],
@@ -100,7 +105,7 @@ export const STATION = {
     host: {
       hp: 210, speed: 2.7, radius: 0.42, height: 1.85, headY: 1.45,
       melee: { range: 1.8, dmg: 18, windup: 0.4, cd: 1.3 },
-      swarm: 2,
+      swarm: 2, loot: true, // the reactor objective: some go and sabotage it
       burst: { type: 'parasite', chance: 0.3 },
     },
     // the armoured brute: a carapace in front stops half a blow; it charges in a straight line.
@@ -193,10 +198,23 @@ export const STATION = {
   ],
   arenaGuards: ['host', 'host', 'brute'],
   targets: [['host', 2], ['parasite', 3], ['brute', 1], ['drone', 2], ['crawler', 2]],
-  // the creatures' cries: the desert's recordings, pitched (src/audio.js setVoices)
+  // the station's own recordings (ElevenLabs, assets/audio-raw; src/audio.js setVoices), each with
+  // its procedural sound when it has not loaded
   voices: {
-    growls: { parasite: 'enemies/scarab_skitter', host: 'enemies/mummy_groan', brute: 'enemies/tank_roar', crawler: 'enemies/runner_screech' },
-    rates: { parasite: 1.5, host: 0.8, brute: 0.75, crawler: 1.4 },
+    growls: {
+      parasite: 'enemies/parasite_skitter', host: 'enemies/host_groan', brute: 'enemies/brute_roar', crawler: 'enemies/crawler_screech',
+      boss: 'enemies/queen_roar',
+    },
+    rates: { parasite: 1, host: 1, brute: 1, crawler: 1, boss: 1 },
+    bossDeath: 'enemies/queen_death',
+    music: 'synth', // src/music.js THEMES
+    samples: { swing: 'weapons/baton_swing', slam: 'enemies/tail_slam' },
+    // events of this universe that have a recording (src/main.js): the Queen's spit, her acid
+    // landing, an egg hatching, the power going, an airlock blowing
+    events: {
+      fire: { boss: 'enemies/queen_spit' }, acid: 'enemies/acid_splash', hatch: 'enemies/egg_hatch',
+      powerDown: 'station/power_down', airlockOpen: 'station/airlock_blow',
+    },
   },
   looks: {
     parasite: { color: [0.85, 0.72, 0.5], dot: '#e0c08a' },
@@ -219,6 +237,9 @@ export const STATION = {
     grenadeKill: 'MINE',
     kegKill: 'BONBONNE',
     airlockKill: 'DANS LE VIDE',
+    chestRaid: 'ON SABOTE LE RÉACTEUR !',
+    breachBlow: 'Un sas a sauté ! Refermez-le au levier [E] en moins de 15 s',
+    breachLate: 'Trop tard : le sas est resté ouvert',
     bossName: 'LA REINE-RUCHE',
     bossWakes: 'La Reine-ruche se réveille sur le réacteur…',
     bossSummon: 'La Reine appelle sa couvée !',
@@ -234,8 +255,16 @@ export const STATION = {
     airlockClosed: 'Sas refermé',
     airlockUse: '[E] Ouvrir le sas',
     airlockShut: '[E] Refermer le sas',
-    tips: "Les tirs à la tête infligent double dégâts. La matraque électrique paralyse ce qu'elle frappe, et sa parade renvoie les tirs. Les armes à énergie n'ont pas de chargeur mais chauffent : trop insister les bloque quelques secondes. Le lance-flammes enflamme tout ce qui est devant vous. Une bonbonne d'oxygène explose quand on tire dessus. La lampe torche [F] perce le noir. Un levier [E] ouvre le sas voisin : l'air qui s'échappe aspire tout ce qui est en vue vers le vide pendant quelques secondes — ne restez pas devant. La santé se régénère après quelques secondes sans blessure.",
+    tips: "Les tirs à la tête infligent double dégâts. La matraque électrique paralyse ce qu'elle frappe, et sa parade renvoie les tirs. Les armes à énergie n'ont pas de chargeur mais chauffent : trop insister les bloque quelques secondes. Le lance-flammes enflamme tout ce qui est devant vous. Une bonbonne d'oxygène explose quand on tire dessus. La lampe torche [F] perce le noir. Les sacs d'œufs de la Reine font éclore des parasites : abattez-les. Un levier [E] ouvre le sas voisin : l'air qui s'échappe aspire tout ce qui est en vue vers le vide pendant quelques secondes — ne restez pas devant. La santé se régénère après quelques secondes sans blessure.",
     victory: 'Les lumières de la station se rallument une à une. Hélios répond de nouveau.',
+    defeat: 'La station Hélios se tait pour de bon.', // the end screen, before "Tombé pendant la vague n"
+    bossKill: 'REINE-RUCHE ABATTUE',
+    bossWave: 'la Reine-ruche', // survival: "Vague 10 — la Reine-ruche"
+    modes: {
+      waves: 'Cinq vagues de créatures à repousser ensemble, la Reine-ruche à la dernière.',
+      survival: 'Des vagues sans fin, la Reine-ruche toutes les cinq vagues.',
+      arena: 'Chacun pour soi, avec quelques créatures qui rôdent. La difficulté règle les créatures.',
+    },
   },
 
   ambiance: {

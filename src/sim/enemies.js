@@ -1024,8 +1024,11 @@ export class Enemies {
   // A looter on its way to the chest, or at it, taking the gold
   #loot(e, dt) {
     const T = e.T, chest = this.sim.chest;
-    // the front of the chest (it stands against the back of the cave)
-    const front = chest.pos.clone().add(new THREE.Vector3(0, 0, 1.5));
+    // the front of the chest (it stands against the back of the cave), or the nearest point round
+    // something to reach from all sides (the station's reactor: chest.ring)
+    const front = chest.ring
+      ? chest.pos.clone().add(new THREE.Vector3(e.pos.x - chest.pos.x, 0, e.pos.z - chest.pos.z).normalize().multiplyScalar(chest.ring))
+      : chest.pos.clone().add(new THREE.Vector3(0, 0, 1.5));
     const to = new THREE.Vector3(front.x - e.pos.x, 0, front.z - e.pos.z);
     const d = to.length();
     if (d < 1.2 + T.radius) {

@@ -130,6 +130,7 @@ window.__game = game; // handy for debugging from the console
 let savedWorld = null;
 try { savedWorld = localStorage.getItem('gds-world'); } catch {}
 const world = getWorld(savedWorld);
+const voiceEvents = world.voices?.events ?? {}; // this universe's recorded events (see the station's voices)
 // a universe may ask for its own bloom (the station: gentler, see src/worlds/station.js)
 Object.assign(bloom, world.ambiance.bloom ?? {});
 game.world = world;
@@ -534,7 +535,7 @@ function endGame(victory, winner) {
   $('end-sub').textContent = survival
     ? `Tu as tenu jusqu'à la vague ${sim.mode.wave}.`
     : victory ? world.texts.victory
-      : `Tombé pendant la vague ${sim.mode.wave}.`;
+      : `${world.texts.defeat ? world.texts.defeat + ' ' : ''}Tombé pendant la vague ${sim.mode.wave}.`;
   // score and local leaderboard
   const rank = recordScore(world.id, sim.mode.id, sim.difficulty.key, { name: settings.playerName + (game.net ? ' (coop)' : ''), score: p.score, wave: sim.mode.wave, time: sim.time });
   $('btn-again').textContent = game.net ? 'Retour au salon' : 'Rejouer';
@@ -655,7 +656,12 @@ function handleEvents() {
           else { sound.slash(1); addShake(0.3); }
         }
         break;
-      case 'burst': enemyView.onEvent(ev); sound.growl(pan(ev.pos), vol(ev.pos, 40), false, 'parasite'); sound.crumble(pan(ev.pos), vol(ev.pos, 40)); break;
+      case 'burst':
+        enemyView.onEvent(ev);
+        sound.growl(pan(ev.pos), vol(ev.pos, 40), false, 'parasite');
+        // an egg of the Queen's sacs tearing open, or a host's chest
+        if (!(ev.enemyType === 'eggsac' && voiceEvents.hatch && sound.sample(voiceEvents.hatch, { pan: pan(ev.pos), vol: vol(ev.pos, 40) }))) sound.crumble(pan(ev.pos), vol(ev.pos, 40));
+        break;
       case 'ventOpen':
         // a grille kicked open: a clang and a puff of dust
         sound.thud(pan(ev.pos), vol(ev.pos, 35));
@@ -733,7 +739,7 @@ function handleEvents() {
         // hum stops with a clunk, and the torch comes on by itself
         worldView.setPower(ev.on);
         sound.setHum(ev.on && !!world.ambiance.hum);
-        sound.thud(0, 1);
+        if (ev.on || !(voiceEvents.powerDown && sound.sample(voiceEvents.powerDown, { vol: 0.9 }))) sound.thud(0, 1);
         if (!ev.on && world.ambiance.flashlight) game.torch = true;
         addShake(0.3);
         break;
@@ -741,7 +747,7 @@ function handleEvents() {
         // the ghost gunner's swivel gun booms like the hand cannon, further off
         if (world.enemies[ev.enemyType]?.ranged?.lob) sound.shot('cannon', pan(ev.pos), 0.7 * Math.max(0.2, vol(ev.pos, 80)));
         else if (world.enemies[ev.enemyType]?.drone) sound.shot('laser', pan(ev.pos), 0.6 * Math.max(0.15, vol(ev.pos, 60)));
-        else sound.enemyFire(pan(ev.pos), vol(ev.pos));
+        else if (!(voiceEvents.fire?.[ev.enemyType] && sound.sample(voiceEvents.fire[ev.enemyType], { pan: pan(ev.pos), vol: 0.7 * Math.max(0.2, vol(ev.pos, 60)) }))) sound.enemyFire(pan(ev.pos), vol(ev.pos));
         break;
       case 'enemyHit':
         enemyView.onEvent(ev);
@@ -762,12 +768,15 @@ function handleEvents() {
         break;
       case 'chestHit':
         sound.click(1.8);
-        if (game.sim.time - (game.chestWarned ?? -9) > 6) { game.chestWarned = game.sim.time; hud.pickup(`ON PILLE LE COFFRE ! (${Math.round(ev.gold)} %)`); }
+        if (game.sim.time - (game.chestWarned ?? -9) > 6) { game.chestWarned = game.sim.time; hud.pickup(`${world.texts.chestRaid ?? 'ON PILLE LE COFFRE !'} (${Math.round(ev.gold)} %)`); }
+        // the reactor being sabotaged: sparks off it
+        if (world.chest?.ring) effects.burst(ev.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 3, (Math.random() - 0.5) * 3)), null, { count: 16, color: new THREE.Color(0.6, 0.9, 1), speed: 5, size: 0.08, life: 0.5, grav: 6 });
         break;
       case 'inked': if (mine) { if (!sound.sample('enemies/ink_splat', { vol: 0.8 })) sound.thud(0, 1); addShake(0.2); } break;
       case 'airlock':
         worldView.setAirlock(ev.id, ev.open);
         sound.airlock(ev.open, pan(ev.pos), Math.max(0.3, vol(ev.pos, 60)));
+        if (ev.open && voiceEvents.airlockOpen) sound.sample(voiceEvents.airlockOpen, { pan: pan(ev.pos), vol: Math.max(0.35, vol(ev.pos, 70)) });
         if (ev.open) addShake(0.5 * vol(ev.pos, 30));
         break;
       case 'pierBreak': {
@@ -801,7 +810,8 @@ function handleEvents() {
         enemyView.onEvent(ev);
         if (ev.kind === 'lob' && ev.ink) { if (!sound.sample('enemies/ink_splat', { pan: pan(ev.pos), vol: vol(ev.pos, 40) })) sound.thud(pan(ev.pos), vol(ev.pos, 40)); }
         else if (ev.kind === 'lob') sound.explosion(pan(ev.pos), 0.6 * Math.max(0.3, vol(ev.pos, 60)));
-        else sound.crumble(pan(ev.pos), vol(ev.pos, 40), true);
+        // the Queen's acid sizzles where it lands
+        else if (!(ev.kind === 'acid' && voiceEvents.acid && sound.sample(voiceEvents.acid, { pan: pan(ev.pos), vol: 0.7 * vol(ev.pos, 40), rate: 0.9 + Math.random() * 0.2 }))) sound.crumble(pan(ev.pos), vol(ev.pos, 40), true);
         addShake((ev.kind === 'lob' ? 0.5 : 0.35) * vol(ev.pos, 12));
         break;
       case 'teleportOut': case 'teleportIn': enemyView.onEvent(ev); sound.warp(pan(ev.pos), vol(ev.pos, 70)); break;

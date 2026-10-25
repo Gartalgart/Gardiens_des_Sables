@@ -58,16 +58,25 @@ export const WORLD_OBJECTIVES = {
   kegs: { id: 'kegs', make: (w) => ({ text: `Abattre ${2 + Math.floor(w / 2)} ennemis avec les barils de poudre`, target: 2 + Math.floor(w / 2), stat: 'kegKills' }) },
   // the pirate port: looters go for the chest in the cave (see Enemies#loot); keep more than half its gold
   chest: { id: 'chest', make: () => ({ text: "Garder plus de la moitié de l'or du coffre (grotte)", target: 50, stat: 'chestLoss', under: true, chest: true }) },
+  // the station: infected crew go and sabotage the reactor (the chest's looting, see Enemies#loot);
+  // not in the Hive Queen's wave, when she sits on it
+  reactor: {
+    id: 'reactor', ok: (w, world) => !world?.waves?.[w - 1]?.boss,
+    make: () => ({ text: 'Garder le réacteur au-dessus de la moitié (sabotage)', target: 50, stat: 'chestLoss', under: true, chest: true, unit: 'réacteur' }),
+  },
+  // the station: an airlock blows now and then during the wave (Sim#updateBreaches); shut each one
+  // with its lever in time (breachLate: the airlocks left open too long)
+  breaches: { id: 'breaches', ok: (w, world) => !world?.waves?.[w - 1]?.boss, make: () => ({ text: 'Refermer chaque sas qui saute en moins de 15 s', target: 1, stat: 'breachLate', under: true, breaches: true }) },
 };
 
 export function pickObjective(wave, world = null) {
-  const pool = [...OBJECTIVES, ...(world?.objectives ?? []).map((id) => WORLD_OBJECTIVES[id])];
+  const pool = [...OBJECTIVES, ...(world?.objectives ?? []).map((id) => WORLD_OBJECTIVES[id])].filter((o) => o.ok?.(wave, world) !== false);
   const o = pool[Math.floor(Math.random() * pool.length)];
   return { id: o.id, ...o.make(wave, world) };
 }
 
 export function freshWaveStats() {
-  return { meleeKills: 0, headshots: 0, perfectParries: 0, damageTaken: 0, time: 0, kegKills: 0, chestLoss: 0 };
+  return { meleeKills: 0, headshots: 0, perfectParries: 0, damageTaken: 0, time: 0, kegKills: 0, chestLoss: 0, breachLate: 0, breachLeft: null };
 }
 
 export function objectiveDone(obj, stats) {
@@ -76,6 +85,9 @@ export function objectiveDone(obj, stats) {
 }
 
 // Score: points per kill, scaled by difficulty; bonuses for style and progress.
-export const KILL_POINTS = { runner: 100, shooter: 150, scarab: 40, mummy: 200, tank: 400, boss: 3000, skeleton: 100, gunner: 200, crab: 400, siren: 300, bats: 80 };
+export const KILL_POINTS = {
+  runner: 100, shooter: 150, scarab: 40, mummy: 200, tank: 400, boss: 3000, skeleton: 100, gunner: 200, crab: 400, siren: 300, bats: 80,
+  host: 100, parasite: 60, brute: 400, drone: 200, crawler: 150, eggsac: 120,
+};
 export const DIFFICULTY_SCORE = { easy: 0.75, normal: 1, hard: 1.5 };
 export const BONUS = { headshotKill: 50, meleeKill: 25, grenadeKill: 25, perfectParry: 100, objective: 1000, wavePerLevel: 500, victory: 5000, revive: 200 };

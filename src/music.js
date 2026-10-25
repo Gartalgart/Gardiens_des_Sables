@@ -1,6 +1,6 @@
 // Procedural music, no audio files: a drone, percussion and a plucked melody wandering along a
 // scale. Its intensity follows the game: 0 calm (menu, breaks), 1 combat, 2 the boss. Each universe
-// has its theme (see THEMES): the desert, the pirates' shanty.
+// has its theme (see THEMES): the desert, the pirates' shanty, the station's synth.
 export const THEMES = {
   // darbuka-like percussion on the maqsum rhythm, an oud-like melody on the Hijaz scale
   desert: {
@@ -30,6 +30,25 @@ export const THEMES = {
     hits: { 0: 'D', 3: 'T', 6: 'D', 9: 'T' },
     accent: 6,
     drone: [0.5, 0.75, 1],
+  },
+  // the space station: an 80s horror-film synth. A low pad breathing through its filter, a pulsing
+  // bass arpeggio (from combat on), a kick and metallic hi-hats, sparse square notes on E Phrygian
+  synth: {
+    scale: [0, 1, 3, 5, 7, 8, 10], // E Phrygian: E F G A B C D
+    root: 164.81, // E3
+    levels: [
+      { bpm: 80, drone: 0.12, perc: 0, notes: 0.16, ghost: 0, bass: 0 },
+      { bpm: 100, drone: 0.11, perc: 0.75, notes: 0.26, ghost: 0.35, bass: 0.13 },
+      { bpm: 120, drone: 0.14, perc: 0.95, notes: 0.4, ghost: 0.7, bass: 0.17 },
+    ],
+    steps: 16,
+    hits: { 0: 'D', 4: 'T', 8: 'D', 10: 'D', 12: 'T' },
+    accent: 8,
+    drone: [0.25, 0.375, 0.2525], // E1, B1 and a slightly detuned E1
+    wave: 'square', // the melody's voice
+    tek: 7000, // metallic hi-hats instead of a hand drum
+    // the bass, one note a sixteenth (semitones over E1; null: a rest), a bar long
+    bass: [0, 0, 12, 0, 0, 0, 12, 0, 1, 1, 13, 1, 0, 0, 12, 7],
   },
 };
 
@@ -101,6 +120,7 @@ export class Music {
 
   #playStep(step, t) {
     const T = this.theme, L = T.levels[this.level];
+    if (L.bass && T.bass && T.bass[step] != null) this.#bass(t, T.root / 4 * Math.pow(2, T.bass[step] / 12), L.bass);
     if (L.perc > 0) {
       const hit = T.hits[step];
       if (hit === 'D') this.#doum(t, L.perc);
@@ -133,7 +153,7 @@ export class Music {
     const n = this.ctx.createBufferSource();
     n.buffer = this.noise;
     const f = this.ctx.createBiquadFilter();
-    f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 1.8;
+    f.type = 'bandpass'; f.frequency.value = this.theme.tek ?? 2600; f.Q.value = 1.8;
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.35 * vol, t + 0.002);
@@ -142,9 +162,26 @@ export class Music {
     n.start(t, Math.random()); n.stop(t + 0.1);
   }
 
-  #pluck(t, freq, vol) {
+  // a pulsing synth bass note: a sawtooth snapping shut through its filter
+  #bass(t, freq, vol) {
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';
+    o.frequency.value = freq;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.Q.value = 6;
+    f.frequency.setValueAtTime(freq * 9, t);
+    f.frequency.exponentialRampToValueAtTime(freq * 1.5, t + 0.12);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(f).connect(g).connect(this.out);
+    o.start(t); o.stop(t + 0.2);
+  }
+
+  #pluck(t, freq, vol) {
+    const o = this.ctx.createOscillator();
+    o.type = this.theme.wave ?? 'sawtooth';
     o.frequency.value = freq;
     const f = this.ctx.createBiquadFilter();
     f.type = 'lowpass';

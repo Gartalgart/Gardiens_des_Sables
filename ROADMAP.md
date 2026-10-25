@@ -328,6 +328,17 @@ Demandée par le joueur : la station se jouait comme une carte extérieure. Insp
 - [x] 108 tests, dont 8 pour la Reine (réveil et sacs, éclosions et ponte, tir à la tête, carapace puis exposition, sas et retour du courant, variété des coups, saisie et lâcher, coup prévenu). Corrigé au passage : le test de l'ennemi coincé (aléatoire : l'autre squelette venait le bousculer) et le test du khépesh (30 parties, délai porté à 15 s).
 - **Validation :** affronter la Reine en exploration (touche B), puis dans la vague 5.
 
+### U2 Phase 6 — Vagues et finition `[x]`
+- [x] Vagues, survie (la Reine toutes les cinq vagues) et cibles de l'Exploration ([N]) : en place depuis les phases 3 et 4 ; points de score pour chaque créature de la station (hôte 100, parasite 60, brute 400, drone 200, rampant 150, sac d'œufs 120).
+- [x] **Objectifs propres à la station** (`WORLD_OBJECTIVES` dans `src/sim/progression.js`), tirés au hasard avec les objectifs communs, jamais pendant la vague de la Reine :
+  - **protéger le réacteur** : des hôtes infectés vont le saboter, de quelque côté qu'ils arrivent (le pillage du coffre du port, autour d'un cercle) ; garder sa jauge au-dessus de la moitié ; des étincelles en jaillissent pendant le sabotage ;
+  - **refermer les sas** : de temps en temps un sas saute (12 s après le début, puis toutes les 22 à 30 s) et reste ouvert jusqu'à ce qu'un joueur tire son levier [E] ; chacun doit être refermé en moins de 15 s (compte à rebours dans le HUD).
+- [x] **16 sons enregistrés avec ElevenLabs** (`assets/audio-raw`, normalisés dans `assets/audio`), chacun avec son son procédural en secours : pistolet laser (aussi le drone), fusil à plasma, fusil électromagnétique, matraque, parasite, hôte, brute, rampant, la Reine (rugissement, mort, crachat), l'acide qui grésille, l'œuf qui éclot, le coup de queue sur le métal, la coupure de courant, le sas qui saute. Ils sont sur la page de test `sons.html` (groupe « Station »).
+- [x] **Musique synthé procédurale** (thème `synth` de `src/music.js`) : nappe grave qui respire dans son filtre, arpège de basse pulsé dès le combat, grosse caisse et charleston métallique, notes carrées éparses en mi phrygien ; plus rapide et plus dense pendant la Reine.
+- [x] Textes : « REINE-RUCHE ABATTUE », la Reine en survie, les modes, une phrase de défaite propre à la station sur l'écran de fin, un conseil sur les sacs d'œufs.
+- [x] 111 tests, dont 3 nouveaux (sabotage du réacteur, sas qui sautent, aucun des deux pendant la vague de la Reine).
+- **Validation :** une partie complète, de la vague 1 à la Reine.
+
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.
 - **Multijoueur retiré de la version normale (24/10/2026) :** le bouton Multijoueur et les touches propres à la coopération et à l'arène sont masqués. Le code reste en place et testé. Pour le remettre : `npm run dev:multi` ou `npm run build:multi` (fichier `.env.multiplayer`, interrupteur dans `src/features.js`).

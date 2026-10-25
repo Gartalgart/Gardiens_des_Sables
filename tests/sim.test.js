@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { Level } from '../src/sim/level.js';
 import { Sim } from '../src/sim/sim.js';
 import { emptyCommand } from '../src/sim/player.js';
-import { applyUpgrade, drawCards, UPGRADES, pickObjective } from '../src/sim/progression.js';
+import { applyUpgrade, drawCards, UPGRADES, pickObjective, WORLD_OBJECTIVES } from '../src/sim/progression.js';
 import { WORLDS, getWorld } from '../src/worlds/index.js';
 
 const DT = 1 / 60;
@@ -1783,5 +1783,64 @@ describe('the Hive Queen', () => {
     expect(Math.hypot(ring.pos.x - player.pos.x, ring.pos.z - player.pos.z)).toBeLessThan(3); // her tail on them, or her claws' arc
     expect(slam).not.toBeNull();
     expect(hp).toBeLessThan(player.maxHealth);
+  });
+});
+
+describe('the station objectives', () => {
+  const levelOf = (w) => new Level(JSON.parse(readFileSync(new URL(`../public/${getWorld(w).files.levelData}`, import.meta.url), 'utf8')));
+  const wavesGame = () => {
+    const sim = new Sim(levelOf('station'), { mode: 'waves', world: 'station' });
+    const player = sim.addPlayer('p1');
+    sim.start();
+    for (let i = 0; i < 600 && !sim.mode.waveActive; i++) sim.step(DT, new Map([['p1', emptyCommand()]])); // the countdown to wave 1
+    for (const e of [...sim.enemies.list]) sim.enemies.damage(e, 1e6, null, null);
+    sim.mode.queue = []; // only what the test puts in
+    // one still enemy far off in the greenhouse, so the wave does not end (and its objective with it)
+    const keeper = pacify(sim.enemies.spawn('parasite', new THREE.Vector3(0, 0, -38)));
+    keeper.T = { ...keeper.T, speed: 0, stay: true };
+    keeper.looter = false;
+    return { sim, player };
+  };
+  const hold = (player, x, z) => (p) => { p.health = p.maxHealth; p.pos.set(x, 0, z); return emptyCommand(); };
+
+  it('the reactor objective: hosts go and sabotage it, from whatever side they come', () => {
+    const { sim, player } = wavesGame();
+    sim.mode.objective = { id: 'reactor', ...WORLD_OBJECTIVES.reactor.make(1, sim.world) };
+    sim.chest = { pos: new THREE.Vector3(0, 0, 0), ring: 2.9, gold: 100, looters: 1 };
+    const host = pacify(sim.enemies.spawn('host', new THREE.Vector3(-36, 0, 0))); // in the labs
+    expect(host.looter).toBe(true);
+    run(sim, 40, hold(player, 36, -8)); // the player far off in the crew quarters
+    expect(host.pos.distanceTo(new THREE.Vector3(0, 0, 0))).toBeLessThan(5); // at the reactor (2.2 m round)
+    expect(sim.chest.gold).toBeLessThan(100);
+    expect(player.waveStats.chestLoss).toBeGreaterThan(0);
+  });
+
+  it('the airlocks objective: a blown airlock shut in time is fine, one left open fails it', () => {
+    const { sim, player } = wavesGame();
+    sim.mode.objective = { id: 'breaches', ...WORLD_OBJECTIVES.breaches.make(1, sim.world) };
+    sim.breaches = { ...sim.world.breaches, t: 0 };
+    run(sim, 0.1, hold(player, 0, 0));
+    const blown = sim.airlocks.find((a) => a.open);
+    expect(blown).toBeTruthy();
+    expect(player.waveStats.breachLeft).toBeGreaterThan(14);
+    run(sim, 5, hold(player, 0, 0));
+    expect(blown.open).toBe(true); // it stays open until someone shuts it
+    // the lever, pulled from where it is
+    player.pos.copy(blown.lever).setY(0);
+    run(sim, 0.1, (p, i) => { p.health = p.maxHealth; p.pos.copy(blown.lever).setY(0); return { ...emptyCommand(), use: i === 0 }; });
+    expect(blown.open).toBe(false);
+    expect(player.waveStats.breachLate).toBe(0);
+    // the next one is left open
+    sim.breaches.t = 0;
+    run(sim, sim.world.breaches.close + 1, hold(player, 0, 0));
+    expect(player.waveStats.breachLate).toBe(1);
+    // the wave over, the airlocks close
+    sim.endBreaches();
+    expect(sim.airlocks.every((a) => !a.open)).toBe(true);
+  });
+
+  it('neither objective falls in the Hive Queen\'s wave', () => {
+    const world = getWorld('station');
+    for (let i = 0; i < 50; i++) expect(['reactor', 'breaches']).not.toContain(pickObjective(5, world).id);
   });
 });

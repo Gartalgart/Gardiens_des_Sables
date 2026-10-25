@@ -68,7 +68,9 @@ export class WaveBase {
     // a secondary objective for this wave
     this.objective = pickObjective(n, sim.world);
     // protect the chest: it starts full, and some of this wave's enemies will go for it
-    sim.chest = this.objective.chest ? { pos: new THREE.Vector3(...sim.world.chest.pos), gold: 100, looters: sim.world.chest.looters } : null;
+    sim.chest = this.objective.chest ? { pos: new THREE.Vector3(...sim.world.chest.pos), ring: sim.world.chest.ring, gold: 100, looters: sim.world.chest.looters } : null;
+    // shut the airlocks that blow: the first one some seconds in
+    sim.breaches = this.objective.breaches ? { t: sim.world.breaches.first, ...sim.world.breaches } : null;
     for (const p of sim.players.values()) p.waveStats = freshWaveStats();
     sim.emit('objective', { state: 'start', text: this.objective.text });
   }
@@ -91,6 +93,7 @@ export class WaveBase {
     for (const p of sim.players.values()) {
       p.waveStats.time += dt;
       if (sim.chest) p.waveStats.chestLoss = 100 - sim.chest.gold;
+      if (sim.breaches) p.waveStats.breachLeft = sim.breachLeft();
     }
 
     const D = sim.difficulty;
@@ -120,6 +123,7 @@ export class WaveBase {
     const n = this.wave;
     this.waveActive = false;
     sim.chest = null;
+    sim.endBreaches();
     // objective and wave bonus for every player still standing
     // the end of a wave picks every downed player up
     for (const p of sim.players.values()) if (p.dead) { sim.raise(p, 0.5); sim.emit('playerRevived', { pid: p.id, by: null }); }

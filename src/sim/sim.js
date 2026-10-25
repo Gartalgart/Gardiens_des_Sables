@@ -75,6 +75,7 @@ export class Sim {
     });
     this.power = true; // the station's lights (the Hive Queen cuts them: Sim#powerCut)
     this.breached = null; // { t, next } while the Queen keeps the airlocks blowing (Sim#breach)
+    this.breaches = null; // the wave objective of airlocks blowing (Sim#updateBreaches): { t, every, close, ... }
     // the Level is shared by the games: a pier the Kraken broke stands again, and the nav grid
     // forgets the previous game's targets
     level.restore();
@@ -416,6 +417,7 @@ export class Sim {
     if (a.open === open) return;
     a.open = open;
     a.t = open ? AIRLOCK.dur : 0;
+    if (!open) a.blown = null; // shut: no longer a breach of the airlocks objective
     a.by = open ? by : null;
     a.cd = AIRLOCK.cooldown;
     this.level.setDoor(a.id, open);
@@ -425,6 +427,7 @@ export class Sim {
   }
 
   #updateAirlocks(dt) {
+    this.#updateBreaches(dt);
     // the Queen's breach: one airlock after the other blows open
     const B = this.breached;
     if (B && this.airlocks.length) {
@@ -451,6 +454,47 @@ export class Sim {
         if (this.#suck(a, e.pos, e.T.radius, e.T.height, dt)) this.enemies.space(e, a.by && this.players.has(a.by.id) ? a.by : null);
       }
     }
+  }
+
+  // The airlocks objective: now and then a closed airlock blows open and stays open until a player
+  // shuts it with its lever; one left open longer than `close` s fails the objective for everyone.
+  #updateBreaches(dt) {
+    const B = this.breaches;
+    if (!B) return;
+    for (const a of this.airlocks) {
+      if (a.blown == null) continue;
+      a.blown += dt;
+      if (a.blown > B.close && !a.late) {
+        a.late = true;
+        for (const p of this.players.values()) p.waveStats.breachLate++;
+        this.emit('banner', { title: '', sub: this.world.texts.breachLate, duration: 2.5 });
+      }
+    }
+    B.t -= dt;
+    if (B.t > 0) return;
+    B.t = B.every[0] + Math.random() * (B.every[1] - B.every[0]);
+    const shut = this.airlocks.filter((a) => !a.open);
+    if (!shut.length) return;
+    const a = shut[Math.floor(Math.random() * shut.length)];
+    this.setAirlock(a, true);
+    a.t = Infinity; // until someone pulls the lever
+    a.blown = 0;
+    a.late = false;
+    this.emit('banner', { title: '', sub: this.world.texts.breachBlow, duration: 3 });
+    this.emit('horn', { victory: false });
+  }
+
+  // seconds left to shut the airlock blown longest ago, or null when none is open
+  breachLeft() {
+    const open = this.airlocks.filter((a) => a.blown != null && !a.late);
+    return open.length ? Math.max(0, this.breaches.close - Math.max(...open.map((a) => a.blown))) : null;
+  }
+
+  // the wave is over: the blown airlocks close
+  endBreaches() {
+    if (!this.breaches) return;
+    this.breaches = null;
+    for (const a of this.airlocks) if (a.blown != null) this.setAirlock(a, false);
   }
 
   // Drags a body in sight of an open airlock towards it, harder the closer it is; true once it
