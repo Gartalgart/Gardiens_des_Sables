@@ -163,7 +163,7 @@ const breakable = (world.enemies.boss?.kraken?.piers ?? []).map(([x0, x1]) => ({
 if (assets.decor && assets.level) assets.level.add(assets.decor);
 const worldView = new WorldView(scene, assets.level, level, world.ambiance, breakable);
 // this universe's own colours for types the desert also has (the Kraken is the 'boss' too)
-for (const [type, l] of Object.entries(world.looks ?? {})) ENEMY_LOOK[type] = { color: new THREE.Color(...l.color), dot: l.dot };
+for (const [type, l] of Object.entries(world.looks ?? {})) ENEMY_LOOK[type] = { color: new THREE.Color(...l.color), dot: l.dot, shot: l.shot ? new THREE.Color(...l.shot) : undefined };
 const propsView = assets.props ? new PropsView(scene, assets.props, level, world.props) : null;
 const effects = new Effects(scene);
 const weaponView = new WeaponView(assets, vmScene, effects, worldFlash, world.weapons);
@@ -452,6 +452,8 @@ function resetViews() {
   game.chestWarned = -9;
   worldView.restoreBroken();
   worldView.closeAirlocks();
+  worldView.setPower(true, true);
+  sound.setHum(!!world.ambiance.hum);
   game.leverPrompt = null;
   sound.setSuction(0);
   $('ink').style.opacity = 0;
@@ -726,6 +728,15 @@ function handleEvents() {
         else sound.clang();
         break;
       case 'growl': sound.growl(pan(ev.pos), ev.loud ? 1 : vol(ev.pos), ev.low, ev.enemyType); break;
+      case 'power':
+        // the Hive Queen cuts the station's power (and it comes back at her death): the machines'
+        // hum stops with a clunk, and the torch comes on by itself
+        worldView.setPower(ev.on);
+        sound.setHum(ev.on && !!world.ambiance.hum);
+        sound.thud(0, 1);
+        if (!ev.on && world.ambiance.flashlight) game.torch = true;
+        addShake(0.3);
+        break;
       case 'enemyFire':
         // the ghost gunner's swivel gun booms like the hand cannon, further off
         if (world.enemies[ev.enemyType]?.ranged?.lob) sound.shot('cannon', pan(ev.pos), 0.7 * Math.max(0.2, vol(ev.pos, 80)));
@@ -747,7 +758,7 @@ function handleEvents() {
         sound.growl(pan(ev.pos), vol(ev.pos, 60), true, 'boss');
         break;
       case 'grab':
-        if (mine) { if (!ev.released) { sound.hurt(); addShake(0.4); } hud.prompt(ev.released ? null : 'UNE TENTACULE VOUS TIENT — FRAPPEZ-LA POUR VOUS LIBÉRER'); }
+        if (mine) { if (!ev.released) { sound.hurt(); addShake(0.4); } hud.prompt(ev.released ? null : world.texts.grabbed ?? 'UNE TENTACULE VOUS TIENT — FRAPPEZ-LA POUR VOUS LIBÉRER'); }
         break;
       case 'chestHit':
         sound.click(1.8);

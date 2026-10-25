@@ -291,14 +291,14 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 96 tests automatisés, dont 3 nouveaux : le parasite agrippé (les balles ne le touchent pas, la matraque l'arrache), le parasite qui sort d'un hôte, la carapace de la brute.
 - **Validation :** jouer les vagues 1 et 2. Validée le 24/10/2026.
 
-### U2 Phase 4 — Drone et rampant `[~]`
+### U2 Phase 4 — Drone et rampant `[x]`
 - [x] **Drone de sécurité** (`blender/station/enemies.py`, sans squelette : le jeu fait tourner ses quatre rotors) : il vole sous le plafond, s'approche jusqu'à voir sa cible à portée, s'arrête, son œil rouge s'embrase, tire une rafale de trois traits laser, puis file se mettre hors de vue (le point le plus proche que le joueur ne voit pas) une à deux secondes avant de revenir. Un faisceau rouge sort de son œil.
 - [x] **Rampant des conduits** (riggé : long corps segmenté, six pattes, queue recourbée) : il sort des **13 grilles d'aération** (`VENT_n`, au plafond des tunnels, des puits de maintenance et de la salle des machines), en descendant le long du mur ou depuis le plafond, la grille claquant dans un nuage de poussière. Blessé à moitié, il court vers la grille la plus proche, disparaît dans les conduits, puis ressort d'une autre grille près du joueur, à moitié guéri.
 - [x] Vagues : rampants dès la vague 2, drones à partir de la vague 3 ; survie et cibles de l'Exploration ([N]) aussi.
 - [x] 98 tests automatisés, dont 2 nouveaux : le rampant qui sort d'une grille, rentre dans les conduits et ressort ; le drone qui tire sa rafale puis se met à couvert.
 - **Validation :** jouer les vagues 3 et 4.
 
-### Refonte de la carte en réseau de tunnels (24/10/2026) `[~]`
+### Refonte de la carte en réseau de tunnels (24/10/2026) `[x]`
 Demandée par le joueur : la station se jouait comme une carte extérieure. Inspirée des cartes intérieures réussies (trois boucles, alternance couloir/salle, moyeu et rayons, lisibilité par la lumière, coudes et changements de matière, claustrophobie d'*Alien* et *Dead Space*).
 - [x] **Nouvelle carte** (`blender/station/station.py`, habillée par `blender/station/dressing.py`) :
   - cinq districts : salle du réacteur au centre, serre au toit vitré au sud, hangar au nord, quartiers de l'équipage à l'est, laboratoires à l'ouest (sas au bout) ;
@@ -315,6 +315,18 @@ Demandée par le joueur : la station se jouait comme une carte extérieure. Insp
 - [x] **Brute allégée (25/10/2026)**, le joueur la trouvait trop résistante : 400 PV au lieu de 620, et sa carapace arrête la moitié d'un coup sur ±45° au lieu des trois quarts sur ±60°. Dans des tunnels on l'affronte presque toujours de face, elle encaissait l'équivalent de 2 500 PV.
 - [x] **Passe de lumière (25/10/2026)**, le joueur trouvait les sources trop fortes : néons à 4 au lieu de 8, torche à 9 au lieu de 16, soleil de la serre à 1 au lieu de 2,2, alarme et gyrophares adoucis, bloom plus discret (`ambiance.bloom`), et toutes les surfaces lumineuses de la carte (tubes, écrans, anneaux du réacteur, lampes de culture, bandes de couleur) à moitié de leur émission avec une base sombre et mate (`ambiance.emissiveScale`) : elles brillent d'elles-mêmes au lieu de renvoyer la torche en halo blanc.
 - **Validation :** se promener dans les tunnels, puis jouer les vagues 2 à 4 (et valider la phase 4 au passage).
+
+### U2 Phase 5 — La Reine-ruche `[x]`
+- [x] **La Reine** (`blender/station/queen.py`, `public/models/station/queen.glb`) : une immense créature noire agrippée à la colonne du réacteur, au centre de la salle des machines ; elle tourne autour de la colonne pour faire face au joueur. Crâne allongé sous une crête en éventail, deux grandes griffes de mante, deux petits bras, des pattes plantées au sol et une seconde paire serrée autour de la colonne, une queue étendue au sol devant elle, et son sac à œufs enroulé derrière. Animations : repos, crachat, coup de queue, rugissement, ponte, coup reçu.
+- [x] **Un combat en trois temps** (`Enemies#queen`), revu le 25/10/2026 parce que le joueur le trouvait répétitif ; chaque coup est tiré au hasard parmi ceux qui portent, jamais deux fois le même de suite, et prévenu au sol :
+  - **Phase 1, sur le réacteur** : salve de trois jets d'acide ; pluie d'acide qui goutte du plafond sur des cercles rouges autour du joueur (dont un là où il va) ; coup de queue là où il se tient ; balayage des griffes sur tout un arc devant elle (projette loin). Elle pond un nouveau sac de temps en temps.
+  - **Phase 2, à la moitié** : elle coupe le courant (`Sim#powerCut` : néons qui bégaient puis s'éteignent, surfaces lumineuses réduites à une lueur, alarme redoublée, plus de ronflement des machines, lampe torche forcée), puis s'enferme dans sa carapace (lueur verte qui pulse, invulnérable, les balles ricochent). Six sacs l'entourent et éclosent vite, trois hôtes descendent des tunnels, la pluie d'acide continue. Détruire tous les sacs ouvre la carapace : la Reine est exposée 6 s et prend le double de dégâts (au bout de 45 s, elle sort d'elle-même).
+  - **Phase 3, au tiers** : elle fait sauter les sas (`Sim#breach` : ils s'ouvrent à tour de rôle et aspirent de plus loin) et frappe plus vite. Sa queue saisit qui reste dans son cercle et le traîne jusqu'à ses mâchoires : 220 dégâts sur elle pour qu'elle lâche (et reste un instant exposée), sinon une morsure qui projette à travers la salle.
+  - Sa tête et son cou, loin devant la colonne, se touchent (sphères de touche ; la tête compte comme tir à la tête). Invulnérable pendant ses rugissements. 4 600 PV. À sa mort, le courant revient et les sas cessent de sauter.
+- [x] **Les sacs d'œufs** (`public/models/station/eggsac.glb`) : quatre autour de la salle à son réveil ; chacun fait éclore un parasite toutes les 6 à 9 s (8 parasites au plus, plus vite pendant la carapace). Un sac détruit est repondu au bout de 18 s (11 s dans la dernière phase).
+- [x] Ses nouveaux coups réutilisent pour l'instant ses animations existantes (le crachat pour la pluie, le coup de queue pour le balayage) : des animations dédiées demanderont Blender, partagé en ce moment avec une autre session.
+- [x] 108 tests, dont 8 pour la Reine (réveil et sacs, éclosions et ponte, tir à la tête, carapace puis exposition, sas et retour du courant, variété des coups, saisie et lâcher, coup prévenu). Corrigé au passage : le test de l'ennemi coincé (aléatoire : l'autre squelette venait le bousculer) et le test du khépesh (30 parties, délai porté à 15 s).
+- **Validation :** affronter la Reine en exploration (touche B), puis dans la vague 5.
 
 ## Décisions à prendre plus tard
 - **Phase 8 :** hébergement du serveur.

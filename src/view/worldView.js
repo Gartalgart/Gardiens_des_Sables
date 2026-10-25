@@ -25,6 +25,9 @@ export class WorldView {
     this.steamAt = []; // FX_Steam_n empties
     this.fxAt = { beacons: [], sparks: [], drips: [] }; // FX_Beacon_n, FX_Spark_n, FX_Drip_n (see StationFx)
     this.alarmMats = new Set(); // the red emergency lights, pulsing with the alarm
+    this.power = 1; // 1 lit .. 0 the Hive Queen has cut the power (neons out, the alarm up): setPower
+    this.powerT = 0; // seconds since the power went or came back
+    this.litMats = []; // the map's lit surfaces and their glow, dimmed with the power: [material, base]
 
     // a universe whose map is not modelled yet is drawn from its collision boxes
     if (levelRoot) this.#buildLevel(levelRoot);
@@ -167,6 +170,13 @@ export class WorldView {
   // shut doors and levers up, for a new game
   closeAirlocks() {
     for (const a of this.airlocks) a.open = false;
+  }
+
+  // the station's power (the sim's 'power' event): the neons die out in a last stutter, or come back
+  setPower(on, instant = false) {
+    if (this.powerOn !== on) this.powerT = 0;
+    this.powerOn = on;
+    if (instant) this.power = on ? 1 : 0;
   }
 
   #dustSpawn(a, i, anywhere) {
@@ -314,6 +324,7 @@ export class WorldView {
       if (this.look.emissiveScale && o.material && !scaled.has(o.material)) {
         scaled.add(o.material);
         o.material.emissiveIntensity *= this.look.emissiveScale;
+        if (o.material.emissiveIntensity > 0 && !o.material.name.startsWith('S_Alarm')) this.litMats.push([o.material, o.material.emissiveIntensity]);
         if (o.material.emissiveIntensity > 0) {
           o.material.color.multiplyScalar(0.35);
           o.material.roughness = Math.max(o.material.roughness, 0.6);
@@ -553,20 +564,28 @@ export class WorldView {
       u.fade = Math.min(1, u.fade + dt * 2.5);
       const ph = u.phase;
       l.intensity = this.look.fire.neon
-        ? this.look.fire.intensity * u.fade * WorldView.neonLevel(t, u.brazier + 1)
+        ? this.look.fire.intensity * u.fade * WorldView.neonLevel(t, u.brazier + 1) * this.power
         : 22 * u.fade * (0.82 + 0.12 * Math.sin(t * 9 + ph) + 0.08 * Math.sin(t * 23.7 + ph * 3));
     }
+    // the power going (0.8 s of stutter, then a fade to black over 1.2 s) or coming back (a slower
+    // fade up, a flicker as it catches)
+    this.powerT += dt;
+    const T = this.powerT;
+    if (this.powerOn === false) this.power = T < 0.8 ? (Math.sin(T * 53) > 0 ? 1 : 0.15) : Math.max(0, 1 - (T - 0.8) / 1.2);
+    else if (this.power < 1) this.power = Math.min(1, T / 2.5) * (Math.sin(T * 41) > -0.6 ? 1 : 0.3);
+    for (const [m, base] of this.litMats) m.emissiveIntensity = base * (0.12 + 0.88 * this.power);
     this.neons.forEach((m, i) => {
       if (!m) return;
-      const k = WorldView.neonLevel(t, i + 1);
+      const k = WorldView.neonLevel(t, i + 1) * this.power;
       m.material.emissiveIntensity = m.userData.base * k;
       if (this.neonBeams[i]) this.neonBeams[i].uniforms.strength.value = 0.045 * k;
       if (this.halos[i]) this.halos[i].material.opacity = 0.05 * k;
     });
     if (this.alarm) {
       const A = this.look.alarm, pulse = 0.5 + 0.5 * Math.sin((t / A.period) * Math.PI * 2);
-      this.alarm.intensity = A.intensity * pulse * pulse;
-      for (const m of this.alarmMats) m.emissiveIntensity = 0.2 + 0.8 * pulse;
+      const dark = 1 + 1.6 * (1 - this.power); // in the dark, the emergency lights are all there is
+      this.alarm.intensity = A.intensity * pulse * pulse * dark;
+      for (const m of this.alarmMats) m.emissiveIntensity = (0.2 + 0.8 * pulse) * dark;
     }
     this.#updateAirlocks(t, dt);
     this.#updateSteam(dt);

@@ -33,6 +33,8 @@ const ACT_CLIPS = {
   // the Kraken's tentacles: the strike is warned by a red circle for its whole windup
   strike: ['attack', 0.4], grab: ['grab', 0.4], hold: ['hold', 0],
   emerge: ['walk', 0], // a duct crawler climbing down out of its vent
+  lay: ['lay', 0], // the Hive Queen laying an egg sac
+  rain: ['cast', 0.4], sweep: ['attack', 0.4], // and her other blows
 };
 // speed (m/s) at which the walk / run clips play at their authored pace
 const GAIT = {
@@ -52,6 +54,7 @@ const GAIT = {
   host: { run: 99, walkRef: 1.6, runRef: 3 },
   brute: { run: 99, walkRef: 2.0, runRef: 5 },
   crawler: { run: 3, walkRef: 2.5, runRef: 7.5 },
+  eggsac: { run: 99, walkRef: 1, runRef: 1 },
 };
 // a swarm (the bats): this many copies of the one-bat model, flapping around the swarm's centre
 const SWARM = 12;
@@ -205,7 +208,7 @@ export class EnemyView {
         break;
       }
       case 'ring':
-        this.#ring(ev.pos, ev.radius, ENEMY_LOOK[ev.enemyType].color, ev.life);
+        this.#ring(ev.pos, ev.radius, ev.color ? new THREE.Color(...ev.color) : ENEMY_LOOK[ev.enemyType].color, ev.life);
         break;
       case 'rainMark': {
         if (ev.kind === 'lob') {
@@ -223,9 +226,10 @@ export class EnemyView {
           this.#ring(ev.pos, ev.radius, new THREE.Color(0.6, 0.12, 0.05), ev.delay);
           break;
         }
-        // a red circle grows on the ground while the orb falls onto it
+        // a red circle grows on the ground while the orb (the Queen's acid: a green drop) falls onto it
+        const acid = ev.kind === 'acid';
         this.#ring(ev.pos, ev.radius, new THREE.Color(1, 0.3, 0.15), ev.delay);
-        const mesh = this.#acquireOrb(new THREE.Color(1, 0.45, 0.2));
+        const mesh = this.#acquireOrb(acid ? new THREE.Color(0.45, 1, 0.15) : new THREE.Color(1, 0.45, 0.2));
         mesh.scale.setScalar(2);
         this.fallingOrbs.push({ id: ev.id, mesh, to: ev.pos.clone(), t: 0, dur: ev.delay });
         break;
@@ -244,7 +248,7 @@ export class EnemyView {
         }
         const i = this.fallingOrbs.findIndex((f) => f.id === ev.id);
         if (i >= 0) { const f = this.fallingOrbs[i]; f.mesh.scale.setScalar(1); this.#releaseOrb(f.mesh); this.fallingOrbs.splice(i, 1); }
-        this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.2), UP, { count: 40, color: new THREE.Color(1, 0.45, 0.2), speed: 7, size: 0.2, life: 0.6, grav: 6, spread: 1.6 });
+        this.effects.burst(ev.pos.clone().setY(ev.pos.y + 0.2), UP, { count: 40, color: ev.kind === 'acid' ? new THREE.Color(0.45, 1, 0.15) : new THREE.Color(1, 0.45, 0.2), speed: 7, size: 0.2, life: 0.6, grav: 6, spread: 1.6 });
         break;
       }
       case 'explosion':
@@ -299,7 +303,7 @@ export class EnemyView {
     for (const p of enemies.projectiles) {
       live.add(p.id);
       let m = this.orbs.get(p.id);
-      if (!m) { m = this.#acquireOrb(p.reflected ? REFLECTED : ENEMY_LOOK[p.type].color); this.orbs.set(p.id, m); }
+      if (!m) { m = this.#acquireOrb(p.reflected ? REFLECTED : ENEMY_LOOK[p.type].shot ?? ENEMY_LOOK[p.type].color); this.orbs.set(p.id, m); }
       m.position.copy(p.pos);
       if (Math.random() < 0.5) this.effects.emit(p.pos, new THREE.Vector3(), p.reflected ? REFLECTED : ENEMY_LOOK[p.type].color, 0.18, 0.25);
     }
@@ -517,6 +521,8 @@ export class EnemyView {
     let charge = a?.kind === 'ranged' || a?.kind === 'slam' ? p : 0;
     if (a?.kind === 'prime') charge = 1.5 + Math.sin(v.phase * (12 + p * 40)) * 1.5;
     if (e.droneState === 'aim') charge = 1.5; // the drone's eye flares before a salvo
+    if (a?.kind === 'guard') charge = 6 + Math.sin(v.phase * 3) * 3; // the Queen shut in her carapace
+    if (a?.kind === 'exposed') charge = Math.sin(v.phase * 25) > 0 ? 14 : 4; // broken open
     for (const m of v.mats) {
       if (v.flash > 0) { m.m.emissive.setRGB(1, 0.9, 0.8); m.m.emissiveIntensity = 0.6; }
       else { m.m.emissive.copy(m.emissive); m.m.emissiveIntensity = m.ei * (1 + charge * 2); }

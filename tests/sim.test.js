@@ -202,7 +202,7 @@ describe('combat', () => {
     const { sim } = newGame();
     for (let i = 0; i < 40; i++) sim.enemies.damage(sim.enemies.spawn('runner', new THREE.Vector3(0, 0, 0)), 1e5, null, null);
     expect(sim.enemies.pickups.every((p) => p.kind === 'ammo')).toBe(true);
-  });
+  }, 15000); // thirty short games
 
   it('a parry sends the orb back into the shooter', () => {
     const { sim, player } = newGame();
@@ -1237,7 +1237,8 @@ describe('pirate enemies', () => {
         if (at.distanceTo(trapped.pos) > 10 && sim.level.nav.inWorld(x, z) && !sim.level.lineOfSight(eye, at.clone().setY(1))) hide = at;
       }
     player.pos.copy(hide);
-    run(sim, 7, () => { player.pos.copy(hide); player.health = 100; return emptyCommand(); });
+    sim.enemies.damage(out, 1e5, null, null); // done with it: walking up, it could jostle the trapped one
+    run(sim, 13, () => { player.pos.copy(hide); player.health = 100; return emptyCommand(); }); // two trap checks
     expect(trapped.pos.distanceTo(new THREE.Vector3(-6, 0, -12))).toBeGreaterThan(3);
   });
 
@@ -1631,5 +1632,156 @@ describe('station drones and duct crawlers', () => {
     expect(shots).toBeGreaterThanOrEqual(3);
     expect(coverSeen).toBe(true);
     expect(d.pos.y).toBeGreaterThan(1.5); // still hovering under the ceiling
+  });
+});
+
+describe('the Hive Queen', () => {
+  const levelOf = (w) => new Level(JSON.parse(readFileSync(new URL(`../public/${getWorld(w).files.levelData}`, import.meta.url), 'utf8')));
+  const queenGame = () => {
+    const sim = new Sim(levelOf('station'), { mode: 'sandbox', world: 'station' });
+    const player = sim.addPlayer('p1');
+    player.pos.set(0, 0, 14); // in the south tunnel's mouth, looking into the reactor room
+    sim.mode.callBoss();
+    return { sim, player, queen: sim.enemies.boss };
+  };
+  const alive = (sim) => (player) => { player.health = player.maxHealth; return emptyCommand(); };
+
+  it('wakes on the reactor with a roar, her egg sacs round the room on clear floor', () => {
+    const { sim, queen } = queenGame();
+    expect(queen.pos.length()).toBeLessThan(0.01);
+    const sacs = sim.enemies.list.filter((e) => e.type === 'eggsac');
+    expect(sacs.length).toBe(4);
+    for (const s of sacs) {
+      expect(sim.level.nav.inWorld(s.pos.x, s.pos.z)).toBe(true);
+      expect(sim.level.groundAt(s.pos.x, s.pos.z, 0.75, 1)).toBe(0); // nothing under or in it
+    }
+    // the sacs are parts: the wave only waits for her
+    expect(sim.enemies.alive).toBe(1);
+    const hp = queen.hp;
+    sim.enemies.damage(queen, 500, null, null); // still roaring
+    expect(queen.hp).toBe(hp);
+  });
+
+  it('her sacs hatch parasites; a sac shot down is laid again later', () => {
+    const { sim, player, queen } = queenGame();
+    run(sim, 12, alive(sim));
+    expect(sim.enemies.list.filter((e) => e.type === 'parasite').length).toBeGreaterThan(0);
+    const sac = sim.enemies.list.find((e) => e.type === 'eggsac');
+    sim.enemies.damage(sac, 9999, null, player);
+    expect(sim.enemies.list.filter((e) => e.type === 'eggsac').length).toBe(3);
+    run(sim, queen.T.queen.layEvery + 2, alive(sim));
+    expect(sim.enemies.list.filter((e) => e.type === 'eggsac').length).toBe(4);
+  });
+
+  it('a shot at her head, out in front of the column, is a head shot', () => {
+    const { sim, queen } = queenGame();
+    queen.facing = 0; // facing +Z, towards the shooter
+    const from = new THREE.Vector3(0, 1.6, 14);
+    const dir = new THREE.Vector3(0, 5, 5.6).sub(from).normalize();
+    const hit = sim.enemies.raycast(from, dir, 100);
+    expect(hit.enemy).toBe(queen);
+    expect(hit.head).toBe(true);
+  });
+
+  it('at half health she cuts the power and shuts herself in; every sac shot breaks her open', () => {
+    const { sim, player, queen } = queenGame();
+    run(sim, queen.T.queen.roar + 0.2, alive(sim));
+    sim.drainEvents();
+    sim.enemies.damage(queen, queen.maxHp * 0.55, null, player);
+    run(sim, 1.5, alive(sim)); // the blow she was winding up, if any
+    expect(sim.power).toBe(false);
+    expect(sim.drainEvents().some((ev) => ev.type === 'power' && !ev.on)).toBe(true);
+    run(sim, queen.T.queen.roar + 0.5, alive(sim));
+    expect(queen.act?.kind).toBe('guard');
+    const sacs = sim.enemies.list.filter((e) => e.type === 'eggsac');
+    expect(sacs.length).toBe(queen.T.queen.guard.sacs);
+    const hp = queen.hp;
+    sim.enemies.damage(queen, 300, null, player); // shut in: nothing gets through
+    expect(queen.hp).toBe(hp);
+    for (const s of sacs) sim.enemies.damage(s, 9999, null, player);
+    run(sim, 0.1, alive(sim));
+    expect(queen.act?.kind).toBe('exposed');
+    sim.enemies.damage(queen, 100, null, player);
+    expect(hp - queen.hp).toBeCloseTo(200); // double damage while exposed
+  });
+
+  it('at a third she blows the airlocks by turns; her death puts things back', () => {
+    const { sim, player, queen } = queenGame();
+    queen.stage = 2;
+    queen.guarded = true; // her shell already broken
+    queen.act = null;
+    sim.power = false;
+    sim.enemies.damage(queen, queen.maxHp * 0.7, null, player);
+    run(sim, 1.5, alive(sim));
+    expect(queen.stage).toBe(3);
+    expect(sim.breached).toBeTruthy();
+    expect(sim.airlocks.filter((a) => a.open).length).toBe(1);
+    const first = sim.airlocks.findIndex((a) => a.open);
+    run(sim, 12.5, alive(sim));
+    expect(sim.airlocks.findIndex((a) => a.open)).not.toBe(first); // the other one now
+    sim.enemies.damage(queen, 1e6, null, player);
+    expect(sim.power).toBe(true);
+    expect(sim.breached).toBeNull();
+    expect(player.grabbed).toBeNull();
+    expect(sim.enemies.list.filter((e) => e.type === 'eggsac').length).toBe(0);
+  });
+
+  it('she varies her blows: several kinds, never the same twice running, each warned on the floor', () => {
+    const { sim, player, queen } = queenGame();
+    player.pos.set(0, 0, 6.8); // close enough for every blow
+    const blows = [];
+    let rings = 0, rains = 0, hurt = false;
+    run(sim, 40, (p) => {
+      const k = queen.act?.kind;
+      if (k && k !== blows[blows.length - 1] && k !== 'transform' && k !== 'lay') blows.push(k);
+      for (const ev of sim.drainEvents()) {
+        if (ev.type === 'ring') rings++;
+        if (ev.type === 'rainMark' && ev.kind === 'acid') rains++;
+        if (ev.type === 'playerHurt') hurt = true;
+      }
+      p.health = p.maxHealth;
+      p.pos.set(0, 0, 6.8);
+      return emptyCommand();
+    });
+    expect(new Set(blows).size).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < blows.length; i++) expect(blows[i]).not.toBe(blows[i - 1]);
+    expect(rings).toBeGreaterThan(0);
+    expect(rains).toBeGreaterThan(0);
+    expect(hurt).toBe(true);
+  });
+
+  it('in her last phase her tail grabs and drags; shot enough she lets go', () => {
+    const { sim, player, queen } = queenGame();
+    run(sim, queen.T.queen.roar + 0.2, alive(sim));
+    queen.stage = 3;
+    player.pos.set(0, 0, 8);
+    queen.act = { kind: 'grab', t: 0, dur: 0.01, at: player.pos.clone(), player };
+    run(sim, 0.1, alive(sim));
+    expect(player.grabbed).toBeTruthy();
+    const from = player.pos.clone();
+    run(sim, 1.2, alive(sim));
+    expect(player.pos.distanceTo(queen.pos)).toBeLessThan(from.distanceTo(queen.pos) - 0.5); // dragged in
+    sim.enemies.damage(queen, queen.T.queen.grab.free + 10, null, player);
+    run(sim, 0.1, alive(sim));
+    expect(player.grabbed).toBeNull();
+  });
+
+  it('a blow comes down where a red circle warned, near her', () => {
+    const { sim, player } = queenGame();
+    player.pos.set(0, 0, 7.5);
+    let ring = null, slam = null, hp = 0;
+    run(sim, 20, (p) => {
+      for (const ev of sim.drainEvents()) {
+        if (ev.type === 'ring' && !ring) ring = ev;
+        if (ev.type === 'slam' && ring && !slam) { slam = ev; hp = p.health; }
+      }
+      if (!slam) p.health = p.maxHealth;
+      p.pos.set(0, 0, 7.5);
+      return emptyCommand();
+    });
+    expect(ring).not.toBeNull();
+    expect(Math.hypot(ring.pos.x - player.pos.x, ring.pos.z - player.pos.z)).toBeLessThan(3); // her tail on them, or her claws' arc
+    expect(slam).not.toBeNull();
+    expect(hp).toBeLessThan(player.maxHealth);
   });
 });

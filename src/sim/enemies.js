@@ -6,6 +6,7 @@ import { WATER_SLOW, EYE } from './constants.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
+const _h = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -82,6 +83,17 @@ export class Enemies {
     if (T.loot && this.sim.chest && Math.random() < this.sim.chest.looters) e.looter = true;
     this.list.push(e);
     this.sim.emit('enemySpawn', { id: e.id, enemyType: type, pos: position.clone(), elite });
+    if (T.queen) {
+      // the Hive Queen wakes on the reactor with a roar (she cannot be hurt meanwhile), her egg sacs
+      // already round the room
+      e.rise = 0;
+      e.stage = 1;
+      e.parts = [];
+      e.layT = T.queen.layEvery;
+      e.facing = Math.PI; // towards the hangar, where the tunnels from the boss gate come in
+      e.act = { kind: 'transform', t: 0, dur: T.queen.roar };
+      for (let i = 0; i < T.queen.sacs; i++) this.#laySac(e, false);
+    }
     if (T.kraken) {
       // the body stays under the water at first; its tentacles rise around the quay
       e.submerged = true;
@@ -118,6 +130,13 @@ export class Enemies {
         const head = point.y - base > e.T.headY;
         best = { enemy: e, dist: t, point, head };
       }
+      // parts of a big body out past its cylinder (the Queen's head, reaching out from the column)
+      for (const h of e.T.hits ?? []) {
+        const c = Math.cos(e.facing), s = Math.sin(e.facing);
+        const at = _h.set(e.pos.x + h.at[0] * c + h.at[2] * s, base + h.at[1], e.pos.z - h.at[0] * s + h.at[2] * c);
+        const th = raySphere(origin, dir, at, h.r);
+        if (th !== null && th < maxDist && (!best || th < best.dist)) best = { enemy: e, dist: th, point: origin.clone().addScaledVector(dir, th), head: !!h.head };
+      }
     }
     return best;
   }
@@ -126,6 +145,10 @@ export class Enemies {
   damage(e, amount, dir, killer, cause = 'ranged') {
     if (e.hidden || e.act?.kind === 'transform') return; // the pharaoh cannot be hurt while changing or teleporting
     if (e.diving) return; // a cut tentacle going back under
+    // the Hive Queen: shut in her carapace nothing gets through; broken open, she takes double
+    if (e.act?.kind === 'guard') { this.sim.emit('enemyHit', { id: e.id, armored: true, pos: e.pos.clone() }); return; }
+    if (e.act?.kind === 'exposed' && e.T.queen) amount *= e.T.queen.exposedMul;
+    if (e.act?.kind === 'hold' && e.T.queen) e.act.taken += amount;
     // a shell in front (the crab): blows that come at its face lose most of their force
     const A = e.T.armor;
     const armored = !!(A && dir && -(Math.sin(e.facing) * dir.x + Math.cos(e.facing) * dir.z) / (Math.hypot(dir.x, dir.z) || 1) > A.arc);
@@ -183,6 +206,7 @@ export class Enemies {
       if (j >= 0) this.list.splice(j, 1);
     }
     if (e.latched) this.release(e);
+    if (e.act?.kind === 'hold') this.#release(e); // the Queen dead with a player in her tail's grip
     this.sim.emit('enemyKill', { id: e.id, enemyType: e.type, pos: e.pos.clone(), dir: dir ? dir.clone() : null, cause, killer: killer?.id ?? null });
     if (killer) {
       killer.stats.kills++;
@@ -194,6 +218,7 @@ export class Enemies {
         if (killer.mods.lifesteal && !killer.dead) killer.health = Math.min(killer.maxHealth, killer.health + killer.mods.lifesteal);
       }
     }
+    if (e.T.queen) this.sim.hiveDown();
     if (e.T.boss && this.sim.weather !== 'clear' && !this.list.some((o) => o.T.boss)) {
       this.sim.weather = 'clear';
       this.sim.emit('weather', { kind: 'clear' });
@@ -261,6 +286,8 @@ export class Enemies {
   #think(e, dt, players) {
     const T = e.T;
     if (T.kraken) return this.#kraken(e, dt, players);
+    if (T.queen) return this.#queen(e, dt, players);
+    if (T.eggs) return this.#eggSac(e, dt);
     if (e.latched) return this.#latch(e, dt);
     // the duct crawler: hurt, it goes back into the nearest vent, and comes out of another later
     if (T.vent) {
@@ -596,6 +623,247 @@ export class Enemies {
       }
     }
     return best;
+  }
+
+  // ---------- the Hive Queen ----------
+  // Three phases that play differently (T.queen):
+  //   1. on the reactor: she turns to face the nearest player and draws her next attack at random
+  //      among those that reach (never the same twice running): acid volley, acid raining from the
+  //      ceiling on red circles, tail smashed down where a player stands, claws swept across the
+  //      front of the column; she lays a new egg sac now and then.
+  //   2. at half health she cuts the power and shuts herself in her carapace ("guard": she cannot be
+  //      hurt) while a brood hatches from new sacs and the crew comes down the tunnels; only acid
+  //      rain falls. Shooting every sac breaks her guard: stunned, she takes double damage for a few
+  //      seconds, then fights on.
+  //   3. at a third she blows the airlocks, fights faster, and her tail grabs: it drags a player to
+  //      her jaws unless they shoot her enough to make her let go.
+  // Each change of phase comes with a roar during which she cannot be hurt.
+  #queen(e, dt, players) {
+    const T = e.T, Q = T.queen;
+    const player = this.#nearest(e, players);
+    const toPlayer = _v.subVectors(player.pos, e.pos).setY(0);
+    const dist = toPlayer.length();
+    toPlayer.divideScalar(dist || 1);
+    const a = e.act;
+    // she keeps turning to face her prey, except while a blow is on its way or her guard is up
+    if (!['strike', 'sweep', 'grab', 'hold', 'guard', 'exposed'].includes(a?.kind)) {
+      let dA = Math.atan2(toPlayer.x, toPlayer.z) - e.facing;
+      dA = Math.atan2(Math.sin(dA), Math.cos(dA));
+      e.facing += dA * Math.min(1, dt * (e.stage >= 3 ? 1.8 : 1.3));
+    }
+    e.losTimer -= dt;
+    if (e.losTimer <= 0) {
+      e.losTimer = 0.2;
+      e.hasLos = this.level.lineOfSight(this.muzzleOf(e), player.center);
+    }
+    if (a?.kind === 'transform') {
+      a.t += dt;
+      if (a.t < a.dur) return;
+      e.act = null;
+      // out of the roar at half health: into her shell, a brood round her
+      if (e.stage === 2 && !e.guarded) this.#queenGuard(e);
+      return;
+    }
+    if (a?.kind === 'guard') return this.#queenGuarding(e, dt);
+    if (a?.kind === 'exposed') {
+      a.t += dt;
+      if (a.t >= a.dur) { e.act = null; e.attackCd = 0.6; }
+      return;
+    }
+    if (a?.kind === 'hold') return this.#queenHold(e, dt);
+    const ratio = e.hp / e.maxHp;
+    if (!a && e.stage === 1 && ratio <= 0.5) {
+      e.stage = 2;
+      e.act = { kind: 'transform', t: 0, dur: Q.roar };
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true, loud: true });
+      this.sim.powerCut(e);
+      return;
+    }
+    if (!a && e.stage === 2 && ratio <= 1 / 3) {
+      e.stage = 3;
+      e.act = { kind: 'transform', t: 0, dur: Q.roar };
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true, loud: true });
+      this.sim.breach(e);
+      return;
+    }
+    e.layT -= dt;
+    e.attackCd -= dt;
+    if (a) {
+      a.t += dt;
+      if (a.t < a.dur) return;
+      e.act = null;
+      e.attackCd = rand(...Q.gap) * (e.stage >= 3 ? 0.65 : 1);
+      if (a.kind === 'ranged') this.#fire(e, player);
+      else if (a.kind === 'rain') this.sim.acidRain(e, Q.rain);
+      else if (a.kind === 'lay') this.#laySac(e);
+      else if (a.kind === 'strike') this.#queenBlow(e, a.at, T.strike);
+      else if (a.kind === 'sweep') this.#queenBlow(e, a.at, Q.sweep);
+      else if (a.kind === 'grab') this.#queenGrab(e, a);
+      return;
+    }
+    // a new sac when one is missing (sooner in her last phase)
+    if (e.layT <= 0) {
+      e.layT = Q.layEvery * (e.stage >= 3 ? 0.6 : 1);
+      if (this.#sacsOf(e).length < Q.sacs) {
+        e.act = { kind: 'lay', t: 0, dur: Q.lay };
+        return;
+      }
+    }
+    if (e.attackCd > 0) return;
+    const kind = this.#queenPick(e, player, dist);
+    e.lastBlow = kind;
+    const fast = e.stage >= 3 ? 0.8 : 1;
+    const ring = (at, radius, life) => this.sim.emit('ring', { pos: at.clone(), radius, enemyType: e.type, life, color: Q.warn });
+    if (kind === 'ranged') e.act = { kind, t: 0, dur: T.ranged.windup };
+    else if (kind === 'rain') e.act = { kind, t: 0, dur: Q.rain.windup };
+    else if (kind === 'strike' || kind === 'grab') {
+      // where the player is heading
+      const at = player.pos.clone().addScaledVector(player.vel.clone().setY(0), 0.3);
+      at.y = this.level.groundAt(at.x, at.z, 0.4, player.pos.y + 0.6);
+      const B = kind === 'grab' ? Q.grab : T.strike;
+      e.act = { kind, t: 0, dur: B.windup * fast, at, player };
+      ring(at, B.radius, e.act.dur);
+    } else if (kind === 'sweep') {
+      // a wide arc of the floor in front of her, round towards the player
+      const at = e.pos.clone().addScaledVector(toPlayer, Q.sweep.at);
+      at.y = this.level.groundAt(at.x, at.z, 0.4, e.pos.y + 0.6);
+      e.act = { kind, t: 0, dur: Q.sweep.windup * fast, at };
+      ring(at, Q.sweep.radius, e.act.dur);
+    }
+  }
+
+  // her next blow: drawn among those that reach the player, weighted, never the last one again
+  #queenPick(e, player, dist) {
+    const T = e.T, Q = T.queen;
+    const pool = [];
+    if (e.hasLos && dist < T.ranged.max) pool.push(['ranged', 3]);
+    pool.push(['rain', 2]);
+    if (dist < T.strike.reach) pool.push(['strike', 3]);
+    if (dist < Q.sweep.reach) pool.push(['sweep', 4]);
+    if (e.stage >= 3 && dist < Q.grab.reach && !player.grabbed) pool.push(['grab', 4]);
+    const fresh = pool.length > 1 ? pool.filter(([k]) => k !== e.lastBlow) : pool;
+    let r = Math.random() * fresh.reduce((n, [, w]) => n + w, 0);
+    for (const [k, w] of fresh) if ((r -= w) <= 0) return k;
+    return fresh[0][0];
+  }
+
+  // a blow on a circle of the floor (her tail, her claws): hurts and throws whoever is still in it
+  #queenBlow(e, at, B) {
+    this.sim.emit('slam', { pos: at.clone() });
+    for (const p of this.sim.alivePlayers()) {
+      const away = new THREE.Vector3(p.pos.x - at.x, 0, p.pos.z - at.z);
+      if (away.length() < B.radius && Math.abs(p.pos.y - at.y) < 2.2) {
+        this.sim.hitPlayer(p, B.dmg * this.dmgMul, at, 'melee', e);
+        if (away.lengthSq() < 1e-4) away.set(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
+        p.impulse(away.normalize().multiplyScalar(B.throw ?? 8).add(new THREE.Vector3(0, 3.5, 0)));
+      }
+    }
+  }
+
+  // her last phase: the tail closes on whoever stayed in its circle and drags them to her jaws
+  #queenGrab(e, a) {
+    const Q = e.T.queen, p = a.player;
+    if (p.dead || p.grabbed || Math.hypot(p.pos.x - a.at.x, p.pos.z - a.at.z) > Q.grab.radius) {
+      this.sim.emit('slam', { pos: a.at.clone() });
+      return;
+    }
+    p.grabbed = { by: e.id, at: p.pos.clone().setY(p.pos.y + 0.6) };
+    e.act = { kind: 'hold', t: 0, dur: Q.grab.hold, taken: 0, player: p, from: p.pos.clone() };
+    this.sim.emit('grab', { pid: p.id, id: e.id });
+  }
+
+  #queenHold(e, dt) {
+    const Q = e.T.queen, a = e.act, p = a.player;
+    a.t += dt;
+    // dragged in to the foot of her body, under her jaws (fast at first)
+    const jaws = e.pos.clone().addScaledVector(new THREE.Vector3(a.from.x - e.pos.x, 0, a.from.z - e.pos.z).normalize(), e.T.radius + 0.7);
+    const k = 1 - (1 - Math.min(1, a.t / a.dur)) ** 2;
+    p.grabbed.at.lerpVectors(a.from, jaws, k).setY(a.from.y + 0.6 + k * 0.8);
+    const free = a.taken >= Q.grab.free;
+    if (!free && a.t < a.dur && !p.dead) return;
+    p.grabbed = null;
+    this.sim.emit('grab', { pid: p.id, id: e.id, released: true });
+    e.act = null;
+    e.attackCd = rand(...Q.gap);
+    const out = new THREE.Vector3(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z).normalize();
+    if (free) {
+      // shot enough, she lets go with a shriek
+      e.act = { kind: 'exposed', t: 0, dur: 1.2 };
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, loud: true });
+      p.impulse(out.multiplyScalar(6).add(new THREE.Vector3(0, 3, 0)));
+    } else if (!p.dead) {
+      // the jaws: a bite, and thrown back across the room
+      this.sim.hitPlayer(p, Q.grab.bite * this.dmgMul, e.pos, 'melee', e);
+      this.sim.emit('slam', { pos: p.pos.clone() });
+      p.impulse(out.multiplyScalar(11).add(new THREE.Vector3(0, 5, 0)));
+    }
+  }
+
+  // into her shell: a full set of new sacs, the crew down the tunnels
+  #queenGuard(e) {
+    const Q = e.T.queen;
+    e.guarded = true;
+    e.act = { kind: 'guard', t: 0, dur: Q.guard.max, rain: Q.guard.rainEvery * 0.5 };
+    while (this.#sacsOf(e).length < Q.guard.sacs) {
+      const n = this.#sacsOf(e).length;
+      this.#laySac(e, false);
+      if (this.#sacsOf(e).length === n) break; // no free nest left
+    }
+    for (const s of this.#sacsOf(e)) s.hatchT = Math.min(s.hatchT, rand(1, 3));
+    for (let i = 0; i < Q.guard.crew; i++) this.spawn('host', this.sim.pickSpawn('host'));
+    this.sim.emit('banner', { title: '', sub: this.sim.world.texts.bossGuard, duration: 3 });
+  }
+
+  // shut in: acid now and then; when every sac is down (or she has waited long enough), she opens up
+  #queenGuarding(e, dt) {
+    const Q = e.T.queen, a = e.act;
+    a.t += dt;
+    a.rain -= dt;
+    if (a.rain <= 0) {
+      a.rain = Q.guard.rainEvery;
+      this.sim.acidRain(e, Q.rain);
+    }
+    if (this.#sacsOf(e).length && a.t < a.dur) return;
+    e.act = { kind: 'exposed', t: 0, dur: Q.guard.exposed };
+    this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true, loud: true });
+    this.sim.emit('banner', { title: '', sub: this.sim.world.texts.bossExposed, duration: 2.5 });
+  }
+
+  #sacsOf(queen) {
+    return queen.parts.filter((s) => this.list.includes(s));
+  }
+
+  // a new egg sac on a free nest of the room, the one farthest from the players
+  #laySac(queen, announce = true) {
+    const taken = this.#sacsOf(queen).map((s) => s.pos);
+    const players = this.sim.alivePlayers();
+    let best = null, bd = -1;
+    for (const [x, z] of queen.T.queen.nests) {
+      const p = new THREE.Vector3(queen.pos.x + x, queen.pos.y, queen.pos.z + z);
+      if (taken.some((t) => t.distanceTo(p) < 1)) continue;
+      const d = players.reduce((m, pl) => Math.min(m, pl.pos.distanceTo(p)), Infinity);
+      if (d > bd) { bd = d; best = p; }
+    }
+    if (!best) return;
+    const s = this.spawn('eggsac', best);
+    s.owner = queen;
+    s.hatchT = rand(...s.T.eggs.hatch) * 0.6;
+    queen.parts.push(s);
+    if (announce) this.sim.emit('banner', { title: '', sub: this.sim.world.texts.bossLay, duration: 1.6 });
+  }
+
+  // an egg sac: every few seconds one of its eggs hatches a parasite, while not too many are about
+  #eggSac(e, dt) {
+    if (e.rise > 0) { e.rise = Math.max(0, e.rise - dt * 0.8); return; }
+    e.hatchT -= dt;
+    if (e.hatchT > 0) return;
+    const E = e.T.eggs;
+    e.hatchT = rand(...E.hatch) * (e.owner?.act?.kind === 'guard' ? 0.55 : e.owner?.stage >= 3 ? 0.7 : 1);
+    if (this.list.filter((o) => o.type === 'parasite').length >= E.cap) return;
+    const out = this.spawn('parasite', e.pos.clone().add(new THREE.Vector3(rand(-0.4, 0.4), 0, rand(-0.4, 0.4))));
+    out.rise = 0;
+    out.stun = 0.3;
+    this.sim.emit('burst', { pos: e.pos.clone().setY(e.pos.y + 1), enemyType: e.type });
   }
 
   // ---------- the Kraken ----------
@@ -1185,6 +1453,18 @@ export class Enemies {
 }
 
 // Ray against a vertical cylinder; returns distance or null.
+// distance along the ray (o, d normalized) to the sphere (c, r), or null
+export function raySphere(o, d, c, r) {
+  const ox = o.x - c.x, oy = o.y - c.y, oz = o.z - c.z;
+  const b = ox * d.x + oy * d.y + oz * d.z;
+  const cc = ox * ox + oy * oy + oz * oz - r * r;
+  const disc = b * b - cc;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  if (-b - sq >= 0) return -b - sq;
+  return -b + sq >= 0 ? -b + sq : null;
+}
+
 export function rayCylinder(o, d, c, r, y0, y1) {
   const ox = o.x - c.x, oz = o.z - c.z;
   const a = d.x * d.x + d.z * d.z;

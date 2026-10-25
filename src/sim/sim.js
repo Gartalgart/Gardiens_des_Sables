@@ -26,6 +26,9 @@ export const KEG = { radius: 0.42, height: 1.0, blast: 5.5, dmg: 220, playerDmg:
 // out drags bodies towards it (m/s at the door, fading out at reach + reachPerWidth × the door's
 // width); whoever goes through the door is lost. use: how close to the lever a player must stand.
 export const AIRLOCK = { dur: 7, pull: 10, reach: 10, reachPerWidth: 0.9, use: 1.8, cooldown: 1 };
+// the Hive Queen's breach (Sim#breach): the airlocks open by turns, for `open` s every `every` s,
+// and pull from farther (reach × reachMul)
+export const BREACH = { open: 6, every: 12, reachMul: 1.6 };
 // the station's sticky mines (world.grenade 'mine'): they stick to what they hit, arm, and go off
 // when an enemy comes near (or after `fuse` seconds on an enemy's back)
 export const MINE = { speed: 16, lift: 2, arm: 0.6, trigger: 2.4, fuse: 1.3, radius: 4.6, dmg: 200, playerDmg: 60, life: 60 };
@@ -70,6 +73,8 @@ export class Sim {
         reach: AIRLOCK.reach + AIRLOCK.reachPerWidth * size[side], open: false, t: 0, by: null, cd: 0,
       };
     });
+    this.power = true; // the station's lights (the Hive Queen cuts them: Sim#powerCut)
+    this.breached = null; // { t, next } while the Queen keeps the airlocks blowing (Sim#breach)
     // the Level is shared by the games: a pier the Kraken broke stands again, and the nav grid
     // forgets the previous game's targets
     level.restore();
@@ -420,6 +425,17 @@ export class Sim {
   }
 
   #updateAirlocks(dt) {
+    // the Queen's breach: one airlock after the other blows open
+    const B = this.breached;
+    if (B && this.airlocks.length) {
+      B.t -= dt;
+      if (B.t <= 0) {
+        B.t = BREACH.every;
+        const a = this.airlocks[B.next++ % this.airlocks.length];
+        this.setAirlock(a, true);
+        a.t = BREACH.open;
+      }
+    }
     for (const a of this.airlocks) {
       a.cd = Math.max(0, a.cd - dt);
       if (!a.open) continue;
@@ -441,14 +457,15 @@ export class Sim {
   // has gone past the door.
   #suck(a, pos, r, h, dt) {
     const dx = a.center.x - pos.x, dz = a.center.z - pos.z, d = Math.hypot(dx, dz);
-    if (d > a.reach) return false;
+    const reach = a.reach * (this.breached ? BREACH.reachMul : 1);
+    if (d > reach) return false;
     const from = a.center.clone().setY(1.2);
     if (d > 1.5 && !this.level.lineOfSight(from, pos.clone().setY(pos.y + 1.2))) return false;
     // aimed past the door, so a body at the door goes on through
     const out = a.center.clone();
     out[a.axis] += a.sign * 3;
     const tx = out.x - pos.x, tz = out.z - pos.z, tl = Math.hypot(tx, tz) || 1;
-    const step = AIRLOCK.pull * Math.pow(1 - d / a.reach, 0.7) * dt;
+    const step = AIRLOCK.pull * Math.pow(1 - d / reach, 0.7) * dt;
     this.level.moveBody(pos, (tx / tl) * step, (tz / tl) * step, r, h);
     return (pos[a.axis] - a.center[a.axis]) * a.sign > 0;
   }
@@ -648,6 +665,31 @@ export class Sim {
     this.emit('horn', { victory: false });
   }
 
+  // The Hive Queen at half health: the power goes, the station is dark but for the red alarm
+  // (and the torches, forced on: see 'power' in src/main.js).
+  powerCut(queen) {
+    this.power = false;
+    this.emit('power', { on: false, pos: queen.pos.clone() });
+    this.emit('banner', { title: '', sub: this.world.texts.bossPower, duration: 2.5 });
+    this.emit('horn', { victory: false });
+  }
+
+  // At a third: she blows the airlocks; from now on they open by turns and pull harder (BREACH).
+  breach(queen) {
+    this.breached = { t: 0, next: 0 };
+    this.emit('banner', { title: '', sub: this.world.texts.bossBreach, duration: 2.5 });
+    this.emit('horn', { victory: false });
+  }
+
+  // the Queen is dead: the lights come back, the airlocks stop blowing (an open one closes on its own)
+  hiveDown() {
+    this.breached = null;
+    if (!this.power) {
+      this.power = true;
+      this.emit('power', { on: true });
+    }
+  }
+
   // The pharaoh's second phase: the storm rises.
   bossPhase2(boss) {
     this.weather = 'sandstorm';
@@ -655,6 +697,25 @@ export class Sim {
     this.emit('weather', { kind: 'sandstorm' });
     this.emit('banner', { title: '', sub: this.world.texts.bossStorm, duration: 2.5 });
     this.emit('horn', { victory: false });
+  }
+
+  // The Hive Queen spits at the ceiling: acid drips down on red circles round each player, one of them
+  // where the player is heading (R: her rain settings, see `queen.rain` in src/worlds/station.js).
+  acidRain(queen, R) {
+    const dmg = R.dmg * this.enemies.dmgMul;
+    for (const p of this.alivePlayers()) {
+      const spots = [p.pos.clone().addScaledVector(p.vel.clone().setY(0), R.delay)];
+      for (let i = 1; i < R.drops; i++) {
+        const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 4.5;
+        spots.push(p.pos.clone().add(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r)));
+      }
+      spots.forEach((s, i) => {
+        s.y = this.level.groundAt(s.x, s.z, 0.5, p.pos.y + 0.6);
+        const strike = { id: this.nextId(), pos: s, radius: R.radius, dmg, t: R.delay + i * 0.12, kind: 'acid' };
+        this.strikes.push(strike);
+        this.emit('rainMark', { id: strike.id, pos: s.clone(), radius: strike.radius, delay: strike.t, kind: 'acid' });
+      });
+    }
   }
 
   // Orbs fall from the sky on circles marked around each player, one of them where the player is heading.
@@ -860,6 +921,7 @@ export class Sim {
     const players = this.alivePlayers();
     const T = this.world.enemies[type];
     if (T.kraken) return new THREE.Vector3(...T.kraken.anchor); // out in the deep water, between the piers
+    if (T.queen) return new THREE.Vector3(...T.queen.anchor); // on the reactor
     // the gates this kind comes through, when the universe says (the station: crew from the
     // quarters and labs, parasites from the nests, brutes from the hangar, drones from their docks)
     const gates = this.world.spawnGates?.[type]?.map((n) => this.level.spawns[n - 1]).filter(Boolean);

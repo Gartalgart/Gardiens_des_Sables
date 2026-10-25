@@ -31,6 +31,8 @@ export const STATION = {
       brute: 'models/station/brute.glb',
       drone: 'models/station/drone.glb',
       crawler: 'models/station/crawler.glb',
+      boss: 'models/station/queen.glb',
+      eggsac: 'models/station/eggsac.glb',
     },
   },
   props: null,
@@ -79,7 +81,6 @@ export const STATION = {
     parasite: [3, 9, 10],
     brute: [1, 2, 8, 10],
     drone: [2, 7, 8],
-    boss: [1],
   },
 
   // ---------- enemies (models: blender/station/enemies.py) ----------
@@ -132,7 +133,49 @@ export const STATION = {
       vent: { retreat: 0.5, hide: [2.5, 4] }, // flees below that share of its health; seconds in the ducts
       load: 0.5,
     },
-    boss: { ...SABLES.enemies.boss, summon: 'parasite' },
+    // the Hive Queen (U2 phase 5, Enemies#queen): clinging to the reactor column in the middle of the
+    // reactor room, she turns to face whoever she hunts and draws her blows at random. Phase 1: acid
+    // volleys, acid rain, tail slam, claw sweep, a sac laid now and then. Phase 2 (half health, the
+    // power cut: Sim#powerCut): shut in her carapace while a brood hatches; shooting every sac breaks
+    // her open. Phase 3 (a third, the airlocks blown: Sim#breach): faster, and her tail grabs.
+    boss: {
+      hp: 4600, speed: 0, radius: 3.9, height: 6.8, headY: 4.4,
+      melee: { range: 0.01, dmg: 0, windup: 1, cd: 99 },
+      ranged: { min: 0, max: 40, cd: 0, windup: 0.42, speed: 17, dmg: 13, count: 3, spread: 0.1 },
+      strike: { reach: 9, radius: 2.6, windup: 1.0, dmg: 30, throw: 8 }, // her tail, on a red circle (windup: its warning)
+      muzzle: [0, 4.7, 6.4], // her mouth, out in front of the column
+      // her head and claws reach out past her cylinder: spheres in front of it (model space, x y z)
+      hits: [{ at: [0, 5.0, 5.6], r: 1.1, head: true }, { at: [0, 4.0, 4.6], r: 1.4 }],
+      big: true, boss: true, stay: true, hover: 0, // on the floor (the pharaoh floats)
+      summon: 'parasite',
+      queen: {
+        anchor: [0, 0, 0], // the reactor's axis
+        gap: [0.9, 1.6], // seconds between two blows (× 0.65 in her last phase)
+        warn: [1, 0.3, 0.12], // the colour of her red circles (her own colour is near black)
+        // her claws across the floor in front of the column: a circle `at` m out, towards the player
+        sweep: { reach: 7.5, at: 5.2, radius: 3.0, windup: 0.75, dmg: 24, throw: 10 },
+        // acid dripping from the ceiling: `drops` circles round each player, falling after `delay` s
+        rain: { windup: 0.9, drops: 4, delay: 1.2, radius: 1.7, dmg: 14 },
+        // last phase: the tail grabs whoever stays in its circle, drags them to her jaws for `hold` s,
+        // then bites; `free`: the damage she must take meanwhile to let go
+        grab: { reach: 10, radius: 1.6, windup: 0.9, hold: 3.2, free: 220, bite: 34 },
+        // phase 2: shut in her shell (at most `max` s) with `sacs` sacs round her, `crew` hosts coming
+        // down the tunnels, acid rain every `rainEvery` s; broken open, `exposed` s of double damage
+        guard: { sacs: 6, crew: 3, rainEvery: 7, max: 45, exposed: 6 },
+        exposedMul: 2,
+        sacs: 4, // how many she starts with and keeps up at most (out of her shell)
+        layEvery: 18, lay: 1.2, // seconds between two layings, and how long one takes
+        roar: 2.2, // her coming and her changes of phase: she cannot be hurt meanwhile
+        // where sacs are laid: the floor of the room round her, clear of the generators and the doors
+        nests: [[6.6, -2.9], [7.4, 3.2], [-7.4, -3.2], [-6.6, 2.9], [3.2, 7.4], [-3.2, 7.4], [3.2, -7.4], [-3.2, -7.4]],
+      },
+    },
+    // an egg sac of the Queen's: hatches a parasite every few seconds while she lives
+    eggsac: {
+      hp: 130, speed: 0, radius: 0.75, height: 1.3, headY: 99, stay: true, part: true, load: 0,
+      melee: { range: 0.01, dmg: 0, windup: 1, cd: 99 },
+      eggs: { hatch: [6, 9], cap: 8 }, // seconds between two hatchings; at most that many parasites about
+    },
   },
   waves: [
     { host: 6, parasite: 6 },
@@ -161,6 +204,8 @@ export const STATION = {
     brute: { color: [1, 0.35, 0.15], dot: '#ff5a2a' },
     drone: { color: [1, 0.15, 0.1], dot: '#ff3020' },
     crawler: { color: [0.6, 0.85, 0.3], dot: '#a0e050' },
+    boss: { color: [0.04, 0.07, 0.03], dot: '#80ff40', shot: [0.5, 1, 0.2] }, // shot: her acid // a dim glow: she is black, wet and glossy
+    eggsac: { color: [0.75, 0.62, 0.4], dot: '#c0a070' },
   },
 
   texts: {
@@ -174,6 +219,15 @@ export const STATION = {
     grenadeKill: 'MINE',
     kegKill: 'BONBONNE',
     airlockKill: 'DANS LE VIDE',
+    bossName: 'LA REINE-RUCHE',
+    bossWakes: 'La Reine-ruche se réveille sur le réacteur…',
+    bossSummon: 'La Reine appelle sa couvée !',
+    bossLay: 'La Reine pond un sac d’œufs',
+    bossPower: 'La Reine coupe le courant !',
+    bossBreach: 'La Reine fait sauter les sas !',
+    bossGuard: 'La Reine s’enferme dans sa carapace — détruisez ses sacs d’œufs !',
+    bossExposed: 'La carapace s’ouvre — la Reine est exposée !',
+    grabbed: 'LA QUEUE DE LA REINE VOUS TIENT — TIREZ-LUI DESSUS !',
     latched: 'UN PARASITE VOUS AGRIPPE — MATRAQUE [1] !',
     killsLabel: 'Créatures abattues',
     airlockOpen: 'Sas ouvert — dépressurisation !',
