@@ -257,8 +257,9 @@ export class EnemyView {
         this.effects.burst(ev.pos.clone().setY(ev.pos.y - 0.8), UP, { count: 40, color: new THREE.Color(0.35, 0.27, 0.18), speed: 4, size: 0.7, life: 1.4, grav: 1, spread: 2 });
         break;
       case 'burst':
-        // a parasite tearing its way out of a host's chest
-        this.effects.burst(ev.pos, UP, { count: 45, color: new THREE.Color(0.35, 0.05, 0.04), speed: 6, size: 0.12, life: 0.7, grav: 12, spread: 1 });
+        // a parasite tearing its way out of a host's chest: alien ichor, never red blood (PEGI 12,
+        // asked by the web portals)
+        this.effects.burst(ev.pos, UP, { count: 45, color: new THREE.Color(0.55, 0.6, 0.12), speed: 6, size: 0.12, life: 0.7, grav: 12, spread: 1 });
         this.effects.burst(ev.pos, UP, { count: 20, color: new THREE.Color(0.4, 0.45, 0.2), speed: 3, size: 0.2, life: 0.5, grav: 8, spread: 0.8 });
         break;
       case 'teleportOut': case 'teleportIn':

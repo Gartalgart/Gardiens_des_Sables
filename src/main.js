@@ -26,7 +26,7 @@ import { Input } from './input.js';
 import { Effects } from './effects.js';
 import { Hud, fmtTime } from './hud.js';
 import { Sound } from './audio.js';
-import { settings, updateSettings, onSettingsChange, DEFAULTS, QUALITY } from './settings.js';
+import { settings, updateSettings, onSettingsChange, DEFAULTS, QUALITY, QUALITY_ORDER } from './settings.js';
 import { topScores, recordScore } from './leaderboard.js';
 import { upgradeInfo } from './sim/progression.js';
 import { WORLDS, getWorld } from './worlds/index.js';
@@ -265,7 +265,7 @@ $('o-fps').addEventListener('change', (e) => updateSettings({ showFps: e.target.
 $('o-hpnum').addEventListener('change', (e) => updateSettings({ showHealthNum: e.target.checked }));
 $('o-shake').addEventListener('change', (e) => updateSettings({ cameraShake: e.target.checked }));
 $('o-name').addEventListener('input', (e) => updateSettings({ playerName: e.target.value.trim().slice(0, 16) || t('opt.defaultName') }));
-document.querySelectorAll('#o-quality button').forEach((b) => b.addEventListener('click', () => { updateSettings({ quality: b.dataset.q }); syncOptionsForm(); }));
+document.querySelectorAll('#o-quality button').forEach((b) => b.addEventListener('click', () => { updateSettings({ quality: b.dataset.q, qualityAuto: false }); syncOptionsForm(); }));
 // a new language reloads the page, as a new universe does
 document.querySelectorAll('#o-lang button').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
 $('btn-options-reset').addEventListener('click', () => { updateSettings({ ...DEFAULTS }); syncOptionsForm(); });
@@ -880,11 +880,25 @@ const timer = new THREE.Timer();
 timer.connect(document);
 let menuAngle = 0;
 const fpsMeter = { frames: 0, time: 0 };
+// Until the player picks a quality, a game that stays under 40 frames a second over 5 s of play
+// drops one level (a portal's players come on any machine)
+const autoQuality = { frames: 0, time: 0 };
+function watchQuality(dt) {
+  if (!settings.qualityAuto || game.state !== 'playing') return;
+  autoQuality.frames++;
+  autoQuality.time += dt;
+  if (autoQuality.time < 5) return;
+  const fps = autoQuality.frames / autoQuality.time;
+  autoQuality.frames = autoQuality.time = 0;
+  const i = QUALITY_ORDER.indexOf(settings.quality);
+  if (fps < 40 && i > 0) updateSettings({ quality: QUALITY_ORDER[i - 1] });
+}
 
 function frame(ts) {
   timer.update(ts);
   fpsMeter.frames++;
   fpsMeter.time += timer.getDelta();
+  watchQuality(timer.getDelta());
   if (fpsMeter.time >= 0.5) {
     if (settings.showFps) $('fps').textContent = `${Math.round(fpsMeter.frames / fpsMeter.time)} FPS`;
     fpsMeter.frames = 0;

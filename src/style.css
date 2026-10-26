@@ -170,7 +170,7 @@ html, body {
     radial-gradient(ellipse at center, rgba(8, 4, 14, 0.35) 30%, rgba(8, 4, 14, 0.9) 85%); }
 
 /* ---------- Screens ---------- */
-.screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+.screen { position: fixed; inset: 0; z-index: 3; display: grid; place-items: center; padding: 16px;
   background: radial-gradient(ellipse at 50% 30%, rgba(30, 24, 40, 0.55), rgba(3, 3, 6, 0.9)); }
 .panel { scrollbar-width: thin; scrollbar-color: var(--accent-dim) transparent; }
 .panel { width: min(560px, 100%); max-height: 100%; overflow: auto; padding: 32px 36px; background: var(--panel); border: 1px solid var(--line); text-align: center; backdrop-filter: blur(4px); }
@@ -292,3 +292,46 @@ h1 span { letter-spacing: 0.3em; text-transform: uppercase; font-size: 18px; col
   color: var(--w-accent); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-top: 3px solid color-mix(in srgb, var(--w-accent) 35%, transparent); }
 #world button.active { background: color-mix(in srgb, var(--w-accent) 14%, rgba(0, 0, 0, 0.45)); border-color: color-mix(in srgb, var(--w-accent) 55%, transparent); border-top-color: var(--w-accent); }
 #menu-lede { min-height: 2.6em; }
+
+/* ---------- small windows ----------
+   a web portal's frame: 800 × 450 on a phone, 1080 × 607 on a tablet. Play stays in view without
+   scrolling (the controls are in the pause help), and the HUD shrinks so its parts never meet */
+@media (max-height: 620px) {
+  .panel { padding: 16px 22px; }
+  h1 { font-size: 34px; margin-bottom: 8px; }
+  h1 span { font-size: 14px; }
+  h2 { font-size: 28px; margin-bottom: 10px; }
+  .lede { font-size: 15px; margin-bottom: 12px; }
+  #menu .lede:not(#menu-lede) { display: none; }
+  #menu-lede { min-height: 0; }
+  #world button { min-height: 44px; padding: 8px; }
+  button { padding: 10px; font-size: 17px; margin-bottom: 8px; }
+  button.secondary { font-size: 14px; }
+  .seg-row button, #difficulty button { padding: 6px 4px; font-size: 13px; }
+  #help-main { display: none; }
+  .keys { font-size: 14px; gap: 4px 14px; }
+
+  #minimap-wrap, #minimap { width: 120px; height: 120px; }
+  #fps, #team { top: 144px; }
+  #wave-label { font-size: 20px; }
+  #timer { font-size: 16px; }
+  #objective { font-size: 12px; }
+  #enemies-left { font-size: 30px; }
+  #score { font-size: 20px; }
+  #killfeed { top: 110px; font-size: 13px; }
+  #announce { top: 92px; gap: 6px; } /* under the wave, the timer and the objective */
+  #banner { white-space: normal; width: 80vw; }
+  #banner-title { font-size: 32px; }
+  #banner-sub { font-size: 14px; letter-spacing: 0.16em; }
+  #medal { font-size: 26px; }
+  #medal small { font-size: 12px; }
+  #bottom-left { width: 220px; bottom: 14px; }
+  #bottom-right { bottom: 14px; }
+  #health-num { font-size: 22px; }
+  #ammo { font-size: 34px; }
+  #pickup-msg { bottom: 90px; font-size: 15px; }
+  #cards-title { font-size: 22px; }
+  .card { width: 170px; padding: 12px; }
+  .card .desc { font-size: 13px; }
+  #downed .downed-title { font-size: 36px; }
+}

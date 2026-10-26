@@ -1,5 +1,16 @@
 // Player settings, saved in this browser.
+import { t } from './i18n.js';
+
 const KEY = 'gds-settings';
+
+// A first guess at the graphics this machine can afford (a web portal's players come on anything,
+// small Chromebooks included): low on 4 GB of memory or less, medium on 4 cores or less.
+function guessQuality() {
+  const mem = globalThis.navigator?.deviceMemory, cores = globalThis.navigator?.hardwareConcurrency;
+  if (mem && mem <= 4) return 'low';
+  if (cores && cores <= 4) return 'medium';
+  return 'high';
+}
 
 export const DEFAULTS = {
   sensitivity: 1.0, // multiplier of the base mouse speed
@@ -8,18 +19,21 @@ export const DEFAULTS = {
   volMaster: 0.8,
   volSfx: 1.0,
   volMusic: 0.6,
-  quality: 'high', // low | medium | high
+  quality: guessQuality(), // low | medium | high
+  // the game lowers the quality itself while the frame rate is poor, until the player picks one
+  qualityAuto: true,
   showFps: false,
   showHealthNum: false, // the number next to the health bar, handy for debugging
   cameraShake: true,
-  playerName: 'Joueur',
+  playerName: t('opt.defaultName'),
 };
 
 export const QUALITY = {
-  low: { label: 'Basse', pixelRatio: 0.75, msaa: 0, shadowSize: 1024, shadows: true, bloom: false, fireLights: 3, particles: 0.5 },
-  medium: { label: 'Moyenne', pixelRatio: 1.0, msaa: 2, shadowSize: 1024, shadows: true, bloom: true, fireLights: 4, particles: 0.75 },
-  high: { label: 'Haute', pixelRatio: 1.5, msaa: 4, shadowSize: 2048, shadows: true, bloom: true, fireLights: 6, particles: 1 },
+  low: { pixelRatio: 0.75, msaa: 0, shadowSize: 1024, shadows: true, bloom: false, fireLights: 3, particles: 0.5 },
+  medium: { pixelRatio: 1.0, msaa: 2, shadowSize: 1024, shadows: true, bloom: true, fireLights: 4, particles: 0.75 },
+  high: { pixelRatio: 1.5, msaa: 4, shadowSize: 2048, shadows: true, bloom: true, fireLights: 6, particles: 1 },
 };
+export const QUALITY_ORDER = ['low', 'medium', 'high'];
 
 export const settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}

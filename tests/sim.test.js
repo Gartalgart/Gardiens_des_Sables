@@ -1845,3 +1845,35 @@ describe('the station objectives', () => {
     for (let i = 0; i < 50; i++) expect(['reactor', 'breaches']).not.toContain(pickObjective(5, world).id);
   });
 });
+
+// Web portals run on every kind of screen: 30, 60 or 144 frames a second must play the same game.
+describe('frame rate', () => {
+  const RATES = [30, 60, 144];
+  const spread = (xs) => Math.max(...xs) - Math.min(...xs);
+
+  it('a jump reaches the same height at any frame rate', () => {
+    const apex = RATES.map((hz) => {
+      const { sim, player } = newGame();
+      let top = player.pos.y;
+      for (let i = 0; i < hz; i++) {
+        sim.step(1 / hz, new Map([[player.id, { ...emptyCommand(), jump: i === 0 }]]));
+        top = Math.max(top, player.pos.y);
+      }
+      return top - level.playerStart.y;
+    });
+    expect(apex[1]).toBeGreaterThan(0.5);
+    expect(spread(apex)).toBeLessThan(0.01);
+  });
+
+  it('a grenade flies the same arc at any frame rate', () => {
+    const at = RATES.map((hz) => {
+      const { sim, player } = newGame();
+      sim.step(1 / hz, new Map([[player.id, { ...emptyCommand(), pitch: 0.3 }]]));
+      sim.throwGrenade(player);
+      for (let i = 0; i < hz / 2; i++) sim.step(1 / hz, new Map([[player.id, emptyCommand()]]));
+      return sim.grenades[0].pos.clone();
+    });
+    expect(spread(at.map((p) => p.y))).toBeLessThan(0.02);
+    expect(spread(at.map((p) => p.z))).toBeLessThan(0.02);
+  });
+});

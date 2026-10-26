@@ -588,8 +588,11 @@ export class Sim {
       }
       if (g.kind === 'mine' && this.#updateMine(g, dt)) { this.grenades.splice(i, 1); this.#grenadeBlast(g); continue; }
       if (g.stuck) continue;
-      g.vel.y -= (g.ball ? g.ball.gravity : GRAVITY_GRENADE) * dt;
+      const gravity = g.ball ? g.ball.gravity : GRAVITY_GRENADE;
+      g.vel.y -= gravity * dt;
+      // the exact arc over dt, so a throw lands in the same spot at any frame rate
       const step = g.vel.clone().multiplyScalar(dt);
+      step.y += 0.5 * gravity * dt * dt;
       const len = step.length();
       if (len < 1e-6) continue;
       const dir = step.clone().divideScalar(len);

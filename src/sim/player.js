@@ -115,7 +115,8 @@ export class PlayerSim {
     const beforeY = this.pos.y;
     level.moveBody(this.pos, (this.vel.x + this.push.x + this.drift.x) * dt, (this.vel.z + this.push.z + this.drift.z) * dt, PLAYER_RADIUS, PLAYER_HEIGHT);
     this.push.multiplyScalar(Math.exp(-6 * dt));
-    this.pos.y += this.vel.y * dt;
+    // the exact fall over dt (half the gravity's change back): the same jump at any frame rate
+    this.pos.y += (this.vel.y + 0.5 * GRAVITY * dt) * dt;
     const ground = level.groundAt(this.pos.x, this.pos.z, PLAYER_RADIUS, Math.max(this.pos.y, beforeY));
     if (this.pos.y <= ground) {
       if (!this.onGround && this.vel.y < -6) this.sim.emit('step', { pid: this.id, sprint: true, land: true, high: this.pos.y > 0.5 });
