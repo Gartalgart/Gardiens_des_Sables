@@ -1,3 +1,4 @@
+import './fonts.js';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -482,15 +483,22 @@ function resetViews() {
   game.bob = 0;
 }
 
+// A new game waits paused until the pointer lock is granted: if the browser refuses it (a portal's
+// iframe without focus, say), the pause screen asks for a click instead of leaving the menu up.
+function playNewGame() {
+  startGame();
+  game.state = 'paused';
+  input.lock();
+  refreshScreens();
+}
 btnPlay.addEventListener('click', () => {
   sound.init();
-  startGame();
-  input.lock();
+  playNewGame();
 });
 $('btn-resume').addEventListener('click', () => input.lock());
 $('btn-restart').addEventListener('click', () => {
   if (game.net) { quitCoopGame(); coopScreen = null; refreshScreens(); return; } // "Quitter la partie"
-  startGame(); input.lock();
+  playNewGame();
 });
 $('btn-again').addEventListener('click', () => {
   if (game.net) {
@@ -501,7 +509,7 @@ $('btn-again').addEventListener('click', () => {
     refreshScreens();
     return;
   }
-  startGame(); input.lock();
+  playNewGame();
 });
 $('btn-menu').addEventListener('click', () => { if (game.net) quitCoopGame(); coopScreen = null; game.state = 'menu'; refreshScreens(); });
 

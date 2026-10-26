@@ -13,6 +13,12 @@
         "--strictPort"
       ],
       "port": 5174
+    },
+    {
+      "name": "portal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "portal:test"],
+      "port": 4180
     }
   ]
 }

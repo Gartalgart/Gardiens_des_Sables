@@ -27,11 +27,11 @@ describe('universe interfaces', () => {
     }
   });
 
-  it("every universe's font is loaded by the page", () => {
-    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  it("every universe's font ships in the build", () => {
+    const fonts = readFileSync(new URL('../src/fonts.js', import.meta.url), 'utf8');
     for (const w of worlds) {
       const family = w.hud.font.match(/"([^"]+)"/)?.[1] ?? w.hud.font.split(',')[0];
-      expect(html, family).toContain(`family=${family.trim().replace(/ /g, '+')}`);
+      expect(fonts, family).toContain(`@fontsource/${family.trim().toLowerCase().replace(/ /g, '-')}/`);
     }
   });
 });
