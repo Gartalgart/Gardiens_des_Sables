@@ -88,7 +88,7 @@ export function objectiveDone(obj, stats) {
 
 // Score: points per kill, scaled by difficulty; bonuses for style and progress.
 export const KILL_POINTS = {
-  runner: 100, shooter: 150, scarab: 40, mummy: 200, tank: 400, boss: 3000, skeleton: 100, gunner: 200, crab: 400, siren: 300, bats: 80,
+  runner: 100, shooter: 150, scarab: 40, mummy: 200, tank: 400, boss: 3000, skeleton: 100, gunner: 200, crab: 400, siren: 300, bats: 80, kraken: 3000,
   host: 100, parasite: 60, brute: 400, drone: 200, crawler: 150, eggsac: 120,
 };
 export const DIFFICULTY_SCORE = { easy: 0.75, normal: 1, hard: 1.5 };

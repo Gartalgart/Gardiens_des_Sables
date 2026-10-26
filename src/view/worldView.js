@@ -19,6 +19,7 @@ export class WorldView {
     this.braziers = level.braziers;
     this.flames = [];
     this.breakable = breakable.map((rect) => ({ rect, group: new THREE.Group() }));
+    this.outLights = new Set(); // braziers of a broken part of the map: their lights stay off
     for (const b of this.breakable) scene.add(b.group);
     this.neons = []; // L_DecoNeon_n: the tube of light n, drawn on its own to flicker with it
     this.doors = []; // D_Airlock_n: the door of airlock n, slid up when it opens
@@ -260,11 +261,48 @@ export class WorldView {
   // a part of the map broke (the sim's 'pierBreak' event gives its rectangle); restoreBroken() for a new game
   breakArea(rect) {
     const b = this.breakable.find(({ rect: r }) => Math.abs(r.minX - rect.minX) < 0.01 && Math.abs(r.minZ - rect.minZ) < 0.01);
-    if (b) b.group.visible = false;
+    if (!b) return;
+    b.group.visible = false;
+    if (!b.rect.ruin) return;
+    (b.rubble ??= this.#rubble(b)).visible = true;
+    // the lanterns of a fallen house go out
+    const r = b.rect;
+    this.braziers.forEach((p, i) => { if (p.x > r.minX && p.x < r.maxX && p.z > r.minZ && p.z < r.maxZ) this.outLights.add(i); });
+    this.lightTimer = 0;
   }
 
   restoreBroken() {
-    for (const b of this.breakable) b.group.visible = true;
+    for (const b of this.breakable) {
+      b.group.visible = true;
+      if (b.rubble) b.rubble.visible = false;
+    }
+    this.outLights.clear();
+    this.lightTimer = 0;
+  }
+
+  // what is left of a house or a stall the giant Kraken walked through: a heap of its own walls and
+  // thatch, low enough to walk over (it has no collision)
+  #rubble(b) {
+    const { minX, maxX, minZ, maxZ } = b.rect;
+    const mats = [];
+    // (not the glass of a lantern: lit chunks would glow in the heap)
+    b.group.traverse((o) => { if (o.isMesh && !mats.includes(o.material) && !(o.material.emissive?.getHex() > 0)) mats.push(o.material); });
+    const group = new THREE.Group();
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const n = Math.round((maxX - minX) * (maxZ - minZ) * 0.7);
+    for (let i = 0; i < n && mats.length; i++) {
+      const m = new THREE.Mesh(geo, mats[i % mats.length]);
+      // heaped toward the middle, the bigger slabs lying flat
+      const u = Math.random(), w = 0.3 + Math.random() * 1.4;
+      m.scale.set(w, 0.12 + Math.random() * 0.4 * (1 - u * 0.5), 0.3 + Math.random() * 1.2);
+      const k = 0.35 + 0.65 * Math.sqrt(Math.random());
+      m.position.set((minX + maxX) / 2 + (Math.random() - 0.5) * (maxX - minX) * k, m.scale.y * 0.4 + Math.random() * 0.35 * (1 - k), (minZ + maxZ) / 2 + (Math.random() - 0.5) * (maxZ - minZ) * k);
+      m.rotation.set((Math.random() - 0.5) * 0.6, Math.random() * Math.PI, (Math.random() - 0.5) * 0.6);
+      m.castShadow = m.receiveShadow = true;
+      group.add(m);
+    }
+    this.scene.add(group);
+    return group;
   }
 
   // Sandstorm of the pharaoh's second phase: thick ochre fog and sand blowing past the camera.
@@ -538,6 +576,7 @@ export class WorldView {
   #assignFireLights(view) {
     const nearest = this.braziers
       .map((p, i) => ({ i, d: p.distanceToSquared(view) }))
+      .filter((e) => !this.outLights.has(e.i))
       .sort((a, b) => a.d - b.d)
       .slice(0, this.fireLights.length)
       .map((e) => e.i);

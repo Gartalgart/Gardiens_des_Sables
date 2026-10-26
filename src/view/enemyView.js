@@ -49,6 +49,7 @@ const GAIT = {
   gunner: { run: 99, walkRef: 1.2, runRef: 3 },
   siren: { run: 99, walkRef: 1, runRef: 3 },
   tentacle: { run: 99, walkRef: 1, runRef: 3 },
+  kraken: { run: 99, walkRef: 2.4, runRef: 4 },
   // the station's
   parasite: { run: 3, walkRef: 2.5, runRef: 8 },
   host: { run: 99, walkRef: 1.6, runRef: 3 },
@@ -447,9 +448,10 @@ export class EnemyView {
     if (e.rise > 0) name = 'idle';
     else if (e.latched && v.actions.hold) name = 'hold'; // a parasite wrapped round a face
     else if (e.stun > 0) name = 'stun';
-    else if (a && ACT_CLIPS[a.kind] && v.actions[ACT_CLIPS[a.kind][0]]) {
+    else if (a && ACT_CLIPS[a.kind] && (v.actions[a.kind] || v.actions[ACT_CLIPS[a.kind][0]])) {
+      // a model can have a clip of the attack's own name (the giant Kraken's sweep), else the shared one
       const [clip, lead] = ACT_CLIPS[a.kind];
-      name = clip;
+      name = v.actions[a.kind] ? a.kind : clip;
       if (lead) timeScale = lead / a.dur;
     } else if (e.speed > gait.run && v.actions.run) {
       name = 'run';

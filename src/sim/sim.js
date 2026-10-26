@@ -74,6 +74,7 @@ export class Sim {
         reach: AIRLOCK.reach + AIRLOCK.reachPerWidth * size[side], open: false, t: 0, by: null, cd: 0,
       };
     });
+    this.crushed = new Set(); // the ruins (T.giant.ruins) the giant Kraken has walked through
     this.power = true; // the station's lights (the Hive Queen cuts them: Sim#powerCut)
     this.breached = null; // { t, next } while the Queen keeps the airlocks blowing (Sim#breach)
     this.breaches = null; // the wave objective of airlocks blowing (Sim#updateBreaches): { t, every, close, ... }
@@ -711,6 +712,24 @@ export class Sim {
     this.emit('pierBreak', rect);
     this.emit('banner', { title: '', sub: this.world.texts.bossPier, duration: 2.5 });
     this.emit('horn', { victory: false });
+  }
+
+  // The giant Kraken walks into a house or a stall (ruin i of T.giant.ruins): it falls, its boxes go
+  // and the nav grid is worked out again; whoever is inside is hurt and thrown out.
+  crush(kraken, i) {
+    if (this.crushed.has(i)) return;
+    this.crushed.add(i);
+    const [minX, maxX, minZ, maxZ, maxY] = kraken.T.giant.ruins[i];
+    const rect = { minX, maxX, minZ, maxZ, maxY };
+    this.level.breakArea(rect);
+    const C = kraken.T.giant.crush;
+    for (const p of this.alivePlayers()) {
+      if (p.pos.x < minX || p.pos.x > maxX || p.pos.z < minZ || p.pos.z > maxZ || p.pos.y > maxY + 1) continue;
+      this.hitPlayer(p, C.dmg * this.enemies.dmgMul, kraken.pos, 'melee', kraken);
+      p.impulse(p.pos.clone().sub(kraken.pos).setY(0).normalize().multiplyScalar(9).add(new THREE.Vector3(0, 5, 0)));
+    }
+    this.emit('houseBreak', rect);
+    if (this.crushed.size === 1) this.emit('banner', { title: '', sub: this.world.texts.bossCrush, duration: 2.5 });
   }
 
   // The Hive Queen at half health: the power goes, the station is dark but for the red alarm

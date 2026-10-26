@@ -249,6 +249,15 @@ Huit univers sont prévus ; les idées et le plan de U1 en 7 phases sont dans le
 - [x] 82 tests automatisés, dont 3 nouveaux : les objectifs du port dans le tirage (et pas dans celui du désert), les barils comptés, les pillards du coffre.
 - **Validation :** une partie complète des cinq vagues, en normal. Validée le 24/10/2026. **U1 est terminé.**
 
+### U1 — Le Kraken sort de l'eau (26/10/2026) `[x]`
+- [x] **A · Deuxième barre de vie** : le combat dans l'eau reste entier ; sa barre vide, les tentacules du rivage plongent et le Kraken géant (18 m, type `kraken`) monte des hauts-fonds en 4 s, intouchable. Il marche vers le joueur le plus proche sans grille de navigation, enjambe le quai et ce qui est bas, et ne retourne pas en eau profonde.
+- [x] **Le village écrasé** : les quatre maisons et les trois étals sur son passage s'effondrent (boîtes retirées, grille de navigation recalculée, tas de gravats, lanternes éteintes) ; qui est dedans est blessé et projeté. La taverne et le galion résistent : il les contourne. Tout est debout à la partie suivante, et en coop chaque client casse sa propre copie de la carte.
+- [x] **B · Attaques sur terre**, chacune annoncée par un cercle rouge : écrasement d'un bras, balayage (sauter par-dessus ou se mettre derrière un mur), saisie (soulevé jusqu'au bec, serré, puis jeté au loin ; 360 dégâts sur lui le font lâcher). Il crache toujours l'encre et appelle l'équipage.
+- [x] **C · Modèle qui marche** (`build_giant()` dans `blender/pirates/kraken.py` → `kraken_walk.glb`) : manteau, yeux, bec et huit bras de quatre segments ; marche d'araignée, écrasement, balayage, saisie, étreinte, crachat. Un modèle peut avoir un clip au nom de l'attaque (`sweep`).
+- [x] **D · 5 sons ElevenLabs** : sortie de l'eau, pas (un coup sourd et une secousse tous les 2,4 m), balayage, saisie, maison qui s'effondre ; chacun avec un son procédural en secours, sur `sons.html`. Vie sur terre : 4800 (× le nombre de joueurs en coop).
+- [x] 136 tests automatisés, dont 10 nouveaux sur la phase 2 du Kraken ; la partie complète des pirates vérifie que le géant apparaît.
+- **Validation :** affronter le Kraken jusqu'au bout (B en Exploration, puis vague 5). Validée le 26/10/2026.
+
 ## U2 — Station spatiale infestée
 
 ### U2 Phase 1 — La station, ses sas et ses bonbonnes `[~]`

@@ -14,7 +14,7 @@ const KNOWN_EVENTS = [
   'playerShot', 'impactWall', 'impactEnemy', 'hitConfirm', 'meleeImpact', 'swing', 'slash', 'reload', 'shell', 'dry', 'switch',
   'kick', 'step', 'reflectHit', 'blocked', 'playerHurt', 'playerDown', 'pickup', 'enemyKill', 'slam', 'wallStun', 'reflect',
   'growl', 'enemyFire', 'enemySpawn', 'enemyHit', 'ring', 'projectileEnd', 'banner', 'horn', 'unlock', 'gameOver',
-  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'chestHit', 'airlock', 'charge', 'overheat', 'vented', 'mineStick', 'latch', 'burst', 'ventOpen',
+  'perfectParry', 'objective', 'cardOffer', 'cardPicked', 'frag', 'respawn', 'impactPlayer', 'points', 'multikill', 'spree', 'grenadeThrow', 'grenadeBounce', 'headshotKill', 'prime', 'explosion', 'bossPhase2', 'weather', 'rainMark', 'rainStrike', 'teleportOut', 'teleportIn', 'song', 'tentacleCut', 'grab', 'inked', 'pierBreak', 'houseBreak', 'giantRise', 'chestHit', 'airlock', 'charge', 'overheat', 'vented', 'mineStick', 'latch', 'burst', 'ventOpen',
 ];
 let level;
 
@@ -947,15 +947,18 @@ describe('universes', () => {
     const sim = new Sim(levelOf('pirates'), { mode: 'waves', world: 'pirates' });
     const player = sim.addPlayer('p1');
     sim.start();
+    let giant = false;
     for (let i = 0; i < 20000 && !sim.over; i++) {
       sim.mode.breakTimer = Math.min(sim.mode.breakTimer, 0.1);
       sim.mode.spawnTimer = Math.min(sim.mode.spawnTimer, 0.05);
       player.health = 100;
       if (player.cardOffer) sim.pickCard(player, 0);
       for (const e of [...sim.enemies.list]) if (e.rise === 0) sim.enemies.damage(e, e.T.boss ? 600 : 1e6, null, player);
+      if (sim.enemies.boss?.type === 'kraken') giant = true;
       sim.step(DT, new Map([['p1', emptyCommand()]]));
       sim.drainEvents();
     }
+    expect(giant).toBe(true); // the Kraken's second health bar, out of the water
     expect(sim.victory).toBe(true);
   });
 });
@@ -1388,6 +1391,186 @@ describe('the Kraken', () => {
     new Sim(port, { mode: 'sandbox', world: 'pirates' });
     expect(port.boxes.length).toBe(boxes);
     expect(port.groundAt(-22.5, 26, 0.4, 2)).toBe(1);
+  });
+
+  // its first health bar emptied: the giant out of the water
+  const giantGame = () => {
+    const g = krakenGame();
+    const { sim, player, kraken, tentacles } = g;
+    sim.enemies.damage(kraken, kraken.hp + 1, null, player);
+    const giant = sim.enemies.boss;
+    return { ...g, giant, gone: [kraken, ...tentacles] };
+  };
+  const emerge = (sim, player) => run(sim, getWorld('pirates').enemies.kraken.giant.emerge + 0.1, keep(player));
+
+  it('its first health bar gone, it comes out of the water with a second one; it cannot be hurt as it rises', () => {
+    const { sim, player, giant, gone } = giantGame();
+    for (const o of gone) expect(sim.enemies.list).not.toContain(o);
+    expect(giant.type).toBe('kraken');
+    expect(sim.enemies.alive).toBe(1);
+    expect(giant.hp).toBe(giant.maxHp);
+    expect(giant.pos.z).toBeGreaterThan(18); // in the shallows
+    const events = sim.drainEvents();
+    expect(events.some((e) => e.type === 'banner' && e.sub === getWorld('pirates').texts.bossLand)).toBe(true);
+    expect(events.some((e) => e.type === 'enemyKill')).toBe(false); // not dead: only its first bar
+    sim.enemies.damage(giant, 500, null, player);
+    expect(giant.hp).toBe(giant.maxHp);
+    emerge(sim, player);
+    expect(giant.rise).toBe(0);
+    sim.enemies.damage(giant, 500, null, player);
+    expect(giant.hp).toBe(giant.maxHp - 500);
+    // a giant: it can be shot high above the roofs
+    const hit = sim.enemies.raycast(new THREE.Vector3(giant.pos.x, 14, giant.pos.z - 30), new THREE.Vector3(0, 0, 1), 60);
+    expect(hit?.enemy).toBe(giant);
+    expect(hit.head).toBe(true);
+  });
+
+  it('it walks onto the land at the nearest player and never goes back into the deep water', () => {
+    const { sim, player, giant } = giantGame();
+    player.pos.set(-8, 0, -6); // on the village square
+    emerge(sim, player);
+    const d0 = Math.hypot(giant.pos.x - player.pos.x, giant.pos.z - player.pos.z);
+    let maxZ = -Infinity;
+    run(sim, 6, () => { player.health = 100; maxZ = Math.max(maxZ, giant.pos.z); return emptyCommand(); });
+    expect(Math.hypot(giant.pos.x - player.pos.x, giant.pos.z - player.pos.z)).toBeLessThan(d0 - 8);
+    expect(giant.pos.z).toBeLessThan(18); // up on the quay and beyond
+    expect(maxZ).toBeLessThanOrEqual(26.01);
+  });
+
+  it('a house in its way falls: its walls go, whoever is inside is hurt; a new game finds it standing', () => {
+    const { sim, player, giant } = giantGame();
+    emerge(sim, player);
+    const boxes = port.boxes.length;
+    player.pos.set(-16, 0, -14); // inside the house with the fallen roof
+    giant.pos.set(-11, 0, -14);
+    giant.facing = -Math.PI / 2; // facing west, at the house
+    let crushed = null;
+    run(sim, 3, () => {
+      for (const ev of sim.drainEvents()) if (ev.type === 'houseBreak') crushed = ev;
+      return emptyCommand();
+    });
+    expect(crushed).toMatchObject({ minX: -22.5, maxX: -13 });
+    expect(port.boxes.length).toBeLessThan(boxes);
+    expect(port.occupied(-14.2, -14, 0.2)).toBe(false); // its east wall is gone
+    expect(player.health).toBeLessThan(100);
+    new Sim(port, { mode: 'sandbox', world: 'pirates' });
+    expect(port.boxes.length).toBe(boxes);
+  });
+
+  it('the tavern and the galleon are too strong: it goes round them', () => {
+    const { sim, player, giant } = giantGame();
+    emerge(sim, player);
+    const boxes = port.boxes.length;
+    player.pos.set(14, 3.9, -22); // on the tavern's roof
+    giant.pos.set(14, 0, -8);
+    giant.facing = Math.PI; // facing north, at the tavern
+    run(sim, 8, keep(player));
+    expect(port.boxes.length).toBe(boxes);
+    expect(giant.pos.z).toBeGreaterThan(-18 + giant.T.radius - 0.01); // stopped at its front wall
+  });
+
+  it('it spits ink and calls the crew on land; its death ends the Kraken', () => {
+    const { sim, player, giant } = giantGame();
+    player.pos.set(-8, 0, -6);
+    emerge(sim, player);
+    let inked = false;
+    run(sim, 8, () => {
+      for (const ev of sim.drainEvents()) if (ev.type === 'inked') inked = true;
+      player.health = 100;
+      return emptyCommand();
+    });
+    expect(inked).toBe(true);
+    giant.summonT = 0;
+    run(sim, 0.1, keep(player));
+    expect(sim.enemies.list.filter((e) => e.type === 'skeleton').length).toBeGreaterThanOrEqual(4);
+    const score = player.score;
+    sim.enemies.damage(giant, giant.hp + 1, null, player);
+    expect(sim.enemies.list).not.toContain(giant);
+    expect(sim.enemies.boss).toBeNull();
+    expect(player.score).toBeGreaterThan(score);
+  });
+
+  // on the village square, the giant planted a few metres from the player, nothing else around
+  const landGame = () => {
+    const g = giantGame();
+    const { sim, player, giant } = g;
+    emerge(sim, player);
+    player.pos.set(-8, 0, -4);
+    giant.pos.set(-8, 0, 4);
+    giant.facing = Math.PI; // facing north, at the player
+    giant.T = { ...giant.T, speed: 0, ranged: { ...giant.T.ranged, cd: 999 } };
+    giant.fireCd = 999;
+    giant.summonT = 999;
+    return g;
+  };
+  const G = () => getWorld('pirates').enemies.kraken.giant;
+
+  it('on land its arms strike, each warned by a red circle under the player', () => {
+    const { sim, player, giant } = landGame();
+    giant.attackCd = 0;
+    const kinds = new Set();
+    let ring = null;
+    run(sim, 60, () => { // long enough for the dice to give each blow
+      for (const ev of sim.drainEvents()) if (ev.type === 'ring' && ev.enemyType === 'kraken' && !ring) ring = ev;
+      if (giant.act && giant.act.kind !== 'ranged') kinds.add(giant.act.kind);
+      player.health = 100;
+      player.grabbed = null;
+      if (giant.act?.kind === 'hold') giant.act = null; // let it pick again
+      player.pos.set(-8, 0, -4);
+      return emptyCommand();
+    });
+    expect(ring).not.toBeNull();
+    expect(ring.color).toEqual(G().warn);
+    for (const k of ['strike', 'sweep', 'grab']) expect(kinds.has(k)).toBe(true);
+  });
+
+  it('a slammed arm hurts and throws whoever stays in its circle', () => {
+    const { sim, player, giant } = landGame();
+    giant.act = { kind: 'strike', t: 0, dur: 0.2, at: player.pos.clone(), player };
+    run(sim, 0.25, () => emptyCommand());
+    expect(player.health).toBeLessThan(100);
+    expect(player.vel.y).toBeGreaterThan(0);
+  });
+
+  it('a sweep knocks aside whoever is on the ground in front of it; a jump or a wall saves them', () => {
+    const sweep = (setup) => {
+      const { sim, player, giant } = landGame();
+      setup?.(player, giant);
+      const at = giant.pos.clone().add(new THREE.Vector3(0, 0, -G().sweep.at));
+      giant.act = { kind: 'sweep', t: 0, dur: 0.1, at, player };
+      run(sim, 0.12, () => emptyCommand());
+      return player.health;
+    };
+    expect(sweep()).toBeLessThan(100);
+    expect(sweep((p) => { p.pos.y = 1; p.vel.y = 4; p.onGround = false; })).toBe(100); // jumping over the arm
+    // a wall between: the player behind the house east of the tavern (the house at -4, -25)
+    expect(sweep((p, g) => { p.pos.set(-4, 0, -28.9); g.pos.set(-4, 0, -14); })).toBe(100);
+  });
+
+  it('it grabs whoever stays in the circle, lifts them to its beak, then throws them far', () => {
+    const { sim, player, giant } = landGame();
+    giant.act = { kind: 'grab', t: 0, dur: 0.1, at: player.pos.clone(), player };
+    run(sim, 0.15, keep(player));
+    expect(player.grabbed?.by).toBe(giant.id);
+    run(sim, 1.5, keep(player));
+    expect(player.pos.y).toBeGreaterThan(6); // up by its beak
+    run(sim, 0.5, () => ({ ...emptyCommand(), moveZ: 1 })); // cannot get away
+    expect(player.grabbed).not.toBeNull();
+    run(sim, G().grab.hold, keep(player));
+    expect(player.grabbed).toBeNull();
+    run(sim, 1.5, keep(player));
+    expect(Math.hypot(player.pos.x - giant.pos.x, player.pos.z - giant.pos.z)).toBeGreaterThan(11); // thrown far
+  });
+
+  it('hurting it enough while it holds a player makes it let go', () => {
+    const { sim, player, giant } = landGame();
+    giant.act = { kind: 'grab', t: 0, dur: 0.1, at: player.pos.clone(), player };
+    run(sim, 0.5, keep(player));
+    expect(player.grabbed).not.toBeNull();
+    sim.enemies.damage(giant, G().grab.free + 1, null, player);
+    run(sim, 0.05, keep(player));
+    expect(player.grabbed).toBeNull();
+    expect(giant.act).toBeNull();
   });
 });
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WATER_SLOW, EYE } from './constants.js';
+import { WATER_SLOW, EYE, STEP } from './constants.js';
 import { t } from '../i18n.js';
 
 // Enemy rules. Each universe gives its enemy types (src/worlds/); colours and models are the
@@ -149,7 +149,7 @@ export class Enemies {
     // the Hive Queen: shut in her carapace nothing gets through; broken open, she takes double
     if (e.act?.kind === 'guard') { this.sim.emit('enemyHit', { id: e.id, armored: true, pos: e.pos.clone() }); return; }
     if (e.act?.kind === 'exposed' && e.T.queen) amount *= e.T.queen.exposedMul;
-    if (e.act?.kind === 'hold' && e.T.queen) e.act.taken += amount;
+    if (e.act?.kind === 'hold' && (e.T.queen || e.T.giant)) e.act.taken += amount;
     // a shell in front (the crab): blows that come at its face lose most of their force
     const A = e.T.armor;
     const armored = !!(A && dir && -(Math.sin(e.facing) * dir.x + Math.cos(e.facing) * dir.z) / (Math.hypot(dir.x, dir.z) || 1) > A.arc);
@@ -167,6 +167,7 @@ export class Enemies {
       if (e.hp <= 0 || (e.act?.kind === 'hold' && e.act.taken >= e.T.grab.free)) this.#cut(e, killer);
       return;
     }
+    if (e.hp <= 0 && e.T.kraken?.land) return this.#surface(e);
     if (e.hp <= 0) this.#kill(e, dir, killer, cause);
   }
 
@@ -292,6 +293,7 @@ export class Enemies {
   #think(e, dt, players) {
     const T = e.T;
     if (T.kraken) return this.#kraken(e, dt, players);
+    if (T.giant) return this.#giant(e, dt, players);
     if (T.queen) return this.#queen(e, dt, players);
     if (T.eggs) return this.#eggSac(e, dt);
     if (e.latched) return this.#latch(e, dt);
@@ -702,8 +704,8 @@ export class Enemies {
       if (a.kind === 'ranged') this.#fire(e, player);
       else if (a.kind === 'rain') this.sim.acidRain(e, Q.rain);
       else if (a.kind === 'lay') this.#laySac(e);
-      else if (a.kind === 'strike') this.#queenBlow(e, a.at, T.strike);
-      else if (a.kind === 'sweep') this.#queenBlow(e, a.at, Q.sweep);
+      else if (a.kind === 'strike') this.#blow(e, a.at, T.strike);
+      else if (a.kind === 'sweep') this.#blow(e, a.at, Q.sweep);
       else if (a.kind === 'grab') this.#queenGrab(e, a);
       return;
     }
@@ -753,8 +755,9 @@ export class Enemies {
     return fresh[0][0];
   }
 
-  // a blow on a circle of the floor (her tail, her claws): hurts and throws whoever is still in it
-  #queenBlow(e, at, B) {
+  // a blow on a circle of the floor (the Queen's tail and claws, the giant Kraken's arm): hurts and
+  // throws whoever is still in it
+  #blow(e, at, B) {
     this.sim.emit('slam', { pos: at.clone() });
     for (const p of this.sim.alivePlayers()) {
       const away = new THREE.Vector3(p.pos.x - at.x, 0, p.pos.z - at.z);
@@ -902,14 +905,15 @@ export class Enemies {
     // up: ink at whoever it sees, and the crew every so often
     e.summonT -= dt;
     if (e.summonT <= 0) { e.summonT = K.summonEvery; this.sim.summon(e); }
+    this.#spit(e, dt, player);
+  }
+
+  // the Kraken's ink, lobbed (over the deep water's edge, or the roofs): no need to see the player,
+  // only open sky over them
+  #spit(e, dt, player) {
+    const T = e.T;
     e.fireCd -= dt;
-    e.losTimer -= dt;
-    if (e.losTimer <= 0) {
-      e.losTimer = 0.2;
-      e.hasLos = this.level.lineOfSight(e.pos.clone().setY(e.pos.y + T.height * 0.6), player.center);
-    }
-    // its ink is lobbed over the deep water's edge: no need to see the player, only open sky over them
-    const canFire = T.ranged.lob ? !this.level.nav.coveredAt(player.pos.x, player.pos.z) : e.hasLos;
+    const canFire = T.ranged.lob && !this.level.nav.coveredAt(player.pos.x, player.pos.z);
     if (e.act) {
       e.act.t += dt;
       if (e.act.t >= e.act.dur) { this.#fire(e, player); e.act = null; }
@@ -917,6 +921,193 @@ export class Enemies {
       e.act = { kind: 'ranged', t: 0, dur: T.ranged.windup };
       e.fireCd = T.ranged.cd * rand(0.8, 1.2);
     }
+  }
+
+  // Its first health bar gone, the Kraken comes out of the water: the body out at sea and its
+  // tentacles go under, and the giant (T.kraken.land) rises in the shallows with a second bar.
+  #surface(e) {
+    if (!this.list.includes(e)) return null; // the other pellets of the shot that emptied the bar
+    for (const o of [...e.parts, e]) {
+      this.#release(o);
+      const i = this.list.indexOf(o);
+      if (i >= 0) this.list.splice(i, 1);
+      if (o !== e) this.sim.emit('tentacleCut', { id: o.id, pos: o.pos.clone() });
+    }
+    const G = this.sim.world.enemies[e.T.kraken.land].giant;
+    const g = this.spawn(e.T.kraken.land, new THREE.Vector3(...G.from));
+    g.facing = Math.PI; // toward the village
+    g.act = { kind: 'transform', t: 0, dur: G.emerge };
+    g.summonT = G.summonEvery;
+    this.sim.emit('giantRise', { pos: g.pos.clone() });
+    this.sim.emit('banner', { title: '', sub: this.sim.world.texts.bossLand, duration: 3 });
+    this.sim.emit('growl', { pos: g.pos.clone(), enemyType: g.type, low: true, loud: true });
+    this.sim.emit('horn', { victory: false });
+    return g;
+  }
+
+  // ---------- the Kraken out of the water ----------
+  // A giant: it rises in the shallows (it cannot be hurt meanwhile), then walks at whoever is
+  // nearest, turning slowly, crushing the houses and stalls in its way; it spits ink and calls
+  // the crew as it did from the water.
+  #giant(e, dt, players) {
+    const T = e.T, G = T.giant;
+    if (e.act?.kind === 'transform') {
+      e.act.t += dt;
+      e.rise = Math.max(0, 1 - e.act.t / e.act.dur);
+      if (e.act.t >= e.act.dur) e.act = null;
+      return;
+    }
+    const player = this.#nearest(e, players);
+    const to = _v.subVectors(player.pos, e.pos).setY(0);
+    const dist = to.length();
+    const a = e.act;
+    const blow = a && a.kind !== 'ranged'; // planted while an arm strikes or holds someone
+    // blocked (a cliff, the tavern, the galleon): it goes round that way for a while
+    if (e.unstick > 0) e.unstick -= dt;
+    let dA = Math.atan2(to.x, to.z) + (e.unstick > 0 ? e.strafe * 1.1 : 0) - e.facing;
+    dA = Math.atan2(Math.sin(dA), Math.cos(dA));
+    if (!blow) e.facing += THREE.MathUtils.clamp(dA, -G.turn * dt, G.turn * dt);
+    e.speed = 0;
+    // it walks where it faces, slowed while it spits, and only once it roughly faces its target
+    if (!blow && dist > G.keep && Math.abs(dA) < 1.2) {
+      const step = T.speed * this.speedMul * (a ? 0.3 : 1) * dt;
+      const moved = this.#stride(e, Math.sin(e.facing) * step, Math.cos(e.facing) * step);
+      e.speed = moved / dt;
+      if (moved < step * 0.3 && e.unstick <= 0) { e.unstick = rand(1.5, 2.5); e.strafe = Math.random() < 0.5 ? 1 : -1; }
+    }
+    // nobody stands inside its body
+    for (const p of players) {
+      const ox = p.pos.x - e.pos.x, oz = p.pos.z - e.pos.z, d = Math.hypot(ox, oz), min = T.radius + 0.4;
+      if (d < min && p.pos.y < e.pos.y + T.height * 0.4) this.level.moveBody(p.pos, (ox / (d || 1)) * (min - d), (oz / (d || 1)) * (min - d), 0.4, 1.8);
+    }
+    e.summonT -= dt;
+    if (e.summonT <= 0) { e.summonT = G.summonEvery; this.sim.summon(e); }
+    e.phase += dt * (1 + e.speed);
+    this.#giantBlows(e, dt, player, dist);
+  }
+
+  // its arms on land (G.slam, G.sweep, G.grab), each warned by a red circle; its ink in between
+  #giantBlows(e, dt, player, dist) {
+    const G = e.T.giant, a = e.act;
+    e.attackCd -= dt;
+    e.leapCd -= dt;
+    if (a?.kind === 'hold') return this.#giantHold(e, dt);
+    if (a && a.kind !== 'ranged') {
+      a.t += dt;
+      if (a.t < a.dur) return;
+      e.act = null;
+      e.attackCd = rand(...G.gap);
+      if (a.kind === 'strike') this.#blow(e, a.at, G.slam);
+      else if (a.kind === 'sweep') this.#giantSweep(e, a);
+      else if (a.kind === 'grab') this.#giantGrab(e, a);
+      return;
+    }
+    if (!a && e.attackCd <= 0) {
+      // one of the blows that reach the player, weighted, never the last one again
+      const pool = [];
+      if (dist < G.slam.reach) pool.push(['strike', 3]);
+      if (dist < G.sweep.reach) pool.push(['sweep', 3]);
+      if (dist < G.grab.reach && e.leapCd <= 0 && !player.grabbed) pool.push(['grab', 3]);
+      const fresh = pool.length > 1 ? pool.filter(([k]) => k !== e.lastBlow) : pool;
+      let r = Math.random() * fresh.reduce((n, [, w]) => n + w, 0);
+      const kind = (fresh.find(([, w]) => (r -= w) <= 0) ?? fresh[0])?.[0];
+      if (kind) {
+        e.lastBlow = kind;
+        let at, B;
+        if (kind === 'sweep') {
+          // a wide circle of the ground in front of it
+          B = G.sweep;
+          at = e.pos.clone().add(new THREE.Vector3(Math.sin(e.facing), 0, Math.cos(e.facing)).multiplyScalar(B.at));
+          at.y = this.level.groundAt(at.x, at.z, 0.4, e.pos.y + 0.6);
+        } else {
+          // where the player is heading
+          B = kind === 'grab' ? G.grab : G.slam;
+          at = player.pos.clone().addScaledVector(player.vel.clone().setY(0), 0.3);
+          at.y = this.level.groundAt(at.x, at.z, 0.4, player.pos.y + 0.6);
+          if (kind === 'grab') e.leapCd = G.grab.cd;
+        }
+        e.act = { kind, t: 0, dur: B.windup, at, player };
+        this.sim.emit('ring', { pos: at.clone(), radius: B.radius, enemyType: e.type, life: B.windup, color: G.warn });
+        return;
+      }
+    }
+    this.#spit(e, dt, player);
+  }
+
+  // the sweep: whoever is in its circle, on the ground and in the open, is knocked aside; a jump
+  // takes them over the arm, a wall (a rubble heap is too low) keeps it off them
+  #giantSweep(e, a) {
+    const B = e.T.giant.sweep;
+    this.sim.emit('slam', { pos: a.at.clone(), kind: 'sweep' });
+    const side = new THREE.Vector3(Math.cos(e.facing), 0, -Math.sin(e.facing)); // the way the arm swings
+    const from = e.pos.clone().setY(a.at.y + 1);
+    for (const p of this.sim.alivePlayers()) {
+      if (Math.hypot(p.pos.x - a.at.x, p.pos.z - a.at.z) > B.radius || Math.abs(p.pos.y - a.at.y) > 2.2) continue;
+      if (!p.onGround || !this.level.lineOfSight(from, p.pos.clone().setY(p.pos.y + 1))) continue;
+      this.sim.hitPlayer(p, B.dmg * this.dmgMul, e.pos, 'melee', e);
+      p.impulse(side.clone().multiplyScalar(B.throw).add(new THREE.Vector3(0, 4, 0)));
+    }
+  }
+
+  // the arm closes: whoever stayed in its circle is caught, to be lifted up to its beak
+  #giantGrab(e, a) {
+    const B = e.T.giant.grab, p = a.player;
+    if (p.dead || p.grabbed || Math.hypot(p.pos.x - a.at.x, p.pos.z - a.at.z) > B.radius) {
+      this.sim.emit('slam', { pos: a.at.clone() });
+      return;
+    }
+    p.grabbed = { by: e.id, at: p.pos.clone() };
+    e.act = { kind: 'hold', t: 0, dur: B.hold, taken: 0, player: p, tick: 0, from: p.pos.clone() };
+    this.sim.emit('grab', { pid: p.id, id: e.id, enemyType: e.type, pos: p.pos.clone() });
+  }
+
+  // up in front of its beak, squeezed, then thrown across the village, unless it is hurt enough
+  // meanwhile to let go
+  #giantHold(e, dt) {
+    const B = e.T.giant.grab, a = e.act, p = a.player;
+    a.t += dt;
+    const k = 1 - (1 - Math.min(1, a.t / 1.2)) ** 2;
+    const beak = e.pos.clone().add(new THREE.Vector3(Math.sin(e.facing), 0, Math.cos(e.facing)).multiplyScalar(e.T.radius + 1.5)).setY(e.pos.y + B.lift);
+    p.grabbed.at.lerpVectors(a.from, beak, k);
+    a.tick -= dt;
+    if (a.tick <= 0) { a.tick = 0.5; this.sim.hitPlayer(p, B.dps * 0.5 * this.dmgMul, e.pos, 'melee', e); }
+    const free = a.taken >= B.free;
+    if (!free && a.t < a.dur && !p.dead) return;
+    this.#release(e);
+    e.attackCd = rand(...e.T.giant.gap);
+    if (free) {
+      // shot enough, it lets go with a roar: the player drops
+      this.sim.emit('growl', { pos: e.pos.clone(), enemyType: e.type, low: true, loud: true });
+    } else if (!p.dead) {
+      const out = new THREE.Vector3(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z).normalize();
+      p.impulse(out.multiplyScalar(B.throw).add(new THREE.Vector3(0, 6, 0)));
+    }
+  }
+
+  // A step of the giant (returns how far it went): a ruin it walks into falls first; it steps over
+  // what is low (G.stride) and is stopped by the rest.
+  #stride(e, dx, dz) {
+    const T = e.T, G = T.giant, r = T.radius;
+    const nx = e.pos.x + dx, nz = e.pos.z + dz, reach = r + G.crush.reach;
+    G.ruins.forEach(([x0, x1, z0, z1], i) => {
+      const cx = THREE.MathUtils.clamp(nx, x0, x1), cz = THREE.MathUtils.clamp(nz, z0, z1);
+      if (Math.hypot(nx - cx, nz - cz) < reach) this.sim.crush(e, i);
+    });
+    const bx = e.pos.x, bz = e.pos.z;
+    for (const [axis, d] of [['x', dx], ['z', dz]]) {
+      if (!d) continue;
+      e.pos[axis] += d;
+      for (const b of this.level.boxesNear(e.pos.x - r, e.pos.z - r, e.pos.x + r, e.pos.z + r)) {
+        if (b.max.y <= e.pos.y + G.stride || b.min.y >= e.pos.y + T.height) continue;
+        if (e.pos.x + r <= b.min.x || e.pos.x - r >= b.max.x || e.pos.z + r <= b.min.z || e.pos.z - r >= b.max.z) continue;
+        e.pos[axis] = d > 0 ? b.min[axis] - r - 1e-4 : b.max[axis] + r + 1e-4;
+      }
+    }
+    e.pos.z = Math.min(e.pos.z, G.maxZ);
+    // the quay, a deck: up at once, down gently
+    const g = this.level.groundAt(e.pos.x, e.pos.z, 1, e.pos.y + G.stride - STEP);
+    e.pos.y = g > e.pos.y ? g : e.pos.y + (g - e.pos.y) * 0.1;
+    return Math.hypot(e.pos.x - bx, e.pos.z - bz);
   }
 
   // A tentacle: it rises at a spot of the shore near the player and strikes where they stand (a red

@@ -43,6 +43,7 @@ export const PIRATES = {
       siren: 'models/pirates/siren.glb',
       bats: 'models/pirates/bat.glb', // one bat: the client draws a swarm of them
       boss: 'models/pirates/kraken.glb',
+      kraken: 'models/pirates/kraken_walk.glb', // out of the water, on its eight arms
       tentacle: 'models/pirates/tentacle.glb',
       crab: 'models/pirates/crab.glb',
       gunner: 'models/pirates/gunner.glb',
@@ -130,7 +131,8 @@ export const PIRATES = {
     },
     // the Kraken: its body waits out in the deep water between the piers, its tentacles rise along
     // the shore; cutting them hurts it (see Enemies#kraken). At half health its head comes up, spits
-    // ink and calls the crew; at a third it smashes a pier and its tentacles start grabbing.
+    // ink and calls the crew; at a third it smashes a pier and its tentacles start grabbing. Its
+    // health gone, it comes out of the water as `kraken.land`, with a second health bar.
     boss: {
       hp: 3600, speed: 0, radius: 2.4, height: 6.5, headY: 4.0, big: true, boss: true, stay: true,
       melee: { range: 0.01, dmg: 0, windup: 1, cd: 99 },
@@ -141,6 +143,7 @@ export const PIRATES = {
       kraken: {
         anchor: [-8.5, 0, 35],
         tentacle: 'tentacle', tentacles: 4,
+        land: 'kraken', // what it becomes once its first health bar is gone
         cut: 0.08, // share of its health a cut tentacle costs it
         dive: [4, 6], // seconds under water before a cut tentacle comes up elsewhere
         summonEvery: 22,
@@ -152,6 +155,41 @@ export const PIRATES = {
           [-25.6, 0, 24], [-19.4, 0, 24], [2.4, 0, 24], [8.6, 0, 24],
           [-25.6, 0, 29], [-19.4, 0, 29], [2.4, 0, 29], [8.6, 0, 29],
           [-25.6, 0, 34], [-19.4, 0, 34], [2.4, 0, 34], [8.6, 0, 34],
+        ],
+      },
+    },
+    // the Kraken out of the water (its second health bar): a giant that walks through the village at
+    // whoever is nearest, crushing the houses and stalls in its way (see Enemies#giant)
+    kraken: {
+      hp: 4800, speed: 2.4, radius: 3.2, height: 18, headY: 8.6, big: true, boss: true,
+      melee: { range: 0.01, dmg: 0, windup: 1, cd: 99 },
+      ranged: { lob: true, min: 0, max: 80, cd: 3.2, windup: 0.6, speed: 24, dmg: 14, radius: 2.8, ink: 4 },
+      muzzle: [0, 6.9, 3.8], // the beak
+      summon: 'skeleton',
+      giant: {
+        from: [-8.5, 0, 26], // where it comes up, in the shallows between the piers
+        emerge: 4, // seconds it takes to rise out of the water (it cannot be hurt meanwhile)
+        stride: 2.6, // what it steps over (the quay, stalls, crates); taller boxes stop it, unless they are ruins
+        maxZ: 26, // it never goes back into the deep water
+        keep: 4, // stops this close to the player it walks at
+        turn: 0.9, // how fast it turns (rad/s): a giant does not spin round
+        step: 2.4, // metres between two of its steps (the thud and the tremor, src/main.js)
+        summonEvery: 26,
+        // its blows on land, one every `gap` seconds, warned by a red circle on the ground (warn)
+        gap: [1.4, 2.6], warn: [1, 0.18, 0.1],
+        slam: { reach: 16, radius: 3.6, windup: 1.4, dmg: 38, throw: 10 }, // an arm comes down where the player stands
+        // an arm swept low across a wide circle in front of it: jump over it, or keep a wall between
+        sweep: { reach: 12, at: 7, radius: 6.5, windup: 1.1, dmg: 28, throw: 12 },
+        // an arm closes on the player in its circle, lifts them up to its beak (lift m), squeezes (dps),
+        // then throws them far; damage to the Kraken meanwhile (free) makes it let go
+        grab: { reach: 10, radius: 2.2, windup: 0.9, lift: 9, hold: 4, dps: 8, free: 360, cd: 9, throw: 55 },
+        // a house or a stall it walks into falls: its boxes go, whoever is inside is hurt and thrown
+        // out; [minX, maxX, minZ, maxZ, maxY] (blender/pirates/port.py: house() and the stalls)
+        crush: { dmg: 30, reach: 1.2 },
+        ruins: [
+          // the houses, their gable roofs (decor.py) and the lantern by their door included
+          [-22.5, -13, -17.5, -10.5, 8], [-8, 0, -28.5, -21, 8], [24, 32, -11.5, -4.5, 8], [-33.5, -26, -5.5, 1.5, 8],
+          [0.5, 3.5, -10.9, -9.1, 1.2], [-11.5, -8.5, -2.9, -1.1, 1.2], [6.5, 9.5, 1.1, 2.9, 1.2],
         ],
       },
     },
@@ -227,6 +265,8 @@ export const PIRATES = {
     bossSummon: { en: "The Kraken calls the cursed crew!", fr: "Le Kraken appelle l'équipage maudit !" },
     bossRise: { en: "The Kraken lifts its head out of the water!", fr: "Le Kraken sort la tête de l'eau !" },
     bossPier: { en: "The Kraken smashes the pier!", fr: "Le Kraken brise le ponton !" },
+    bossLand: { en: "The Kraken comes out of the water!", fr: "Le Kraken sort de l'eau !" },
+    bossCrush: { en: "The Kraken crushes the village!", fr: "Le Kraken écrase le village !" },
     modes: {
       ...SABLES.texts.modes,
       waves: { en: 'Five waves of the cursed crew to drive back, the Kraken in the last.', fr: "Cinq vagues de l'équipage maudit à repousser, le Kraken à la dernière." },
@@ -242,9 +282,9 @@ export const PIRATES = {
   voices: {
     growls: {
       skeleton: 'enemies/skeleton_rattle', crab: 'enemies/crab_clack', gunner: 'enemies/gunner_moan', bats: 'enemies/bats_screech',
-      siren: 'enemies/gunner_moan', boss: 'enemies/kraken_roar', tentacle: 'enemies/kraken_roar',
+      siren: 'enemies/gunner_moan', boss: 'enemies/kraken_roar', tentacle: 'enemies/kraken_roar', kraken: 'enemies/kraken_roar',
     },
-    rates: { crab: 1, gunner: 1, bats: 1, siren: 1.6, boss: 1, tentacle: 1.4 },
+    rates: { crab: 1, gunner: 1, bats: 1, siren: 1.6, boss: 1, tentacle: 1.4, kraken: 0.8 },
     bossDeath: 'enemies/kraken_death',
     music: 'shanty',
     samples: {
@@ -254,7 +294,7 @@ export const PIRATES = {
     },
   },
   // colours of this universe's own types where the desert has the same key (the boss)
-  looks: { boss: { color: [0.75, 0.25, 0.9], dot: '#c060ff' } },
+  looks: { boss: { color: [0.75, 0.25, 0.9], dot: '#c060ff' }, kraken: { color: [0.75, 0.25, 0.9], dot: '#c060ff' } },
 
   ambiance: {
     fog: { color: 0x0d1a1c, density: 0.024 },

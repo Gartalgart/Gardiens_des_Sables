@@ -175,8 +175,12 @@ const [assets, levelData] = await Promise.all([
   fetch(world.files.levelData).then((r) => r.json()),
 ]);
 const level = new Level(levelData);
-// the parts of the map the boss can break (the Kraken's piers), with the rectangles the sim uses
-const breakable = (world.enemies.boss?.kraken?.piers ?? []).map(([x0, x1]) => ({ minX: x0 - 0.3, maxX: x1 + 0.3, minZ: 18, maxZ: 38.5, maxY: 3.3 }));
+// the parts of the map the boss can break (the Kraken's piers, and the houses and stalls the giant
+// Kraken crushes), with the rectangles the sim uses
+const breakable = [
+  ...(world.enemies.boss?.kraken?.piers ?? []).map(([x0, x1]) => ({ minX: x0 - 0.3, maxX: x1 + 0.3, minZ: 18, maxZ: 38.5, maxY: 3.3 })),
+  ...Object.values(world.enemies).flatMap((T) => T.giant?.ruins ?? []).map(([minX, maxX, minZ, maxZ, maxY]) => ({ minX, maxX, minZ, maxZ, maxY, ruin: true })),
+];
 // the map's dressing (no collision) is drawn with the map itself
 if (assets.decor && assets.level) assets.level.add(assets.decor);
 const worldView = new WorldView(scene, assets.level, level, world.ambiance, breakable);
@@ -468,10 +472,26 @@ function clearCharm() {
   sound.setSong(0);
 }
 
+// The giant Kraken's arms coming down as it walks: a thud and a tremor every few metres
+const stepAt = new WeakMap(); // metres walked since its last step
+function giantSteps(list, dt) {
+  for (const e of list) {
+    if (!e.T.giant || e.rise > 0 || e.speed < 0.3) continue;
+    const d = (stepAt.get(e) ?? 0) + e.speed * dt;
+    stepAt.set(e, d % e.T.giant.step);
+    if (d < e.T.giant.step) continue;
+    const v = vol(e.pos, 70);
+    if (!sound.sample('enemies/kraken_step', { pan: pan(e.pos), vol: Math.max(0.25, v), rate: 0.9 + Math.random() * 0.2 })) sound.thud(pan(e.pos), Math.max(0.25, v));
+    addShake(0.35 * Math.max(0.15, vol(e.pos, 30)));
+  }
+}
+
 function resetViews() {
   clearCharm();
   game.chestWarned = -9;
   worldView.restoreBroken();
+  renderer.shadowMap.needsUpdate = true;
+  level.restore(); // a co-op client breaks its own copy of the map too (see 'houseBreak')
   worldView.closeAirlocks();
   worldView.setPower(true, true);
   sound.setHum(!!world.ambiance.hum);
@@ -749,10 +769,15 @@ function handleEvents() {
         break;
       case 'enemyKill':
         enemyView.onEvent(ev);
-        sound.kill(0, Math.max(0.15, vol(ev.pos, 50)), ev.enemyType);
+        sound.kill(0, Math.max(0.15, vol(ev.pos, 50)), world.enemies[ev.enemyType]?.boss ? 'boss' : ev.enemyType);
         if (world.enemies[ev.enemyType]?.big) addShake(0.3 * vol(ev.pos, 25));
         break;
-      case 'slam': enemyView.onEvent(ev); sound.slam(0, 1); addShake(0.6 * vol(ev.pos, 25)); break;
+      case 'slam':
+        enemyView.onEvent(ev);
+        // the giant Kraken's arm swept low across the ground
+        if (ev.kind !== 'sweep' || !sound.sample('enemies/kraken_sweep', { pan: pan(ev.pos), vol: Math.max(0.4, vol(ev.pos, 50)) })) sound.slam(0, 1);
+        addShake(0.6 * vol(ev.pos, 25));
+        break;
       case 'wallStun': enemyView.onEvent(ev); sound.slam(pan(ev.pos), vol(ev.pos)); addShake(0.5 * vol(ev.pos, 20)); break;
       case 'reflect':
         enemyView.onEvent(ev);
@@ -791,6 +816,7 @@ function handleEvents() {
         sound.growl(pan(ev.pos), vol(ev.pos, 60), true, 'boss');
         break;
       case 'grab':
+        if (!ev.released && ev.enemyType === 'kraken' && !sound.sample('enemies/kraken_grab', { pan: pan(ev.pos), vol: Math.max(0.5, vol(ev.pos, 40)) })) sound.thud(pan(ev.pos), Math.max(0.5, vol(ev.pos, 40)));
         if (mine) { if (!ev.released) { sound.hurt(); addShake(0.4); } hud.prompt(ev.released ? null : world.texts.grabbed ?? t('hud.grabbed')); }
         break;
       case 'chestHit':
@@ -808,6 +834,7 @@ function handleEvents() {
         break;
       case 'pierBreak': {
         worldView.breakArea(ev);
+        renderer.shadowMap.needsUpdate = true;
         const mid = new THREE.Vector3((ev.minX + ev.maxX) / 2, 1, (ev.minZ + ev.maxZ) / 2);
         for (let z = ev.minZ; z < ev.maxZ; z += 3) {
           const at = mid.clone().setZ(z);
@@ -819,6 +846,35 @@ function handleEvents() {
           sound.crumble(pan(mid), 1, true);
         }
         addShake(0.9 * Math.max(0.3, vol(mid, 40)));
+        break;
+      }
+      case 'houseBreak': {
+        // the giant Kraken walks through a house or a stall: it falls in a cloud of dust
+        worldView.breakArea(ev);
+        renderer.shadowMap.needsUpdate = true; // the moon's shadows are drawn once, with the map
+        if (game.net) level.breakArea(ev); // the client's own copy, which its movement is predicted on
+        const mid = new THREE.Vector3((ev.minX + ev.maxX) / 2, 1, (ev.minZ + ev.maxZ) / 2);
+        const size = Math.max(ev.maxX - ev.minX, ev.maxZ - ev.minZ);
+        for (let k = 0; k < size; k += 2) {
+          const at = mid.clone().add(new THREE.Vector3((Math.random() - 0.5) * (ev.maxX - ev.minX), Math.random() * ev.maxY, (Math.random() - 0.5) * (ev.maxZ - ev.minZ)));
+          effects.burst(at, null, { count: 16, color: new THREE.Color(0.42, 0.38, 0.3), speed: 6, size: 0.35, life: 1.1, grav: 9 });
+          effects.burst(at, new THREE.Vector3(0, 1, 0), { count: 10, color: new THREE.Color(0.3, 0.28, 0.24), speed: 3, size: 0.9, life: 1.8, grav: -0.4, spread: 1.5 });
+        }
+        if (!sound.sample('enemies/house_collapse', { pan: pan(mid), vol: Math.max(0.5, vol(mid, 80)) * (size > 4 ? 1 : 0.6) })) {
+          sound.crumble(pan(mid), Math.max(0.5, vol(mid, 80)), true);
+          if (size > 4) sound.explosion(pan(mid), Math.max(0.3, vol(mid, 80)) * 0.7);
+        }
+        addShake(0.7 * Math.max(0.3, vol(mid, 40)));
+        break;
+      }
+      case 'giantRise': {
+        // the Kraken comes up out of the shallows: the sea pours off it
+        for (let k = 0; k < 6; k++) {
+          const at = ev.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, 0.4, (Math.random() - 0.5) * 8));
+          effects.burst(at, new THREE.Vector3(0, 1, 0), { count: 30, color: new THREE.Color(0.6, 0.75, 0.8), speed: 9, size: 0.4, life: 1.4, grav: 9, spread: 0.8 });
+        }
+        if (!sound.sample('enemies/kraken_emerge', { vol: 1 })) { sound.explosion(pan(ev.pos), 0.8); sound.crumble(pan(ev.pos), 0.8, true); }
+        addShake(1);
         break;
       }
       case 'explosion':
@@ -964,6 +1020,7 @@ function tick(dt, now = (tickClock += dt)) {
     const viewDt = dt * sim.timeScale;
     enemyView.localId = game.localId;
     enemyView.sync(sim.enemies, viewDt, sim.time);
+    giantSteps(sim.enemies.list, viewDt);
     grenadeView.sync(sim.grenades, viewDt);
     kegView.sync(sim.kegs);
     // enemies on fire (the flamethrower) burn with flames and smoke
