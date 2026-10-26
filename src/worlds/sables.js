@@ -3,9 +3,13 @@
 // Pure data, read by the simulation (also in Node) and by the client.
 export const SABLES = {
   id: 'sables',
-  name: 'Gardiens des Sables',
-  title: ['Gardiens', 'des Sables'], // the title screen's two lines
-  lede: "La cité-temple s'est réveillée. Ses gardiens de pierre se lèvent à la tombée de la nuit.",
+  // every text is a pair { en, fr } (src/i18n.js picks one when the page loads)
+  name: { en: 'Guardians of the Sands', fr: 'Gardiens des Sables' },
+  title: { en: ['Guardians', 'of the Sands'], fr: ['Gardiens', 'des Sables'] }, // the title screen's two lines
+  lede: {
+    en: 'The temple city has woken. Its stone guardians rise as night falls.',
+    fr: "La cité-temple s'est réveillée. Ses gardiens de pierre se lèvent à la tombée de la nuit.",
+  },
   // the look of the in-game interface (HUD, pause, end screen; the title screen stays neutral):
   // display font, accent colours, text, frames, buttons (top, bottom, text), the health bar,
   // the grenade icons (colour, corner radius) and the minimap (ground, tint of the walls)
@@ -43,19 +47,19 @@ export const SABLES = {
   // ---------- weapons (rules; poses and models live in src/view/weaponView.js) ----------
   weapons: [
     {
-      id: 'sword', name: 'KHÉPESH', short: 'Khépesh', melee: true, dmg: 85, range: 3.0, swing: 0.34, hitAt: 0.1, cooldown: 0.42,
+      id: 'sword', name: { en: 'KHOPESH', fr: 'KHÉPESH' }, short: { en: 'Khopesh', fr: 'Khépesh' }, melee: true, dmg: 85, range: 3.0, swing: 0.34, hitAt: 0.1, cooldown: 0.42,
       spread: 0, adsSpread: 0, adsFov: 75,
     },
     {
-      id: 'pistol', name: 'PISTOLET', short: 'Pistolet', dmg: 34, rpm: 330, auto: false, mag: 12, reserve: Infinity, pellets: 1,
+      id: 'pistol', name: { en: 'PISTOL', fr: 'PISTOLET' }, short: { en: 'Pistol', fr: 'Pistolet' }, dmg: 34, rpm: 330, auto: false, mag: 12, reserve: Infinity, pellets: 1,
       spread: 0.014, adsSpread: 0.002, reload: 1.25, recoil: 0.028, adsFov: 58,
     },
     {
-      id: 'rifle', name: "FUSIL D'ASSAUT", short: "Fusil d'assaut", dmg: 23, rpm: 640, auto: true, mag: 30, reserve: 210, pellets: 1,
+      id: 'rifle', name: { en: 'ASSAULT RIFLE', fr: "FUSIL D'ASSAUT" }, short: { en: 'Assault rifle', fr: "Fusil d'assaut" }, dmg: 23, rpm: 640, auto: true, mag: 30, reserve: 210, pellets: 1,
       spread: 0.034, adsSpread: 0.004, reload: 2.1, recoil: 0.013, adsFov: 50,
     },
     {
-      id: 'shotgun', name: 'FUSIL À POMPE', short: 'Fusil à pompe', dmg: 14, rpm: 78, auto: false, mag: 6, reserve: 42, pellets: 9,
+      id: 'shotgun', name: { en: 'SHOTGUN', fr: 'FUSIL À POMPE' }, short: { en: 'Shotgun', fr: 'Fusil à pompe' }, dmg: 14, rpm: 78, auto: false, mag: 6, reserve: 42, pellets: 9,
       spread: 0.085, adsSpread: 0.055, reload: 2.4, recoil: 0.07, adsFov: 62,
       // loaded one shell at a time (open, a shell each, then the pump); firing stops the reload
       shells: { open: 0.35, each: 0.34, close: 0.4 },
@@ -63,7 +67,7 @@ export const SABLES = {
     {
       // unlocked for the last wave: a bolt-action with a scope; wild from the hip, dead on when aiming,
       // and its bullet goes on through a first target
-      id: 'sniper', name: 'FUSIL DE PRÉCISION', short: 'Précision', dmg: 150, rpm: 46, auto: false, mag: 5, reserve: 25, pellets: 1,
+      id: 'sniper', name: { en: 'SNIPER RIFLE', fr: 'FUSIL DE PRÉCISION' }, short: { en: 'Sniper', fr: 'Précision' }, dmg: 150, rpm: 46, auto: false, mag: 5, reserve: 25, pellets: 1,
       spread: 0.07, adsSpread: 0, reload: 2.7, recoil: 0.09, adsFov: 16, pierce: true, scope: true,
     },
   ],
@@ -142,26 +146,36 @@ export const SABLES = {
   targets: [['runner', 3], ['shooter', 2], ['tank', 1]],
 
   texts: {
-    start: 'Khépesh [1] et pistolet [2] — survivez aux gardiens',
+    start: { en: 'Khopesh [1] and pistol [2] — survive the guardians', fr: 'Khépesh [1] et pistolet [2] — survivez aux gardiens' },
     // in the HUD, the help and the objectives
-    meleeName: 'khépesh',
-    bladeObjective: 'au khépesh',
-    grenadeName: 'Pots de feu',
-    grenadeHelp: 'Lancer un pot de feu (grenade)',
-    killsLabel: 'Gardiens abattus',
-    guards: 'Gardiens', // the arena's wandering enemies: kill feed and scoreboard column
-    tips: 'Les tirs à la tête infligent double dégâts. Le khépesh tranche tout ce qui est devant vous, et sa parade renvoie les orbes ennemis. Seuls les ennemis tués au corps à corps lâchent de la santé. De nouvelles armes se débloquent au fil des vagues. La santé se régénère après quelques secondes sans blessure.',
-    victory: 'La cité-temple retrouve son silence. Les gardiens sont retournés au sable.',
-    bossName: 'LE PHARAON ÉVEILLÉ', // over the boss health bar
-    bossKill: 'PHARAON ABATTU',
-    bossWave: 'le pharaon', // survival: "Vague 10 — le pharaon"
-    bossWakes: "Le pharaon s'éveille…",
-    bossSummon: 'Le pharaon appelle ses chacals !',
-    bossStorm: 'Le pharaon déchaîne la tempête !',
+    meleeName: { en: 'khopesh', fr: 'khépesh' },
+    bladeObjective: { en: 'with the khopesh', fr: 'au khépesh' },
+    grenadeName: { en: 'Fire pots', fr: 'Pots de feu' },
+    grenadeHelp: { en: 'Throw a fire pot (grenade)', fr: 'Lancer un pot de feu (grenade)' },
+    explosionKill: { en: 'MUMMY', fr: 'MOMIE' }, // the arena's kill feed: killed by a blast
+    killsLabel: { en: 'Guardians slain', fr: 'Gardiens abattus' },
+    guards: { en: 'Guardians', fr: 'Gardiens' }, // the arena's wandering enemies: kill feed and scoreboard column
+    tips: {
+      en: 'Headshots deal double damage. The khopesh cuts through everything in front of you, and its parry sends enemy orbs back. Only enemies killed in melee drop health. New weapons unlock as the waves go by. Health regenerates after a few seconds without a wound.',
+      fr: 'Les tirs à la tête infligent double dégâts. Le khépesh tranche tout ce qui est devant vous, et sa parade renvoie les orbes ennemis. Seuls les ennemis tués au corps à corps lâchent de la santé. De nouvelles armes se débloquent au fil des vagues. La santé se régénère après quelques secondes sans blessure.',
+    },
+    victory: {
+      en: 'Silence returns to the temple city. The guardians have gone back to the sand.',
+      fr: 'La cité-temple retrouve son silence. Les gardiens sont retournés au sable.',
+    },
+    bossName: { en: 'THE RISEN PHARAOH', fr: 'LE PHARAON ÉVEILLÉ' }, // over the boss health bar
+    bossKill: { en: 'PHARAOH SLAIN', fr: 'PHARAON ABATTU' },
+    bossWave: { en: 'the pharaoh', fr: 'le pharaon' }, // survival: "Wave 10 — the pharaoh"
+    bossWakes: { en: 'The pharaoh awakens…', fr: "Le pharaon s'éveille…" },
+    bossSummon: { en: 'The pharaoh calls his jackals!', fr: 'Le pharaon appelle ses chacals !' },
+    bossStorm: { en: 'The pharaoh unleashes the storm!', fr: 'Le pharaon déchaîne la tempête !' },
     modes: {
-      waves: 'Cinq vagues de gardiens à repousser ensemble.',
-      survival: 'Des vagues sans fin, le pharaon toutes les cinq vagues.',
-      arena: 'Chacun pour soi, avec quelques gardiens qui rôdent. La difficulté règle les gardiens.',
+      waves: { en: 'Five waves of guardians to drive back together.', fr: 'Cinq vagues de gardiens à repousser ensemble.' },
+      survival: { en: 'Endless waves, the pharaoh every fifth wave.', fr: 'Des vagues sans fin, le pharaon toutes les cinq vagues.' },
+      arena: {
+        en: 'Every player for themselves, with a few guardians on the prowl. The difficulty sets the guardians.',
+        fr: 'Chacun pour soi, avec quelques gardiens qui rôdent. La difficulté règle les gardiens.',
+      },
     },
   },
 

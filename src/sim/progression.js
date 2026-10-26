@@ -1,20 +1,22 @@
 // Progression shared by the wave modes: upgrade cards, secondary objectives and score.
+import { t } from '../i18n.js';
 
 // Upgrade cards, offered between waves (3 to choose from, 4 after a completed objective).
 // max: how many times a card can be taken; mods: what one copy adds to the player's modifiers.
+// Their names and descriptions: up.<id> and up.<id>.desc in src/strings.js.
 export const UPGRADES = [
-  { id: 'sharpBlade', name: 'Lame affûtée', desc: 'Arme blanche : +25 % de dégâts.', max: 2, apply: (m) => { m.swordDmg += 0.25; } },
-  { id: 'wideArc', name: 'Grand arc', desc: 'Arme blanche : portée et angle +25 %.', max: 2, apply: (m) => { m.swordReach += 0.25; } },
-  { id: 'bigMags', name: 'Chargeurs étendus', desc: 'Chargeurs des armes à feu +50 %.', max: 2, apply: (m) => { m.mag += 0.5; } },
-  { id: 'quickHands', name: 'Mains agiles', desc: 'Rechargement 30 % plus rapide.', max: 2, apply: (m) => { m.reload *= 0.7; } },
-  { id: 'piercing', name: 'Balles perforantes', desc: 'Les balles traversent un ennemi.', max: 1, apply: (m) => { m.pierce = 1; } },
-  { id: 'hawkEye', name: 'Œil du faucon', desc: 'Tirs à la tête : ×2,5 au lieu de ×2.', max: 2, apply: (m) => { m.headMul += 0.5; } },
-  { id: 'vitality', name: 'Vitalité', desc: '+25 PV max et soin complet.', max: 2, apply: (m, p) => { p.maxHealth += 25; p.health = p.maxHealth; } },
-  { id: 'bloodthirst', name: 'Soif de sang', desc: "Chaque ennemi tué à l'arme blanche rend 5 PV.", max: 2, apply: (m) => { m.lifesteal += 5; } },
-  { id: 'secondWind', name: 'Second souffle', desc: 'La régénération démarre 1,5 s plus tôt et va 50 % plus vite.', max: 2, apply: (m) => { m.regenDelayCut += 1.5; m.regenMul *= 1.5; } },
-  { id: 'bronzeGuard', name: 'Garde de bronze', desc: 'La parade bloque tout ; parade parfaite +0,1 s.', max: 1, apply: (m) => { m.blockFactor = 0; m.parryWindow += 0.1; } },
-  { id: 'lightFeet', name: 'Pieds légers', desc: '+12 % de vitesse de déplacement.', max: 2, apply: (m) => { m.speed *= 1.12; } },
-  { id: 'scavenger', name: 'Pillard', desc: 'Objets lâchés 50 % plus souvent, munitions ramassées +50 %.', max: 2, apply: (m) => { m.drops *= 1.5; m.ammo *= 1.5; } },
+  { id: 'sharpBlade', max: 2, apply: (m) => { m.swordDmg += 0.25; } },
+  { id: 'wideArc', max: 2, apply: (m) => { m.swordReach += 0.25; } },
+  { id: 'bigMags', max: 2, apply: (m) => { m.mag += 0.5; } },
+  { id: 'quickHands', max: 2, apply: (m) => { m.reload *= 0.7; } },
+  { id: 'piercing', max: 1, apply: (m) => { m.pierce = 1; } },
+  { id: 'hawkEye', max: 2, apply: (m) => { m.headMul += 0.5; } },
+  { id: 'vitality', max: 2, apply: (m, p) => { p.maxHealth += 25; p.health = p.maxHealth; } },
+  { id: 'bloodthirst', max: 2, apply: (m) => { m.lifesteal += 5; } },
+  { id: 'secondWind', max: 2, apply: (m) => { m.regenDelayCut += 1.5; m.regenMul *= 1.5; } },
+  { id: 'bronzeGuard', max: 1, apply: (m) => { m.blockFactor = 0; m.parryWindow += 0.1; } },
+  { id: 'lightFeet', max: 2, apply: (m) => { m.speed *= 1.12; } },
+  { id: 'scavenger', max: 2, apply: (m) => { m.drops *= 1.5; m.ammo *= 1.5; } },
 ];
 const BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 
@@ -40,33 +42,33 @@ export function applyUpgrade(player, id) {
   return true;
 }
 
-export function upgradeInfo(id) { return BY_ID[id]; }
+export function upgradeInfo(id) { return { ...BY_ID[id], name: t(`up.${id}`), desc: t(`up.${id}.desc`) }; }
 
 // Secondary objective of a wave. progress(stats) -> number, done when it reaches target.
 // "under" objectives (damage, time) succeed when the value stays below the limit until the wave is cleared.
 export const OBJECTIVES = [
-  { id: 'blade', make: (w, world) => ({ text: `Tuer ${6 + w} ennemis ${world?.texts.bladeObjective ?? 'au corps à corps'}`, target: 6 + w, stat: 'meleeKills' }) },
-  { id: 'heads', make: (w) => ({ text: `Réussir ${3 + w} tirs à la tête`, target: 3 + w, stat: 'headshots' }) },
-  { id: 'parry', make: (w) => ({ text: `Réussir ${2 + Math.floor(w / 2)} parades parfaites`, target: 2 + Math.floor(w / 2), stat: 'perfectParries' }) },
-  { id: 'untouched', make: () => ({ text: 'Perdre moins de 40 PV', target: 40, stat: 'damageTaken', under: true }) },
-  { id: 'fast', make: (w) => ({ text: `Finir la vague en moins de ${45 + 15 * Math.min(w, 6)} s`, target: 45 + 15 * Math.min(w, 6), stat: 'time', under: true }) },
+  { id: 'blade', make: (w, world) => ({ text: t('obj.blade', { n: 6 + w, how: world?.texts.bladeObjective ?? t('obj.bladeHow') }), target: 6 + w, stat: 'meleeKills' }) },
+  { id: 'heads', make: (w) => ({ text: t('obj.heads', { n: 3 + w }), target: 3 + w, stat: 'headshots' }) },
+  { id: 'parry', make: (w) => ({ text: t('obj.parry', { n: 2 + Math.floor(w / 2) }), target: 2 + Math.floor(w / 2), stat: 'perfectParries' }) },
+  { id: 'untouched', make: () => ({ text: t('obj.untouched'), target: 40, stat: 'damageTaken', under: true }) },
+  { id: 'fast', make: (w) => ({ text: t('obj.fast', { n: 45 + 15 * Math.min(w, 6) }), target: 45 + 15 * Math.min(w, 6), stat: 'time', under: true }) },
 ];
 
 // objectives a universe can add to the common ones (world.objectives lists their ids)
 export const WORLD_OBJECTIVES = {
   // the pirate port: enemies caught in a powder keg's blast
-  kegs: { id: 'kegs', make: (w) => ({ text: `Abattre ${2 + Math.floor(w / 2)} ennemis avec les barils de poudre`, target: 2 + Math.floor(w / 2), stat: 'kegKills' }) },
+  kegs: { id: 'kegs', make: (w) => ({ text: t('obj.kegs', { n: 2 + Math.floor(w / 2) }), target: 2 + Math.floor(w / 2), stat: 'kegKills' }) },
   // the pirate port: looters go for the chest in the cave (see Enemies#loot); keep more than half its gold
-  chest: { id: 'chest', make: () => ({ text: "Garder plus de la moitié de l'or du coffre (grotte)", target: 50, stat: 'chestLoss', under: true, chest: true }) },
+  chest: { id: 'chest', make: () => ({ text: t('obj.chest'), target: 50, stat: 'chestLoss', under: true, chest: true }) },
   // the station: infected crew go and sabotage the reactor (the chest's looting, see Enemies#loot);
   // not in the Hive Queen's wave, when she sits on it
   reactor: {
     id: 'reactor', ok: (w, world) => !world?.waves?.[w - 1]?.boss,
-    make: () => ({ text: 'Garder le réacteur au-dessus de la moitié (sabotage)', target: 50, stat: 'chestLoss', under: true, chest: true, unit: 'réacteur' }),
+    make: () => ({ text: t('obj.reactor'), target: 50, stat: 'chestLoss', under: true, chest: true, unit: t('obj.reactorUnit') }),
   },
   // the station: an airlock blows now and then during the wave (Sim#updateBreaches); shut each one
   // with its lever in time (breachLate: the airlocks left open too long)
-  breaches: { id: 'breaches', ok: (w, world) => !world?.waves?.[w - 1]?.boss, make: () => ({ text: 'Refermer chaque sas qui saute en moins de 15 s', target: 1, stat: 'breachLate', under: true, breaches: true }) },
+  breaches: { id: 'breaches', ok: (w, world) => !world?.waves?.[w - 1]?.boss, make: () => ({ text: t('obj.breaches'), target: 1, stat: 'breachLate', under: true, breaches: true }) },
 };
 
 export function pickObjective(wave, world = null) {

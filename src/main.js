@@ -30,6 +30,7 @@ import { settings, updateSettings, onSettingsChange, DEFAULTS, QUALITY } from '.
 import { topScores, recordScore } from './leaderboard.js';
 import { upgradeInfo } from './sim/progression.js';
 import { WORLDS, getWorld } from './worlds/index.js';
+import { t, lang, setLang, num, ordinal, translatePage } from './i18n.js';
 
 const SOLO_ID = 'local';
 
@@ -126,6 +127,13 @@ const game = {
 };
 window.__game = game; // handy for debugging from the console
 
+// ---------- language ----------
+// the page's own texts (index.html marks them data-t), in the language picked at load
+document.documentElement.lang = lang;
+document.title = t('game.title');
+translatePage();
+for (const b of document.querySelectorAll('#lobby-score button')) b.textContent = t('lobby.frags', { n: b.dataset.score });
+
 // ---------- universe ----------
 // The universe is picked on the title screen and loaded with the page: changing it reloads.
 let savedWorld = null;
@@ -163,7 +171,7 @@ $('world').addEventListener('click', (e) => {
 
 const btnPlay = $('btn-play');
 const [assets, levelData] = await Promise.all([
-  loadAssets(world, (p) => (btnPlay.textContent = `Chargement… ${Math.round(p * 100)}%`)),
+  loadAssets(world, (p) => (btnPlay.textContent = t('btn.loading', { p: Math.round(p * 100) }))),
   fetch(world.files.levelData).then((r) => r.json()),
 ]);
 const level = new Level(levelData);
@@ -247,6 +255,7 @@ function syncOptionsForm() {
   $('o-shake').checked = settings.cameraShake;
   $('o-name').value = settings.playerName;
   document.querySelectorAll('#o-quality button').forEach((b) => b.classList.toggle('active', b.dataset.q === settings.quality));
+  document.querySelectorAll('#o-lang button').forEach((b) => b.classList.toggle('active', b.dataset.lang === lang));
 }
 for (const [key, o] of Object.entries(optionInputs)) {
   o.el.addEventListener('input', () => { updateSettings({ [key]: Number(o.el.value) }); o.out.textContent = o.fmt(settings[key]); });
@@ -255,8 +264,10 @@ $('o-invert').addEventListener('change', (e) => updateSettings({ invertY: e.targ
 $('o-fps').addEventListener('change', (e) => updateSettings({ showFps: e.target.checked }));
 $('o-hpnum').addEventListener('change', (e) => updateSettings({ showHealthNum: e.target.checked }));
 $('o-shake').addEventListener('change', (e) => updateSettings({ cameraShake: e.target.checked }));
-$('o-name').addEventListener('input', (e) => updateSettings({ playerName: e.target.value.trim().slice(0, 16) || 'Joueur' }));
+$('o-name').addEventListener('input', (e) => updateSettings({ playerName: e.target.value.trim().slice(0, 16) || t('opt.defaultName') }));
 document.querySelectorAll('#o-quality button').forEach((b) => b.addEventListener('click', () => { updateSettings({ quality: b.dataset.q }); syncOptionsForm(); }));
+// a new language reloads the page, as a new universe does
+document.querySelectorAll('#o-lang button').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
 $('btn-options-reset').addEventListener('click', () => { updateSettings({ ...DEFAULTS }); syncOptionsForm(); });
 let optionsOpen = false;
 document.querySelectorAll('.btn-options').forEach((b) => b.addEventListener('click', () => { optionsOpen = true; syncOptionsForm(); refreshScreens(); }));
@@ -287,13 +298,13 @@ try { savedMode = localStorage.getItem('gds-mode') || 'waves'; } catch {}
 pickMode(['survival', 'sandbox'].includes(savedMode) ? savedMode : 'waves');
 
 // ---------- leaderboard ----------
-const MODE_LABEL = { waves: 'Vagues', survival: 'Survie' };
+const MODE_LABEL = { waves: t('mode.waves'), survival: t('mode.survival') };
 function boardTable(mode, difficulty, highlight = -1) {
   const rows = topScores(world.id, mode, difficulty);
-  if (!rows.length) return '<table class="board"><tr><td class="empty">Aucun score pour l\'instant.</td></tr></table>';
+  if (!rows.length) return `<table class="board"><tr><td class="empty">${t('board.empty')}</td></tr></table>`;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  return `<table class="board"><tr><th>#</th><th>Pseudo</th><th class="num">Score</th><th class="num">Vague</th><th class="num">Temps</th></tr>${
-    rows.map((r, i) => `<tr class="${i === highlight ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td class="num">${r.score.toLocaleString('fr-FR')}</td><td class="num">${r.wave}</td><td class="num">${fmtTime(r.time)}</td></tr>`).join('')
+  return `<table class="board"><tr><th>#</th><th>${t('board.name')}</th><th class="num">${t('board.score')}</th><th class="num">${t('board.wave')}</th><th class="num">${t('board.time')}</th></tr>${
+    rows.map((r, i) => `<tr class="${i === highlight ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td class="num">${num(r.score)}</td><td class="num">${r.wave}</td><td class="num">${fmtTime(r.time)}</td></tr>`).join('')
   }</table>`;
 }
 const board = { mode: 'waves', difficulty: 'normal' };
@@ -324,13 +335,13 @@ async function connectCoop() {
   if (net.connected) return true;
   const address = $('c-server').value.trim() || defaultServer();
   try { localStorage.setItem('gds-server', address); } catch {}
-  coopStatus('coop-status', 'Connexion…', true);
+  coopStatus('coop-status', t('coop.connecting'), true);
   try {
     await net.connect(address, settings.playerName);
     coopStatus('coop-status', '');
     return true;
   } catch (e) {
-    coopStatus('coop-status', `${e.message}. Le serveur est-il lancé (npm run server) ?`);
+    coopStatus('coop-status', t('coop.noServer', { error: e.message }));
     return false;
   }
 }
@@ -338,7 +349,7 @@ function renderLobby(room) {
   $('lobby-code').textContent = room.code;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   $('lobby-players').innerHTML = room.players.map((p) =>
-    `<li class="${p.id === net.id ? 'me' : ''}">${esc(p.name)}${p.id === room.host ? '<span class="tag">HÔTE</span>' : ''}</li>`).join('');
+    `<li class="${p.id === net.id ? 'me' : ''}">${esc(p.name)}${p.id === room.host ? `<span class="tag">${t('lobby.host')}</span>` : ''}</li>`).join('');
   const host = net.isHost;
   document.querySelectorAll('#lobby-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === room.mode));
   document.querySelectorAll('#lobby-diff button').forEach((b) => b.classList.toggle('active', b.dataset.diff === room.difficulty));
@@ -348,16 +359,16 @@ function renderLobby(room) {
   $('lobby-mode-help').textContent = MODE_HELP[room.mode] ?? '';
   for (const id of ['lobby-mode', 'lobby-diff', 'lobby-score', 'lobby-time']) $(id).classList.toggle('locked', !host);
   $('btn-lobby-start').classList.toggle('hidden', !host);
-  $('lobby-sub').textContent = room.playing ? 'Une partie est en cours dans ce salon.'
-    : host ? `Donne ce code aux autres joueurs (${room.players.length}/4).` : 'En attente du lancement par l\'hôte…';
+  $('lobby-sub').textContent = room.playing ? t('lobby.playing')
+    : host ? t('lobby.share', { n: room.players.length }) : t('lobby.waiting');
 }
-const MODE_NAMES = { waves: 'Vagues', survival: 'Survie', arena: 'Arène' };
-const DIFF_NAMES = { easy: 'facile', normal: 'normal', hard: 'difficile' };
+const MODE_NAMES = { waves: t('mode.waves'), survival: t('mode.survival'), arena: t('mode.arena') };
+const DIFF_NAMES = { easy: t('diff.easy'), normal: t('diff.normal'), hard: t('diff.hard') };
 function renderOpenRooms(list) {
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   $('coop-rooms').innerHTML = list.length
-    ? list.map((r) => `<li><span class="code">${r.code}</span><span class="info">${esc(r.host ?? '')} · ${r.players}/4 · ${MODE_NAMES[r.mode] ?? r.mode}, ${DIFF_NAMES[r.difficulty] ?? r.difficulty}</span><button class="secondary" data-code="${r.code}">Rejoindre</button></li>`).join('')
-    : `<li class="empty">${net.connected ? "Aucun salon ouvert pour l'instant." : 'Pas encore connecté au serveur.'}</li>`;
+    ? list.map((r) => `<li><span class="code">${r.code}</span><span class="info">${esc(r.host ?? '')} · ${r.players}/4 · ${MODE_NAMES[r.mode] ?? r.mode}, ${DIFF_NAMES[r.difficulty] ?? r.difficulty}</span><button class="secondary" data-code="${r.code}">${t('coop.join')}</button></li>`).join('')
+    : `<li class="empty">${net.connected ? t('coop.noRooms') : t('coop.notConnected')}</li>`;
 }
 $('coop-rooms').addEventListener('click', async (e) => {
   const code = e.target.closest('button[data-code]')?.dataset.code;
@@ -380,7 +391,7 @@ $('btn-coop-create').addEventListener('click', async () => {
 });
 $('btn-coop-join').addEventListener('click', async () => {
   const code = $('c-code').value.trim().toUpperCase();
-  if (!/^[A-Z]{4}$/.test(code)) return coopStatus('coop-status', 'Le code d\'un salon a 4 lettres.');
+  if (!/^[A-Z]{4}$/.test(code)) return coopStatus('coop-status', t('coop.badCode'));
   if (await connectCoop()) net.join(code);
 });
 const MODE_HELP = world.texts.modes;
@@ -416,7 +427,7 @@ net.on.close = () => {
   quitCoopGame();
   coopScreen = 'coop';
   refreshScreens();
-  coopStatus('coop-status', inGame ? 'Connexion au serveur perdue.' : 'Déconnecté du serveur.');
+  coopStatus('coop-status', inGame ? t('coop.lost') : t('coop.disconnected'));
 };
 // back to the title screen from a co-op game (the room is left)
 function quitCoopGame() {
@@ -431,7 +442,7 @@ function leaveCoop() {
 }
 
 btnPlay.disabled = false;
-btnPlay.textContent = 'Jouer';
+btnPlay.textContent = t('btn.play');
 game.state = 'menu';
 
 // ---------- game flow ----------
@@ -535,9 +546,9 @@ function refreshScreens() {
   $('lobby').classList.toggle('hidden', game.state !== 'menu' || optionsOpen || coopScreen !== 'lobby');
   $('pause').classList.toggle('hidden', game.state !== 'paused' || optionsOpen);
   // co-op: the world goes on during the pause, and a game cannot be restarted alone
-  $('pause').querySelector('h2').textContent = game.net ? 'Partie en cours' : 'Pause';
-  $('btn-resume').textContent = game.net ? 'Jouer' : 'Reprendre';
-  $('btn-restart').textContent = game.net ? 'Quitter la partie' : 'Recommencer';
+  $('pause').querySelector('h2').textContent = game.net ? t('pause.coop') : t('pause.title');
+  $('btn-resume').textContent = game.net ? t('btn.play') : t('btn.resume');
+  $('btn-restart').textContent = game.net ? t('btn.quitGame') : t('btn.restart');
   $('end').classList.toggle('hidden', game.state !== 'over');
   hud.show(game.state === 'playing' || game.state === 'paused');
 }
@@ -547,26 +558,26 @@ function endGame(victory, winner) {
   game.state = 'over';
   if (sim.mode.pvp) return endArena(winner);
   const survival = sim.mode.id === 'survival';
-  $('end-title').textContent = survival ? 'Fin de la survie' : victory ? 'Victoire' : 'Défaite';
+  $('end-title').textContent = survival ? t('end.survivalOver') : victory ? t('end.victory') : t('end.defeat');
   $('end-sub').textContent = survival
-    ? `Tu as tenu jusqu'à la vague ${sim.mode.wave}.`
+    ? t('end.survived', { n: sim.mode.wave })
     : victory ? world.texts.victory
-      : `${world.texts.defeat ? world.texts.defeat + ' ' : ''}Tombé pendant la vague ${sim.mode.wave}.`;
+      : `${world.texts.defeat ? world.texts.defeat + ' ' : ''}${t('end.fell', { n: sim.mode.wave })}`;
   // score and local leaderboard
-  const rank = recordScore(world.id, sim.mode.id, sim.difficulty.key, { name: settings.playerName + (game.net ? ' (coop)' : ''), score: p.score, wave: sim.mode.wave, time: sim.time });
-  $('btn-again').textContent = game.net ? 'Retour au salon' : 'Rejouer';
-  $('end-score').innerHTML = `${p.score.toLocaleString('fr-FR')} pts${rank === 0 ? '<small>NOUVEAU RECORD !</small>' : rank > 0 ? `<small>${rank + 1}e du classement</small>` : ''}`;
-  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">CLASSEMENT — ${MODE_LABEL[sim.mode.id]} · ${sim.difficulty.label}</div>${boardTable(sim.mode.id, sim.difficulty.key, rank)}`;
+  const rank = recordScore(world.id, sim.mode.id, sim.difficulty.key, { name: settings.playerName + (game.net ? t('end.coopTag') : ''), score: p.score, wave: sim.mode.wave, time: sim.time });
+  $('btn-again').textContent = game.net ? t('btn.backToRoom') : t('btn.again');
+  $('end-score').innerHTML = `${t('end.pts', { n: num(p.score) })}${rank === 0 ? `<small>${t('end.record')}</small>` : rank > 0 ? `<small>${t('end.rank', { rank: ordinal(rank + 1) })}</small>` : ''}`;
+  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">${t('end.board', { mode: MODE_LABEL[sim.mode.id], diff: sim.difficulty.label })}</div>${boardTable(sim.mode.id, sim.difficulty.key, rank)}`;
   const cards = Object.entries(p.upgrades).map(([id, n]) => upgradeInfo(id).name + (n > 1 ? ' ×2' : '')).join(', ') || '—';
   const rows = [
-    ['Temps', fmtTime(sim.time)],
-    ['Mode', `${MODE_LABEL[sim.mode.id]} · ${sim.difficulty.label}`],
-    ['Vague atteinte', Number.isFinite(sim.mode.totalWaves) ? `${sim.mode.wave} / ${sim.mode.totalWaves}` : sim.mode.wave],
-    ['Améliorations', cards],
-    ['Ennemis abattus', p.stats.kills],
-    ['Tirs à la tête', p.stats.headshots],
-    ['Précision', `${p.accuracy} %`],
-    ['Dégâts subis', Math.round(p.stats.damageTaken)],
+    [t('stat.time'), fmtTime(sim.time)],
+    [t('stat.mode'), `${MODE_LABEL[sim.mode.id]} · ${sim.difficulty.label}`],
+    [t('stat.wave'), Number.isFinite(sim.mode.totalWaves) ? `${sim.mode.wave} / ${sim.mode.totalWaves}` : sim.mode.wave],
+    [t('stat.upgrades'), cards],
+    [t('stat.kills'), p.stats.kills],
+    [t('stat.headshots'), p.stats.headshots],
+    [t('stat.accuracy'), `${p.accuracy} %`],
+    [t('stat.damage'), Math.round(p.stats.damageTaken)],
   ];
   $('stats').innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
   document.exitPointerLock();
@@ -579,21 +590,21 @@ function endArena(winnerId) {
   const ranked = arenaRanking();
   const best = sim.players.get(winnerId) ?? ranked[0];
   const won = winnerId === game.localId;
-  $('end-title').textContent = won ? 'Victoire' : 'Défaite';
-  $('end-sub').textContent = won ? 'Tu règnes sur l\'arène.'
-    : `${best?.name ?? 'Un adversaire'} remporte l'arène avec ${best?.stats.frags ?? 0} éliminations.`;
-  $('btn-again').textContent = 'Retour au salon';
-  $('end-score').innerHTML = `${p.stats.frags} élimination${p.stats.frags > 1 ? 's' : ''}<small>${ranked.indexOf(p) + 1}${ranked.indexOf(p) === 0 ? 'er' : 'e'} sur ${ranked.length}</small>`;
+  $('end-title').textContent = won ? t('end.victory') : t('end.defeat');
+  $('end-sub').textContent = won ? t('end.arenaReign')
+    : t('end.arenaLoss', { name: best?.name ?? t('end.someone'), n: best?.stats.frags ?? 0 });
+  $('btn-again').textContent = t('btn.backToRoom');
+  $('end-score').innerHTML = `${t(p.stats.frags === 1 ? 'end.frag1' : 'end.fragN', { n: p.stats.frags })}<small>${t('end.place', { rank: ordinal(ranked.indexOf(p) + 1), n: ranked.length })}</small>`;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">CLASSEMENT DE LA PARTIE</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">${world.texts.guards}</th></tr>${
+  $('end-board').innerHTML = `<div class="label" style="margin-bottom:6px">${t('end.matchBoard')}</div><table class="board"><tr><th>#</th><th>${t('board.player')}</th><th class="num">${t('board.frags')}</th><th class="num">${t('board.deaths')}</th><th class="num">${world.texts.guards}</th></tr>${
     ranked.map((o, i) => `<tr class="${o === p ? 'me' : ''}"><td>${i + 1}</td><td>${esc(o.name)}</td><td class="num">${o.stats.frags}</td><td class="num">${o.stats.deaths}</td><td class="num">${o.stats.kills}</td></tr>`).join('')}</table>`;
   const rows = [
-    ['Temps', fmtTime(sim.mode.timeLimit - sim.mode.timeLeft)],
-    ['Mode', `Arène · ${sim.mode.scoreLimit} éliminations`],
-    ['Éliminations', p.stats.frags],
-    ['Morts', p.stats.deaths],
+    [t('stat.time'), fmtTime(sim.mode.timeLimit - sim.mode.timeLeft)],
+    [t('stat.mode'), t('stat.arenaMode', { n: sim.mode.scoreLimit })],
+    [t('stat.frags'), p.stats.frags],
+    [t('stat.deaths'), p.stats.deaths],
     [world.texts.killsLabel, p.stats.kills],
-    ['Précision', `${p.accuracy} %`],
+    [t('stat.accuracy'), `${p.accuracy} %`],
   ];
   $('stats').innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
   document.exitPointerLock();
@@ -642,7 +653,7 @@ function parrySparks(count) {
 const FIRE_COLOR = new THREE.Color(1, 0.48, 0.12), SMOKE_COLOR = new THREE.Color(0.12, 0.1, 0.09);
 const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3, flintlock: 0.25, blunderbuss: 0.45, cannon: 0.7, musket: 0.3, laser: 0.04, plasma: 0.08, flamer: 0.015, railgun: 0.55 };
 const PLAYER_HIT_COLOR = new THREE.Color(0.75, 0.15, 0.1);
-const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? 'Un allié').toUpperCase();
+const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? t('hud.ally')).toUpperCase();
 
 function handleEvents() {
   const sim = game.sim;
@@ -664,7 +675,7 @@ function handleEvents() {
       case 'grenadeThrow': if (mine) sound.throw(); break;
       // the station's weapons
       case 'charge': if (mine) sound.charge(ev.time); break;
-      case 'overheat': if (mine) { sound.overheat(); weaponView.onOverheat(camera); hud.pickup('SURCHAUFFE'); } break;
+      case 'overheat': if (mine) { sound.overheat(); weaponView.onOverheat(camera); hud.pickup(t('hud.overheatPickup')); } break;
       case 'vented': if (mine) sound.click(1.5); break;
       case 'latch':
         if (ev.pid === game.localId) {
@@ -692,11 +703,11 @@ function handleEvents() {
       case 'frag': {
         const killer = ev.by ? sim.players.get(ev.by)?.name ?? '?' : null;
         hud.frag(killer, sim.players.get(ev.pid)?.name ?? '?', ev.weapon, ev.head, mine || ev.by === game.localId);
-        if (ev.by === game.localId) { hud.pickup(`${nameOf(ev.pid)} ÉLIMINÉ${ev.head ? ' — TÊTE' : ''}`); sound.horn(true); }
+        if (ev.by === game.localId) { hud.pickup(t(ev.head ? 'hud.fraggedHead' : 'hud.fragged', { name: nameOf(ev.pid) })); sound.horn(true); }
         break;
       }
       case 'respawn':
-        if (mine) { input.setLook(ev.yaw, 0); hud.pickup('DE RETOUR DANS L\'ARÈNE'); sound.pickup(); }
+        if (mine) { input.setLook(ev.yaw, 0); hud.pickup(t('hud.backInArena')); sound.pickup(); }
         break;
       case 'impactWall': effects.impactWall(ev.point, ev.normal); break;
       case 'impactEnemy': effects.impactEnemy(ev.point, ev.normal, ENEMY_LOOK[ev.enemyType].color); break;
@@ -734,7 +745,7 @@ function handleEvents() {
         }
         break;
       case 'pickup':
-        if (mine) { hud.pickup(ev.kind === 'ammo' ? '+ MUNITIONS' : '+ 35 SANTÉ'); sound.pickup(); }
+        if (mine) { hud.pickup(ev.kind === 'ammo' ? t('hud.ammo') : t('hud.healthPickup')); sound.pickup(); }
         break;
       case 'enemyKill':
         enemyView.onEvent(ev);
@@ -780,11 +791,11 @@ function handleEvents() {
         sound.growl(pan(ev.pos), vol(ev.pos, 60), true, 'boss');
         break;
       case 'grab':
-        if (mine) { if (!ev.released) { sound.hurt(); addShake(0.4); } hud.prompt(ev.released ? null : world.texts.grabbed ?? 'UNE TENTACULE VOUS TIENT — FRAPPEZ-LA POUR VOUS LIBÉRER'); }
+        if (mine) { if (!ev.released) { sound.hurt(); addShake(0.4); } hud.prompt(ev.released ? null : world.texts.grabbed ?? t('hud.grabbed')); }
         break;
       case 'chestHit':
         sound.click(1.8);
-        if (game.sim.time - (game.chestWarned ?? -9) > 6) { game.chestWarned = game.sim.time; hud.pickup(`${world.texts.chestRaid ?? 'ON PILLE LE COFFRE !'} (${Math.round(ev.gold)} %)`); }
+        if (game.sim.time - (game.chestWarned ?? -9) > 6) { game.chestWarned = game.sim.time; hud.pickup(`${world.texts.chestRaid ?? t('hud.chestRaid')} (${Math.round(ev.gold)} %)`); }
         // the reactor being sabotaged: sparks off it
         if (world.chest?.ring) effects.burst(ev.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 3, (Math.random() - 0.5) * 3)), null, { count: 16, color: new THREE.Color(0.6, 0.9, 1), speed: 5, size: 0.08, life: 0.5, grav: 6 });
         break;
@@ -839,15 +850,15 @@ function handleEvents() {
       case 'cardOffer': break; // the HUD reads the offer from the player
       case 'cardPicked': if (mine) { sound.pickup(); hud.pickup(upgradeInfo(ev.card).name.toUpperCase()); } break;
       case 'objective':
-        if (ev.state === 'done' && ev.winners.includes(game.localId)) { hud.pickup('OBJECTIF RÉUSSI  +1000'); sound.horn(true); }
-        else if (ev.state === 'failed' && ev.text) hud.pickup('OBJECTIF MANQUÉ');
+        if (ev.state === 'done' && ev.winners.includes(game.localId)) { hud.pickup(t('hud.objectiveDone')); sound.horn(true); }
+        else if (ev.state === 'failed' && ev.text) hud.pickup(t('hud.objectiveFailed'));
         break;
       case 'playerDown':
-        if (!mine && game.net && !sim.mode.pvp) { hud.pickup(`${nameOf(ev.pid)} EST À TERRE !`); sound.horn(false); }
+        if (!mine && game.net && !sim.mode.pvp) { hud.pickup(t('hud.mateDownPickup', { name: nameOf(ev.pid) })); sound.horn(false); }
         break;
       case 'playerRevived':
-        if (mine) { hud.pickup('RELEVÉ !'); sound.pickup(); }
-        else if (ev.by === game.localId) { hud.pickup(`${nameOf(ev.pid)} RELEVÉ  +200`); sound.pickup(); }
+        if (mine) { hud.pickup(t('hud.revived')); sound.pickup(); }
+        else if (ev.by === game.localId) { hud.pickup(t('hud.revivedMate', { name: nameOf(ev.pid) })); sound.pickup(); }
         break;
       case 'gameOver': clearCharm(); hud.prompt(null); endGame(ev.victory, ev.winner); break;
     }
@@ -859,7 +870,7 @@ function handleEvents() {
   // Halo: the medal on screen and a brass sting
   if (multi || spree) {
     const lines = [multi && multiKillName(multi), spree && spreeName(spree)].filter(Boolean);
-    hud.medal(lines[0].toUpperCase(), spree && multi ? spreeName(spree).toUpperCase() : spree ? `${spree} ÉLIMINATIONS SANS MOURIR` : '');
+    hud.medal(lines[0].toUpperCase(), spree && multi ? spreeName(spree).toUpperCase() : spree ? t('hud.spree', { n: spree }) : '');
     sound.medal(multi || spree / 5 + 1, !multi);
   }
 }
@@ -993,7 +1004,7 @@ function tick(dt, now = (tickClock += dt)) {
         .map(([id, t]) => ({ pos: sim.players.get(id).pos, fade: (2 - t) * 2 }));
       hud.drawMinimap(p, sim.enemies, [], foes);
       hud.scoreboard(game.state === 'playing' && input.down('Tab') ? ranked.map((o) => ({ name: o.name, frags: o.stats.frags, deaths: o.stats.deaths, kills: o.stats.kills, me: o === p })) : null,
-        `Premier à ${sim.mode.scoreLimit} · ${fmtTime(Math.ceil(sim.mode.timeLeft))} restantes`);
+        t('hud.arenaMeta', { n: sim.mode.scoreLimit, time: fmtTime(Math.ceil(sim.mode.timeLeft)) }));
     } else hud.drawMinimap(p, sim.enemies, game.net ? [...sim.players.values()].filter((o) => o !== p) : []);
     // the siren's song: blurred, tinted view; the loudest singer is heard. A parasite on the face
     // (the station) blurs it much more and covers the screen with its fingers.
@@ -1072,7 +1083,7 @@ function coopHud(p, dt) {
       if (o.dead && d < nd) { nd = d; near = o; }
     }
   }
-  hud.prompt(near ? `Maintiens [E] pour relever ${near.name} — ${Math.round(near.revive * 100)} %` : null);
+  hud.prompt(near ? t('hud.revivePrompt', { name: near.name, p: Math.round(near.revive * 100) }) : null);
   hud.downed(p.dead ? p.revive : null, mates.every((o) => o.dead));
 }
 

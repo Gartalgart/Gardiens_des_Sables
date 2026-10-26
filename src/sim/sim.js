@@ -9,6 +9,7 @@ import { SurvivalMode } from './modes/survival.js';
 import { ArenaMode } from './modes/arena.js';
 import { applyUpgrade, KILL_POINTS, DIFFICULTY_SCORE, BONUS } from './progression.js';
 import { getWorld } from '../worlds/index.js';
+import { t } from '../i18n.js';
 
 const MODES = { waves: WaveMode, survival: SurvivalMode, sandbox: SandboxMode, arena: ArenaMode };
 // weapon damage against players (arena), as a share of the damage against guardians:
@@ -159,7 +160,7 @@ export class Sim {
     best.revive += dt / REVIVE_TIME;
     if (best.revive >= 1) {
       this.raise(best, 0.4);
-      this.addScore(p, BONUS.revive, 'RÉANIMATION');
+      this.addScore(p, BONUS.revive, t('pts.revive'));
       this.emit('playerRevived', { pid: best.id, by: p.id });
     }
   }
@@ -203,12 +204,12 @@ export class Sim {
   }
 
   scoreKill(killer, enemy, cause) {
-    this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1), enemy.T.boss ? this.world.texts.bossKill : enemy.elite ? 'ÉLITE ABATTU' : 'ÉLIMINATION');
-    if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, this.world.weapons.find((w) => w.melee)?.name ?? 'MÊLÉE');
-    if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, this.world.texts.grenadeKill ?? 'GRENADE');
-    if (cause === 'ball') this.addScore(killer, BONUS.grenadeKill, 'BOULET');
-    if (cause === 'keg') this.addScore(killer, BONUS.grenadeKill, this.world.texts.kegKill ?? 'BARIL');
-    if (cause === 'airlock') this.addScore(killer, BONUS.grenadeKill, this.world.texts.airlockKill ?? 'SAS');
+    this.addScore(killer, (KILL_POINTS[enemy.type] ?? 100) * (enemy.elite ? 2 : 1), enemy.T.boss ? this.world.texts.bossKill : enemy.elite ? t('pts.elite') : t('pts.kill'));
+    if (cause === 'melee') this.addScore(killer, BONUS.meleeKill, this.world.weapons.find((w) => w.melee)?.name ?? t('pts.melee'));
+    if (cause === 'grenade') this.addScore(killer, BONUS.grenadeKill, this.world.texts.grenadeKill ?? t('pts.grenade'));
+    if (cause === 'ball') this.addScore(killer, BONUS.grenadeKill, t('pts.ball'));
+    if (cause === 'keg') this.addScore(killer, BONUS.grenadeKill, this.world.texts.kegKill ?? t('pts.keg'));
+    if (cause === 'airlock') this.addScore(killer, BONUS.grenadeKill, this.world.texts.airlockKill ?? t('pts.airlock'));
   }
 
   // Every kill goes through here for the medals: multi-kills (kills less than MULTI_WINDOW apart)
@@ -423,7 +424,7 @@ export class Sim {
     this.level.setDoor(a.id, open);
     this.emit('airlock', { id: a.id, open, pos: a.center.clone() });
     const T = this.world.texts;
-    this.emit('banner', { title: '', sub: open ? T.airlockOpen ?? 'Sas ouvert !' : T.airlockClosed ?? 'Sas refermé', duration: 1.8 });
+    this.emit('banner', { title: '', sub: open ? T.airlockOpen ?? t('sim.airlockOpen') : T.airlockClosed ?? t('sim.airlockClosed'), duration: 1.8 });
   }
 
   #updateAirlocks(dt) {
@@ -535,7 +536,7 @@ export class Sim {
     if (eh.head) player.waveStats.headshots++;
     if (eh.enemy.hp <= 0 && eh.head) {
       player.stats.headshots++;
-      this.addScore(player, BONUS.headshotKill, 'TIR À LA TÊTE');
+      this.addScore(player, BONUS.headshotKill, t('pts.headshot'));
       this.emit('headshotKill', { pid: player.id });
     }
     this.emit('hitConfirm', { pid: player.id, head: eh.head });
@@ -884,7 +885,7 @@ export class Sim {
         if (perfect) {
           this.emit('perfectParry', { pid: player.id, pos: from.clone() });
           player.waveStats.perfectParries++;
-          this.addScore(player, BONUS.perfectParry, 'PARADE PARFAITE');
+          this.addScore(player, BONUS.perfectParry, t('pts.parry'));
           this.slowMo = 0.45;
           // a player's blade parried at the last moment throws its owner back
           if (src?.by) src.by.impulse(to.clone().multiplyScalar(-9));

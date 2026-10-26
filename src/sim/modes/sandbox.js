@@ -1,4 +1,5 @@
 import { GRENADES } from '../weapons.js';
+import { t } from '../../i18n.js';
 
 // "Exploration" mode: no waves and no end, for visiting the map and trying the weapons. Every weapon
 // is in hand from the start, callTargets() (key N on the client) brings a group of enemies and
@@ -17,7 +18,7 @@ export class SandboxMode {
       for (const it of lo.items) { it.unlocked = true; it.mag = lo.magSize(it); it.reserve = it.def.reserve; }
       lo.grenades = GRENADES.max;
     }
-    this.sim.emit('banner', { title: 'Exploration', sub: 'Toutes les armes en main — [N] appelle des ennemis, [B] le boss', duration: 4 });
+    this.sim.emit('banner', { title: t('mode.sandbox'), sub: t('sim.sandboxSub'), duration: 4 });
   }
 
   get enemiesLeft() { return this.sim.enemies.alive; }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { drawCards, pickObjective, freshWaveStats, objectiveDone, BONUS } from '../progression.js';
+import { t } from '../../i18n.js';
 
 const ELITE_FROM_WAVE = 3;
 const ELITE_CHANCE = 0.1;
@@ -27,10 +28,10 @@ export class WaveBase {
   extraAlive(n) { return 0; } // more enemies at once than the difficulty allows
   spawnGapScale(n) { return 1; }
   get totalWaves() { return Infinity; }
-  nextWaveTitle(n) { return `Vague ${n}`; }
+  nextWaveTitle(n) { return t('sim.wave', { n }); }
 
   start() {
-    this.sim.emit('banner', { title: 'Vague 1', sub: this.sim.world.texts.start, duration: 3 });
+    this.sim.emit('banner', { title: t('sim.wave', { n: 1 }), sub: this.sim.world.texts.start, duration: 3 });
     this.sim.emit('horn', { victory: false });
   }
 
@@ -156,8 +157,8 @@ export class WaveBase {
         else sim.emit('cardOffer', { pid: p.id, cards: p.cardOffer });
       }
     }
-    const sub = unlocked ? `Nouvelle arme : ${unlocked.def.name} [${unlocked.slot}]`
-      : this.composition(next).boss ? sim.world.texts.bossWakes : 'Munitions réapprovisionnées';
+    const sub = unlocked ? t('sim.newWeapon', { name: unlocked.def.name, slot: unlocked.slot })
+      : this.composition(next).boss ? sim.world.texts.bossWakes : t('sim.restocked');
     sim.emit('banner', { title: this.nextWaveTitle(next), sub, duration: 4.5 });
     if (unlocked) sim.emit('unlock', { weapon: unlocked.def.id });
     sim.emit('horn', { victory: false });

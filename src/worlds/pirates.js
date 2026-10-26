@@ -6,9 +6,12 @@ import { SABLES } from './sables.js';
 export const PIRATES = {
   ...SABLES,
   id: 'pirates',
-  name: "L'Île des pirates maudits",
-  title: ["L'Île des", 'pirates maudits'],
-  lede: 'Un port pirate en ruine, noyé dans la brume. Sous la lune maudite, les morts reprennent leur poste.',
+  name: { en: 'Isle of the Cursed Pirates', fr: "L'Île des pirates maudits" },
+  title: { en: ['Isle of the', 'Cursed Pirates'], fr: ["L'Île des", 'pirates maudits'] },
+  lede: {
+    en: 'A ruined pirate port, drowned in mist. Under the cursed moon, the dead return to their posts.',
+    fr: 'Un port pirate en ruine, noyé dans la brume. Sous la lune maudite, les morts reprennent leur poste.',
+  },
   // old print and verdigris, like a sea chart left out in the mist; round black bombs
   hud: {
     font: '"IM Fell English SC", serif',
@@ -49,29 +52,29 @@ export const PIRATES = {
   // ---------- weapons: all muzzle-loaders but the sabre, loaded by the mouth with a ramrod ----------
   weapons: [
     {
-      id: 'cutlass', name: 'SABRE', short: 'Sabre', melee: true, dmg: 80, range: 3.0, swing: 0.32, hitAt: 0.1, cooldown: 0.4,
+      id: 'cutlass', name: { en: 'CUTLASS', fr: 'SABRE' }, short: { en: 'Cutlass', fr: 'Sabre' }, melee: true, dmg: 80, range: 3.0, swing: 0.32, hitAt: 0.1, cooldown: 0.4,
       spread: 0, adsSpread: 0, adsFov: 75,
     },
     {
       // one heavy ball, then a long reload
-      id: 'flintlock', name: 'PISTOLET À SILEX', short: 'Silex', dmg: 130, rpm: 100, auto: false, mag: 1, reserve: Infinity, pellets: 1,
+      id: 'flintlock', name: { en: 'FLINTLOCK PISTOL', fr: 'PISTOLET À SILEX' }, short: { en: 'Flintlock', fr: 'Silex' }, dmg: 130, rpm: 100, auto: false, mag: 1, reserve: Infinity, pellets: 1,
       spread: 0.012, adsSpread: 0.001, reload: 1.7, recoil: 0.06, adsFov: 56,
     },
     {
       // two bell-mouthed barrels: a wide cone of shot each, then both are reloaded
-      id: 'blunderbuss', name: 'TROMBLON', short: 'Tromblon', dmg: 13, rpm: 150, auto: false, mag: 2, reserve: 36, pellets: 12,
+      id: 'blunderbuss', name: { en: 'BLUNDERBUSS', fr: 'TROMBLON' }, short: { en: 'Blunderbuss', fr: 'Tromblon' }, dmg: 13, rpm: 150, auto: false, mag: 2, reserve: 36, pellets: 12,
       spread: 0.12, adsSpread: 0.09, reload: 2.6, recoil: 0.08, adsFov: 64,
     },
     {
       // a ball that flies in an arc and blows up where it lands; the shot shoves the gunner back
-      id: 'cannon', name: 'CANON PORTATIF', short: 'Canon', dmg: 0, rpm: 50, auto: false, mag: 1, reserve: 10, pellets: 1,
+      id: 'cannon', name: { en: 'HAND CANNON', fr: 'CANON PORTATIF' }, short: { en: 'Cannon', fr: 'Canon' }, dmg: 0, rpm: 50, auto: false, mag: 1, reserve: 10, pellets: 1,
       spread: 0.008, adsSpread: 0.002, reload: 2.3, recoil: 0.12, adsFov: 60, knockback: 7,
       ball: { speed: 42, gravity: 9, radius: 4.5, dmg: 230, playerDmg: 40, hit: 120 },
     },
     {
       // for the last wave: a long musket with a spyglass; one ball that goes on through a first
       // target, wild from the hip, dead on through the glass, then a long reload
-      id: 'musket', name: 'MOUSQUET À LONGUE-VUE', short: 'Mousquet', dmg: 160, rpm: 40, auto: false, mag: 1, reserve: 20, pellets: 1,
+      id: 'musket', name: { en: 'SPYGLASS MUSKET', fr: 'MOUSQUET À LONGUE-VUE' }, short: { en: 'Musket', fr: 'Mousquet' }, dmg: 160, rpm: 40, auto: false, mag: 1, reserve: 20, pellets: 1,
       spread: 0.07, adsSpread: 0, reload: 2.4, recoil: 0.1, adsFov: 18, pierce: true, scope: true,
     },
   ],
@@ -204,28 +207,34 @@ export const PIRATES = {
 
   texts: {
     ...SABLES.texts,
-    start: 'Sabre [1] et pistolet à silex [2] — bombes [G] — tenez le port',
-    grenadeKill: 'BOMBE',
-    meleeName: 'sabre',
-    bladeObjective: 'au sabre',
-    grenadeName: 'Bombes à mèche',
-    grenadeHelp: 'Lancer une bombe à mèche',
-    killsLabel: 'Ennemis abattus',
-    guards: 'Équipage',
-    tips: "Les tirs à la tête infligent double dégâts. Le sabre tranche tout ce qui est devant vous, et sa parade renvoie les tirs ennemis. Les armes à feu se rechargent par la bouche : un coup, puis la baguette. Un tir sur un baril de poudre le fait sauter. Seuls les ennemis tués au corps à corps lâchent de la santé. La santé se régénère après quelques secondes sans blessure.",
-    bossName: 'LE KRAKEN',
-    bossKill: 'KRAKEN TERRASSÉ',
-    bossWave: 'le Kraken',
-    bossWakes: 'Le Kraken remonte des profondeurs…',
-    bossSummon: "Le Kraken appelle l'équipage maudit !",
-    bossRise: "Le Kraken sort la tête de l'eau !",
-    bossPier: 'Le Kraken brise le ponton !',
+    start: { en: "Cutlass [1] and flintlock [2] — bombs [G] — hold the port", fr: "Sabre [1] et pistolet à silex [2] — bombes [G] — tenez le port" },
+    grenadeKill: { en: "BOMB", fr: "BOMBE" },
+    meleeName: { en: "cutlass", fr: "sabre" },
+    bladeObjective: { en: "with the cutlass", fr: "au sabre" },
+    grenadeName: { en: "Fuse bombs", fr: "Bombes à mèche" },
+    grenadeHelp: { en: "Throw a fuse bomb", fr: "Lancer une bombe à mèche" },
+    killsLabel: { en: "Enemies slain", fr: "Ennemis abattus" },
+    guards: { en: "Crew", fr: "Équipage" },
+    tips: {
+      en: 'Headshots deal double damage. The cutlass cuts through everything in front of you, and its parry sends enemy shots back. Firearms load through the muzzle: one shot, then the ramrod. A shot at a powder keg blows it up. Only enemies killed in melee drop health. Health regenerates after a few seconds without a wound.',
+      fr: "Les tirs à la tête infligent double dégâts. Le sabre tranche tout ce qui est devant vous, et sa parade renvoie les tirs ennemis. Les armes à feu se rechargent par la bouche : un coup, puis la baguette. Un tir sur un baril de poudre le fait sauter. Seuls les ennemis tués au corps à corps lâchent de la santé. La santé se régénère après quelques secondes sans blessure.",
+    },
+    bossName: { en: "THE KRAKEN", fr: "LE KRAKEN" },
+    bossKill: { en: "KRAKEN SLAIN", fr: "KRAKEN TERRASSÉ" },
+    bossWave: { en: "the Kraken", fr: "le Kraken" },
+    bossWakes: { en: "The Kraken rises from the deep…", fr: "Le Kraken remonte des profondeurs…" },
+    bossSummon: { en: "The Kraken calls the cursed crew!", fr: "Le Kraken appelle l'équipage maudit !" },
+    bossRise: { en: "The Kraken lifts its head out of the water!", fr: "Le Kraken sort la tête de l'eau !" },
+    bossPier: { en: "The Kraken smashes the pier!", fr: "Le Kraken brise le ponton !" },
     modes: {
       ...SABLES.texts.modes,
-      waves: "Cinq vagues de l'équipage maudit à repousser, le Kraken à la dernière.",
-      survival: 'Des vagues sans fin, le Kraken toutes les cinq vagues.',
+      waves: { en: 'Five waves of the cursed crew to drive back, the Kraken in the last.', fr: "Cinq vagues de l'équipage maudit à repousser, le Kraken à la dernière." },
+      survival: { en: 'Endless waves, the Kraken every fifth wave.', fr: 'Des vagues sans fin, le Kraken toutes les cinq vagues.' },
     },
-    victory: "La brume se lève sur le port. L'équipage maudit retourne au fond de la baie.",
+    victory: {
+      en: 'The mist lifts over the port. The cursed crew sinks back to the bottom of the bay.',
+      fr: "La brume se lève sur le port. L'équipage maudit retourne au fond de la baie.",
+    },
   },
 
   // the Kraken's roar and death: the colossus's recordings, slowed right down (src/audio.js setVoices)

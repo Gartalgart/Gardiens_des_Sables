@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Multivers</title>
+  <title>Multiverse</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M8 1 15 15H1z%22 fill=%22%23eef1f5%22/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
@@ -16,15 +16,15 @@
     </div>
 
     <div id="top-center">
-      <div id="wave-label"><span id="wave-word">VAGUE</span> <span id="wave-num">1</span><span class="dim" id="wave-total">/5</span></div>
+      <div id="wave-label"><span id="wave-word" data-t="hud.wave"></span> <span id="wave-num">1</span><span class="dim" id="wave-total">/5</span></div>
       <div id="timer">00:00</div>
       <div id="objective"></div>
     </div>
 
     <div id="top-right">
-      <div class="label" id="left-label">ENNEMIS RESTANTS</div>
+      <div class="label" id="left-label" data-t="hud.left"></div>
       <div id="enemies-left">0</div>
-      <div class="label" id="score-label">SCORE</div>
+      <div class="label" id="score-label" data-t="hud.score"></div>
       <div id="score">0</div>
     </div>
     <div id="killfeed"></div>
@@ -38,28 +38,29 @@
     <div id="damage-dirs"></div>
 
     <div id="bottom-left">
-      <div class="label">SANTÉ</div>
+      <div class="label" data-t="hud.health"></div>
       <div id="health-bar"><div id="health-fill"></div><div id="health-ghost"></div></div>
       <div id="health-num">100</div>
     </div>
 
     <div id="bottom-right">
-      <div id="weapon-name">PISTOLET</div>
+      <div id="weapon-name"></div>
       <div id="ammo"><span id="ammo-mag">12</span><span class="dim" id="ammo-sep"> / </span><span id="ammo-res">∞</span></div>
-      <div id="reload-hint" class="hidden">[R] RECHARGER</div>
-      <div id="grenades" title="Pots de feu [G]"></div>
+      <div id="reload-hint" class="hidden" data-t="hud.reload"></div>
+      <div id="grenades"></div>
       <div id="slots">
-        <div class="slot" data-slot="0"><b>1</b> Khépesh</div>
-        <div class="slot" data-slot="1"><b>2</b> Pistolet</div>
-        <div class="slot" data-slot="2"><b>3</b> Fusil d'assaut</div>
-        <div class="slot" data-slot="3"><b>4</b> Fusil à pompe</div>
-        <div class="slot" data-slot="4"><b>5</b> Précision</div>
+        <!-- the universe's weapons, named by src/main.js -->
+        <div class="slot" data-slot="0"></div>
+        <div class="slot" data-slot="1"></div>
+        <div class="slot" data-slot="2"></div>
+        <div class="slot" data-slot="3"></div>
+        <div class="slot" data-slot="4"></div>
       </div>
     </div>
 
     <div id="team"></div>
     <div id="prompt" class="hidden"></div>
-    <div id="downed" class="hidden"><div class="downed-title" id="downed-title">À terre</div><div id="downed-sub">Un coéquipier peut te relever</div><div class="revive-bar"><div id="downed-fill"></div></div></div>
+    <div id="downed" class="hidden"><div class="downed-title" id="downed-title"></div><div id="downed-sub"></div><div class="revive-bar"><div id="downed-fill"></div></div></div>
 
     <!-- medal and wave banner can show at once: stacked in one column so they never overlap -->
     <div id="announce">
@@ -69,7 +70,7 @@
     <div id="pickup-msg"></div>
 
     <div id="cards" class="hidden">
-      <div id="cards-title">Choisis une amélioration</div>
+      <div id="cards-title" data-t="hud.cards"></div>
       <div id="cards-sub"></div>
       <div id="cards-list"></div>
     </div>
@@ -85,69 +86,74 @@
 
   <div id="menu" class="screen">
     <div class="panel">
-      <h1 id="menu-title">Multivers<br /><span>Choisis ton monde</span></h1>
-      <p class="lede">Chaque monde a ses armes, ses ennemis et son boss. Tiens bon pendant <b>cinq vagues</b>… ou aussi longtemps que possible.</p>
+      <h1 id="menu-title" data-t-html="menu.title"></h1>
+      <p class="lede" data-t-html="menu.lede"></p>
       <div id="world"></div>
       <p class="lede small" id="menu-lede"></p>
       <div id="mode" class="seg-row">
-        <button data-mode="waves">Vagues</button>
-        <button data-mode="survival">Survie</button>
-        <button data-mode="sandbox" title="Visiter la carte et essayer toutes les armes ; N appelle des ennemis, B le boss">Exploration</button>
+        <button data-mode="waves" data-t="mode.waves"></button>
+        <button data-mode="survival" data-t="mode.survival"></button>
+        <button data-mode="sandbox" data-t="mode.sandbox" data-t-title="mode.sandboxHelp"></button>
       </div>
       <div id="difficulty">
-        <button data-diff="easy">Facile</button>
-        <button data-diff="normal">Normal</button>
-        <button data-diff="hard">Difficile</button>
+        <button data-diff="easy" data-t="diff.easy"></button>
+        <button data-diff="normal" data-t="diff.normal"></button>
+        <button data-diff="hard" data-t="diff.hard"></button>
       </div>
-      <button id="btn-play" disabled>Chargement…</button>
-      <button class="secondary mp-only" id="btn-coop">Multijoueur</button>
-      <button class="secondary btn-options">Options</button>
-      <button class="secondary" id="btn-board">Classement</button>
+      <button id="btn-play" disabled>…</button>
+      <button class="secondary mp-only" id="btn-coop" data-t="btn.multiplayer"></button>
+      <button class="secondary btn-options" data-t="btn.options"></button>
+      <button class="secondary" id="btn-board" data-t="btn.board"></button>
       <div class="help" id="help-main"></div>
     </div>
   </div>
 
   <div id="pause" class="screen hidden">
     <div class="panel">
-      <h2>Pause</h2>
-      <button id="btn-resume">Reprendre</button>
-      <button class="secondary btn-options">Options</button>
-      <button id="btn-restart" class="secondary">Recommencer</button>
+      <h2 data-t="pause.title"></h2>
+      <button id="btn-resume" data-t="btn.resume"></button>
+      <button class="secondary btn-options" data-t="btn.options"></button>
+      <button id="btn-restart" class="secondary" data-t="btn.restart"></button>
       <div class="help" id="help-pause"></div>
     </div>
   </div>
 
   <div id="options" class="screen hidden">
     <div class="panel">
-      <h2>Options</h2>
+      <h2 data-t="btn.options"></h2>
       <div class="opts">
-        <label for="o-name">Pseudo</label>
+        <label for="o-name" data-t="opt.name"></label>
         <div class="opt-row"><input type="text" id="o-name" maxlength="16" spellcheck="false" /></div>
-        <label for="o-sens">Sensibilité de la souris</label>
+        <label for="o-sens" data-t="opt.sens"></label>
         <div class="opt-row"><input type="range" id="o-sens" min="0.2" max="3" step="0.05" /><output id="v-sens"></output></div>
-        <label for="o-invert">Inverser l'axe vertical</label>
+        <label for="o-invert" data-t="opt.invert"></label>
         <div class="opt-row"><input type="checkbox" id="o-invert" /></div>
-        <label for="o-fov">Champ de vision</label>
+        <label for="o-fov" data-t="opt.fov"></label>
         <div class="opt-row"><input type="range" id="o-fov" min="60" max="100" step="1" /><output id="v-fov"></output></div>
-        <label for="o-master">Volume général</label>
+        <label for="o-master" data-t="opt.master"></label>
         <div class="opt-row"><input type="range" id="o-master" min="0" max="1" step="0.05" /><output id="v-master"></output></div>
-        <label for="o-sfx">Volume des effets</label>
+        <label for="o-sfx" data-t="opt.sfx"></label>
         <div class="opt-row"><input type="range" id="o-sfx" min="0" max="1" step="0.05" /><output id="v-sfx"></output></div>
-        <label for="o-music">Volume de la musique</label>
+        <label for="o-music" data-t="opt.music"></label>
         <div class="opt-row"><input type="range" id="o-music" min="0" max="1" step="0.05" /><output id="v-music"></output></div>
-        <label>Qualité graphique</label>
+        <label data-t="opt.quality"></label>
         <div class="opt-row seg" id="o-quality">
-          <button data-q="low">Basse</button><button data-q="medium">Moyenne</button><button data-q="high">Haute</button>
+          <button data-q="low" data-t="opt.low"></button><button data-q="medium" data-t="opt.medium"></button><button data-q="high" data-t="opt.high"></button>
         </div>
-        <label for="o-shake">Secousses de caméra</label>
+        <label for="o-shake" data-t="opt.shake"></label>
         <div class="opt-row"><input type="checkbox" id="o-shake" /></div>
-        <label for="o-fps">Afficher les FPS</label>
+        <label for="o-fps" data-t="opt.fps"></label>
         <div class="opt-row"><input type="checkbox" id="o-fps" /></div>
-        <label for="o-hpnum">Afficher la santé en chiffre</label>
+        <label for="o-hpnum" data-t="opt.hpnum"></label>
         <div class="opt-row"><input type="checkbox" id="o-hpnum" /></div>
+        <label data-t="opt.lang"></label>
+        <!-- each language in its own words -->
+        <div class="opt-row seg" id="o-lang">
+          <button data-lang="en">English</button><button data-lang="fr">Français</button>
+        </div>
       </div>
-      <button id="btn-options-back">Retour</button>
-      <button id="btn-options-reset" class="secondary">Valeurs par défaut</button>
+      <button id="btn-options-back" data-t="btn.back"></button>
+      <button id="btn-options-reset" class="secondary" data-t="opt.reset"></button>
     </div>
   </div>
 
@@ -155,50 +161,50 @@
 
   <div id="end" class="screen hidden">
     <div class="panel">
-      <h2 id="end-title">Victoire</h2>
+      <h2 id="end-title"></h2>
       <p id="end-sub" class="lede"></p>
       <div id="end-score"></div>
       <div id="stats"></div>
       <div id="end-board"></div>
-      <button id="btn-again">Rejouer</button>
-      <button class="secondary" id="btn-menu">Menu principal</button>
+      <button id="btn-again" data-t="btn.again"></button>
+      <button class="secondary" id="btn-menu" data-t="btn.menu"></button>
     </div>
   </div>
 
   <div id="coop" class="screen hidden">
     <div class="panel">
-      <h2>Multijoueur</h2>
-      <p class="lede">Jusqu'à 4 joueurs, ensemble contre les gardiens (Vagues, Survie) ou chacun pour soi (Arène). Lance le serveur avec <code>npm run server</code>, puis crée un salon et choisis le mode : les autres joueurs le verront ci-dessous.</p>
-      <h3 class="rooms-title">Salons ouverts</h3>
-      <ul id="coop-rooms"><li class="empty">Aucun salon ouvert pour l'instant.</li></ul>
+      <h2 data-t="coop.title"></h2>
+      <p class="lede" data-t-html="coop.lede"></p>
+      <h3 class="rooms-title" data-t="coop.rooms"></h3>
+      <ul id="coop-rooms"><li class="empty" data-t="coop.noRooms"></li></ul>
       <div class="opts">
-        <label for="c-server">Serveur</label>
+        <label for="c-server" data-t="coop.server"></label>
         <div class="opt-row"><input type="text" id="c-server" spellcheck="false" /></div>
-        <label for="c-code">Ou par code</label>
-        <div class="opt-row"><input type="text" id="c-code" maxlength="4" spellcheck="false" placeholder="code à 4 lettres" /></div>
+        <label for="c-code" data-t="coop.byCode"></label>
+        <div class="opt-row"><input type="text" id="c-code" maxlength="4" spellcheck="false" data-t-placeholder="coop.codeHint" /></div>
       </div>
       <div id="coop-status" class="status"></div>
-      <button id="btn-coop-create">Créer un salon</button>
-      <button id="btn-coop-join" class="secondary">Rejoindre</button>
-      <button id="btn-coop-back" class="secondary">Retour</button>
+      <button id="btn-coop-create" data-t="coop.create"></button>
+      <button id="btn-coop-join" class="secondary" data-t="coop.join"></button>
+      <button id="btn-coop-back" class="secondary" data-t="btn.back"></button>
     </div>
   </div>
 
   <div id="lobby" class="screen hidden">
     <div class="panel">
-      <h2>Salon <span id="lobby-code">····</span></h2>
-      <p class="lede" id="lobby-sub">Donne ce code à tes coéquipiers.</p>
+      <h2><span data-t="lobby.title"></span> <span id="lobby-code">····</span></h2>
+      <p class="lede" id="lobby-sub" data-t="lobby.giveCode"></p>
       <ul id="lobby-players"></ul>
       <div id="lobby-mode" class="seg-row">
-        <button data-mode="waves">Vagues</button>
-        <button data-mode="survival">Survie</button>
-        <button data-mode="arena">Arène</button>
+        <button data-mode="waves" data-t="mode.waves"></button>
+        <button data-mode="survival" data-t="mode.survival"></button>
+        <button data-mode="arena" data-t="mode.arena"></button>
       </div>
       <div id="lobby-arena" class="hidden">
         <div id="lobby-score" class="seg-row">
-          <button data-score="10">10 élim.</button>
-          <button data-score="15">15 élim.</button>
-          <button data-score="25">25 élim.</button>
+          <button data-score="10">10</button>
+          <button data-score="15">15</button>
+          <button data-score="25">25</button>
         </div>
         <div id="lobby-time" class="seg-row">
           <button data-time="300">5 min</button>
@@ -208,50 +214,50 @@
       </div>
       <p class="lede small" id="lobby-mode-help"></p>
       <div id="lobby-diff" class="seg-row">
-        <button data-diff="easy">Facile</button>
-        <button data-diff="normal">Normal</button>
-        <button data-diff="hard">Difficile</button>
+        <button data-diff="easy" data-t="diff.easy"></button>
+        <button data-diff="normal" data-t="diff.normal"></button>
+        <button data-diff="hard" data-t="diff.hard"></button>
       </div>
       <div id="lobby-status" class="status"></div>
-      <button id="btn-lobby-start">Lancer la partie</button>
-      <button id="btn-lobby-leave" class="secondary">Quitter le salon</button>
+      <button id="btn-lobby-start" data-t="lobby.start"></button>
+      <button id="btn-lobby-leave" class="secondary" data-t="lobby.leave"></button>
     </div>
   </div>
 
   <div id="board" class="screen hidden">
     <div class="panel">
-      <h2>Classement</h2>
+      <h2 data-t="btn.board"></h2>
       <div class="seg-row" id="board-mode">
-        <button data-mode="waves">Vagues</button>
-        <button data-mode="survival">Survie</button>
+        <button data-mode="waves" data-t="mode.waves"></button>
+        <button data-mode="survival" data-t="mode.survival"></button>
       </div>
       <div class="seg-row" id="board-diff">
-        <button data-diff="easy">Facile</button>
-        <button data-diff="normal">Normal</button>
-        <button data-diff="hard">Difficile</button>
+        <button data-diff="easy" data-t="diff.easy"></button>
+        <button data-diff="normal" data-t="diff.normal"></button>
+        <button data-diff="hard" data-t="diff.hard"></button>
       </div>
       <div id="board-table"></div>
-      <button id="btn-board-back">Retour</button>
+      <button id="btn-board-back" data-t="btn.back"></button>
     </div>
   </div>
 
   <template id="help-tpl">
     <div class="keys">
-      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / flèches</div><div>Se déplacer (ZQSD sur clavier AZERTY)</div>
-      <div><kbd>Shift</kbd></div><div>Sprinter</div>
-      <div><kbd>Espace</kbd></div><div>Sauter</div>
-      <div><kbd>Clic gauche</kbd></div><div>Tirer / frapper</div>
-      <div><kbd>Clic droit</kbd></div><div>Viser / parer (<span class="t-melee">khépesh</span>)</div>
-      <div><kbd>R</kbd></div><div>Recharger</div>
-      <div><kbd>G</kbd></div><div class="t-grenade">Lancer un pot de feu (grenade)</div>
-      <div class="torch-only"><kbd>F</kbd></div><div class="torch-only">Allumer / éteindre la lampe torche</div>
-      <div class="torch-only"><kbd>E</kbd></div><div class="torch-only">Actionner un levier de sas</div>
-      <div class="mp-only"><kbd>E</kbd> (maintenir)</div><div class="mp-only">Relever un coéquipier à terre (coopération)</div>
-      <div class="mp-only"><kbd>Tab</kbd> (maintenir)</div><div class="mp-only">Tableau des scores (arène)</div>
-      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd> / molette</div><div>Changer d'arme (choisir une carte entre les vagues)</div>
-      <div><kbd>Échap</kbd></div><div>Pause / aide</div>
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <span data-t="help.arrows"></span></div><div data-t="help.move"></div>
+      <div><kbd>Shift</kbd></div><div data-t="help.sprint"></div>
+      <div><kbd data-t="help.space"></kbd></div><div data-t="help.jump"></div>
+      <div><kbd data-t="help.leftClick"></kbd></div><div data-t="help.fire"></div>
+      <div><kbd data-t="help.rightClick"></kbd></div><div data-t-html="help.aim"></div>
+      <div><kbd>R</kbd></div><div data-t="help.reload"></div>
+      <div><kbd>G</kbd></div><div class="t-grenade"></div>
+      <div class="torch-only"><kbd>F</kbd></div><div class="torch-only" data-t="help.torch"></div>
+      <div class="torch-only"><kbd>E</kbd></div><div class="torch-only" data-t="help.lever"></div>
+      <div class="mp-only"><kbd>E</kbd> <span data-t="help.hold"></span></div><div class="mp-only" data-t="help.revive"></div>
+      <div class="mp-only"><kbd>Tab</kbd> <span data-t="help.hold"></span></div><div class="mp-only" data-t="help.scores"></div>
+      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd> / <span data-t="help.wheel"></span></div><div data-t="help.switch"></div>
+      <div><kbd data-t="help.esc"></kbd></div><div data-t="help.pause"></div>
     </div>
-    <p class="tips t-tips">Les tirs à la tête infligent double dégâts. Le khépesh tranche tout ce qui est devant vous, et sa parade renvoie les orbes ennemis. Seuls les ennemis tués au corps à corps lâchent de la santé. De nouvelles armes se débloquent au fil des vagues. La santé se régénère après quelques secondes sans blessure.</p>
+    <p class="tips t-tips"></p>
   </template>
 
   <script type="module" src="/src/main.js"></script>

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GRENADES } from '../weapons.js';
+import { t } from '../../i18n.js';
 
 // "Arène" mode: every player for themselves. A kill is worth a point; the first to the score
 // limit wins, or the best score when the clock runs out. A few guardians prowl and attack
@@ -41,7 +42,7 @@ export class ArenaMode {
       this.#arm(p);
       this.#place(p, gates[i % gates.length]);
     });
-    sim.emit('banner', { title: 'Arène', sub: `Premier à ${this.scoreLimit} éliminations — chacun pour soi`, duration: 3.5 });
+    sim.emit('banner', { title: t('mode.arena'), sub: t('sim.arenaSub', { n: this.scoreLimit }), duration: 3.5 });
     sim.emit('horn', { victory: false });
   }
 
@@ -89,13 +90,13 @@ export class ArenaMode {
       killer.stats.frags = (killer.stats.frags ?? 0) + 1;
       killer.score = killer.stats.frags;
       // points on screen only: the arena's score is the number of kills
-      sim.emit('points', { pid: killer.id, amount: 100, label: 'ÉLIMINATION' });
+      sim.emit('points', { pid: killer.id, amount: 100, label: t('pts.kill') });
       if (head) {
-        sim.emit('points', { pid: killer.id, amount: 50, label: 'TIR À LA TÊTE' });
+        sim.emit('points', { pid: killer.id, amount: 50, label: t('pts.headshot') });
         sim.emit('headshotKill', { pid: killer.id });
       }
-      if (weapon === 'sword') sim.emit('points', { pid: killer.id, amount: 50, label: 'KHÉPESH' });
-      if (weapon === 'grenade') sim.emit('points', { pid: killer.id, amount: 50, label: 'GRENADE' });
+      if (weapon === 'sword') sim.emit('points', { pid: killer.id, amount: 50, label: sim.world.weapons.find((w) => w.melee)?.name ?? t('pts.melee') });
+      if (weapon === 'grenade') sim.emit('points', { pid: killer.id, amount: 50, label: sim.world.texts.grenadeKill ?? t('pts.grenade') });
       sim.registerKill(killer, true);
     }
     sim.emit('frag', { pid: victim.id, by: victim.killedBy, weapon, head: !!head });

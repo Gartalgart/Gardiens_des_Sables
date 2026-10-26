@@ -1,4 +1,5 @@
 import { WaveBase } from './waveBase.js';
+import { t } from '../../i18n.js';
 
 // "Survie" mode: endless waves that keep growing, the boss every fifth wave.
 // Enemy health, speed and damage keep scaling with the wave number (see Enemies.setWave), and the
@@ -34,5 +35,5 @@ export class SurvivalMode extends WaveBase {
   extraAlive(n) { return Math.min(8, Math.floor(n / 2)); }
   spawnGapScale(n) { return Math.max(0.5, 1 - 0.03 * n); }
 
-  nextWaveTitle(n) { return n % 5 === 0 ? `Vague ${n} — ${this.sim.world.texts.bossWave}` : `Vague ${n}`; }
+  nextWaveTitle(n) { return n % 5 === 0 ? t('sim.waveBoss', { n, boss: this.sim.world.texts.bossWave }) : t('sim.wave', { n }); }
 }

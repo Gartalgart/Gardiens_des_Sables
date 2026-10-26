@@ -1,5 +1,6 @@
 import { ENEMY_LOOK } from './view/enemyView.js';
 import { upgradeInfo } from './sim/progression.js';
+import { t, num, ordinal } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const RANGE = 40; // metres shown from centre to edge of the minimap
@@ -17,6 +18,9 @@ export class Hud {
     this.ctx = this.mm.getContext('2d');
     this.theme = world.hud;
     this.guards = world.texts.guards;
+    // the kill feed's word for a weapon: its short name, and the blasts in the universe's words
+    this.weaponLabel = Object.fromEntries(world.weapons.map((w) => [w.id, (w.short ?? w.name).toUpperCase()]));
+    Object.assign(this.weaponLabel, { explosion: world.texts.explosionKill, grenade: world.texts.grenadeKill ?? t('pts.grenade') });
     this.map = this.#renderMap(level, !!world.ambiance.indoor, world.ambiance.fire.glow);
     const bossName = world.texts.bossName;
     this.hitTimer = 0;
@@ -45,7 +49,7 @@ export class Hud {
     const html = mates.map((m) => {
       const esc = String(m.name).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       const k = m.dead ? m.revive : m.health / m.maxHealth;
-      return `<div class="mate${m.dead ? ' down' : ''}">${esc}${m.dead ? ' — À TERRE' : ''}<div class="bar"><i style="transform:scaleX(${Math.max(0, Math.min(1, k)).toFixed(3)})"></i></div></div>`;
+      return `<div class="mate${m.dead ? ' down' : ''}">${esc}${m.dead ? t('hud.mateDown') : ''}<div class="bar"><i style="transform:scaleX(${Math.max(0, Math.min(1, k)).toFixed(3)})"></i></div></div>`;
     }).join('');
     if (this.teamHtml !== html) { $('team').innerHTML = html; this.teamHtml = html; }
   }
@@ -60,9 +64,9 @@ export class Hud {
   downed(progress, alone) {
     $('downed').classList.toggle('hidden', progress === null);
     if (progress === null) return;
-    this.set('downed-title', 'À terre');
+    this.set('downed-title', t('hud.downed'));
     $('downed-fill').style.width = `${Math.round(progress * 100)}%`;
-    this.set('downed-sub', alone ? 'Tous tes coéquipiers sont tombés…' : progress > 0 ? 'Un coéquipier te relève !' : 'Un coéquipier peut te relever (E)');
+    this.set('downed-sub', alone ? t('hud.allDown') : progress > 0 ? t('hud.beingRevived') : t('hud.canRevive'));
   }
 
   // ---------- arena ----------
@@ -70,10 +74,10 @@ export class Hud {
   eliminated(killed) {
     $('downed').classList.toggle('hidden', !killed);
     if (!killed) return;
-    this.set('downed-title', 'Éliminé');
+    this.set('downed-title', t('hud.eliminated'));
     $('downed-fill').style.width = `${Math.round((1 - killed.respawn / killed.total) * 100)}%`;
-    const back = `réapparition dans ${Math.max(1, Math.ceil(killed.respawn))} s`;
-    this.set('downed-sub', killed.by ? `par ${killed.by} — ${back}` : back);
+    const back = t('hud.respawn', { s: Math.max(1, Math.ceil(killed.respawn)) });
+    this.set('downed-sub', killed.by ? t('hud.killedBy', { name: killed.by, back }) : back);
   }
 
   // a line in the kill feed, top right; mine: the local player is in it
@@ -82,8 +86,8 @@ export class Hud {
     const el = document.createElement('div');
     el.className = mine ? 'me' : '';
     el.innerHTML = killer
-      ? `${esc(killer)}<span class="w${head ? ' head' : ''}">${WEAPON_LABEL[weapon] ?? weapon}${head ? ' · TÊTE' : ''}</span>${esc(victim)}`
-      : `${esc(victim)}<span class="w">${weapon === 'guardian' ? this.guards.toUpperCase() : weapon === 'grenade' ? 'SA GRENADE' : 'CHUTE'}</span>`;
+      ? `${esc(killer)}<span class="w${head ? ' head' : ''}">${this.weaponLabel[weapon] ?? weapon}${head ? t('hud.head') : ''}</span>${esc(victim)}`
+      : `${esc(victim)}<span class="w">${weapon === 'guardian' ? this.guards.toUpperCase() : weapon === 'grenade' ? t('hud.ownGrenade') : t('hud.fall')}</span>`;
     el.dataset.life = 5;
     const feed = $('killfeed');
     feed.prepend(el);
@@ -107,7 +111,7 @@ export class Hud {
     el.classList.toggle('hidden', !rows);
     if (!rows) return;
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const html = `<h3>Arène</h3><div class="meta">${meta}</div><table class="board"><tr><th>#</th><th>Joueur</th><th class="num">Élim.</th><th class="num">Morts</th><th class="num">${this.guards}</th></tr>${
+    const html = `<h3>${t('hud.arena')}</h3><div class="meta">${meta}</div><table class="board"><tr><th>#</th><th>${t('board.player')}</th><th class="num">${t('board.frags')}</th><th class="num">${t('board.deaths')}</th><th class="num">${this.guards}</th></tr>${
       rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td class="num">${r.frags}</td><td class="num">${r.deaths}</td><td class="num">${r.kills}</td></tr>`).join('')}</table>`;
     if (this.boardHtml !== html) { el.innerHTML = html; this.boardHtml = html; }
   }
@@ -169,7 +173,7 @@ export class Hud {
 
     // enemies (drawn in screen space so dot size stays constant)
     const cos = Math.cos(yaw), sin = Math.sin(yaw);
-    const t = performance.now() / 1000;
+    const now = performance.now() / 1000;
     for (const e of enemies.list) {
       const dx = e.pos.x - player.pos.x, dz = e.pos.z - player.pos.z;
       let sx = (dx * cos - dz * sin) * scale, sy = (dx * sin + dz * cos) * scale;
@@ -190,7 +194,7 @@ export class Hud {
       const size = e.T.boss ? 7 : e.T.big ? 5 : 3.6;
       g.fillStyle = color;
       g.shadowColor = color; g.shadowBlur = 8;
-      g.beginPath(); g.arc(R + sx, R + sy, size + (e.act ? Math.sin(t * 30) * 1.2 : 0), 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(R + sx, R + sy, size + (e.act ? Math.sin(now * 30) * 1.2 : 0), 0, Math.PI * 2); g.fill();
       g.shadowBlur = 0;
     }
 
@@ -202,7 +206,7 @@ export class Hud {
       g.save();
       g.translate(R + sx, R + sy);
       g.rotate(yaw - m.yaw);
-      g.fillStyle = m.dead ? (Math.sin(t * 8) > 0 ? '#ff4a4a' : '#7a1d14') : '#6fe3ff';
+      g.fillStyle = m.dead ? (Math.sin(now * 8) > 0 ? '#ff4a4a' : '#7a1d14') : '#6fe3ff';
       g.beginPath(); g.moveTo(0, -7); g.lineTo(-5, 5); g.lineTo(0, 2.5); g.lineTo(5, 5); g.closePath(); g.fill();
       g.restore();
     }
@@ -220,7 +224,7 @@ export class Hud {
     }
 
     // compass letters on the rim (north = -Z)
-    const dirs = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['O', -1, 0]];
+    const dirs = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], [t('hud.compassWest'), -1, 0]];
     g.font = '700 13px Rajdhani, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const [label, x, z] of dirs) {
@@ -243,17 +247,17 @@ export class Hud {
 
   update(dt, s) {
     const arena = s.arena;
-    this.set('wave-word', arena ? 'ÉLIMINATIONS' : 'VAGUE');
+    this.set('wave-word', arena ? t('hud.frags') : t('hud.wave'));
     this.set('wave-num', arena ? arena.frags : s.wave);
     this.set('wave-total', arena ? `/${arena.scoreLimit}` : Number.isFinite(s.totalWaves) ? `/${s.totalWaves}` : '');
-    this.set('left-label', arena ? 'RANG' : 'ENNEMIS RESTANTS');
-    this.set('score-label', arena ? 'MORTS' : 'SCORE');
-    this.set('score', arena ? arena.deaths : s.score.toLocaleString('fr-FR'));
+    this.set('left-label', arena ? t('hud.rank') : t('hud.left'));
+    this.set('score-label', arena ? t('hud.deaths') : t('hud.score'));
+    this.set('score', arena ? arena.deaths : num(s.score));
     this.#objective(s.objective, s.waveStats, s.waveActive);
     this.#cards(s.cardOffer, s.upgrades);
     this.set('timer', fmtTime(arena ? Math.ceil(arena.timeLeft) : s.time));
     $('timer').classList.toggle('low', !!arena && arena.timeLeft < 30);
-    this.set('enemies-left', arena ? `${arena.rank}${arena.rank === 1 ? 'er' : 'e'} / ${arena.players}` : s.enemiesLeft);
+    this.set('enemies-left', arena ? `${ordinal(arena.rank)} / ${arena.players}` : s.enemiesLeft);
     this.#fadeKillfeed(dt);
 
     const hp = Math.ceil(s.health);
@@ -276,7 +280,7 @@ export class Hud {
     // an energy weapon shows its heat, and a warning while it is locked
     const heat = !!w.def.heat;
     this.set('ammo-mag', melee ? '—' : heat ? `${Math.round(w.heat * 100)}%` : w.mag);
-    this.set('ammo-res', melee ? (s.ads > 0.5 ? ' PARADE' : '') : heat ? (w.locked > 0 ? ' SURCHAUFFE' : ' CHALEUR') : w.reserve === Infinity ? '∞' : w.reserve);
+    this.set('ammo-res', melee ? (s.ads > 0.5 ? t('hud.parry') : '') : heat ? (w.locked > 0 ? t('hud.overheat') : t('hud.heat')) : w.reserve === Infinity ? '∞' : w.reserve);
     $('ammo-mag').classList.toggle('empty', !melee && (heat ? w.locked > 0 || w.heat > 0.8 : w.mag === 0));
     $('ammo-sep').style.display = melee || heat ? 'none' : '';
     $('reload-hint').classList.toggle('hidden', melee || heat || !(w.mag <= Math.ceil(w.def.mag * 0.25) && !s.reloading && w.reserve > 0));
@@ -320,11 +324,11 @@ export class Hud {
     const v = st[obj.stat];
     let progress, done = false;
     if (obj.stat === 'time') progress = `${Math.max(0, Math.ceil(obj.target - v))} s`;
-    else if (obj.stat === 'chestLoss') { progress = `${obj.unit ?? 'or'} : ${Math.round(100 - v)} %`; done = false; }
-    else if (obj.stat === 'breachLate') progress = v ? 'trop tard' : st.breachLeft != null ? `sas ouvert : ${Math.ceil(st.breachLeft)} s` : 'sas fermés';
-    else if (obj.under) progress = `${Math.round(v)} / ${obj.target} PV`;
+    else if (obj.stat === 'chestLoss') { progress = `${obj.unit ?? t('hud.gold')} : ${Math.round(100 - v)} %`; done = false; }
+    else if (obj.stat === 'breachLate') progress = v ? t('hud.tooLate') : st.breachLeft != null ? t('hud.breachOpen', { s: Math.ceil(st.breachLeft) }) : t('hud.breachShut');
+    else if (obj.under) progress = `${Math.round(v)} / ${obj.target} ${t('hud.hp')}`;
     else { progress = `${Math.min(v, obj.target)} / ${obj.target}`; done = v >= obj.target; }
-    const html = `Objectif : ${obj.text} — <b>${done ? '✓' : progress}</b>`;
+    const html = t('hud.objective', { text: obj.text, progress: done ? '✓' : progress });
     if (el.innerHTML !== html) el.innerHTML = html;
     el.classList.toggle('done', done);
   }
@@ -337,12 +341,12 @@ export class Hud {
     this.cardsKey = key;
     box.classList.toggle('hidden', !offer);
     if (!offer) return;
-    document.getElementById('cards-sub').textContent = offer.length > 3 ? 'Objectif réussi : une carte de plus au choix !' : '';
+    document.getElementById('cards-sub').textContent = offer.length > 3 ? t('hud.cardsBonus') : '';
     document.getElementById('cards-list').innerHTML = offer.map((id, i) => {
       const u = upgradeInfo(id);
       const have = upgrades[id] || 0;
       return `<div class="card"><span class="key">${i + 1}</span><div class="name">${u.name}</div><div class="desc">${u.desc}</div>
-        <div class="count">${u.max > 1 ? `NIVEAU ${have + 1} / ${u.max}` : 'UNIQUE'}</div></div>`;
+        <div class="count">${u.max > 1 ? t('hud.level', { n: have + 1, max: u.max }) : t('hud.unique')}</div></div>`;
     }).join('');
   }
 
@@ -375,11 +379,11 @@ export class Hud {
     this.pointsTotal = (this.pointsTotal ?? 0) + amount;
     this.pointsTimer = 2.2;
     const total = $('points-total');
-    total.textContent = `+${this.pointsTotal.toLocaleString('fr-FR')}`;
+    total.textContent = `+${num(this.pointsTotal)}`;
     total.style.opacity = 1;
     total.classList.remove('bump'); void total.offsetWidth; total.classList.add('bump');
     const line = document.createElement('div');
-    line.innerHTML = `${label}<b>+${amount.toLocaleString('fr-FR')}</b>`;
+    line.innerHTML = `${label}<b>+${num(amount)}</b>`;
     line.dataset.life = 2.2;
     const list = $('points-list');
     list.prepend(line);
@@ -431,7 +435,6 @@ export class Hud {
   }
 }
 
-const WEAPON_LABEL = { sword: 'KHÉPESH', pistol: 'PISTOLET', rifle: 'FUSIL', shotgun: 'POMPE', sniper: 'PRÉCISION', explosion: 'MOMIE', grenade: 'GRENADE' };
 
 export function fmtTime(t) {
   const m = Math.floor(t / 60), s = Math.floor(t % 60);

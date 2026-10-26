@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WATER_SLOW, EYE } from './constants.js';
+import { t } from '../i18n.js';
 
 // Enemy rules. Each universe gives its enemy types (src/worlds/); colours and models are the
 // client's business (see src/view/enemyView.js).
@@ -1008,7 +1009,7 @@ export class Enemies {
     e.diveT = rand(...e.owner.T.kraken.dive);
     e.hp = e.maxHp;
     this.sim.emit('tentacleCut', { id: e.id, pos: e.pos.clone() });
-    if (killer) this.sim.addScore(killer, 150, 'TENTACULE');
+    if (killer) this.sim.addScore(killer, 150, t('pts.tentacle'));
     if (e.owner && this.list.includes(e.owner)) this.damage(e.owner, e.owner.maxHp * e.owner.T.kraken.cut, null, killer);
   }
 

@@ -6,6 +6,7 @@ import { Sim } from '../src/sim/sim.js';
 import { emptyCommand } from '../src/sim/player.js';
 import { applyUpgrade, drawCards, UPGRADES, pickObjective, WORLD_OBJECTIVES } from '../src/sim/progression.js';
 import { WORLDS, getWorld } from '../src/worlds/index.js';
+import { t } from '../src/i18n.js';
 
 const DT = 1 / 60;
 // every event type handled by the client (src/main.js, handleEvents)
@@ -684,7 +685,7 @@ describe('phase 10: grenades, points and the announcer', () => {
     expect(player.health).toBeLessThan(100);
     expect(player.stats.kills).toBe(1);
     const pts = sim.drainEvents().filter((e) => e.type === 'points' && e.pid === player.id).map((e) => e.label);
-    expect(pts).toEqual(['ÉLIMINATION', 'GRENADE']);
+    expect(pts).toEqual([t('pts.kill'), t('pts.grenade')]);
   });
 
   it('kills less than 4 s apart make a multi-kill; slower ones start over', () => {
@@ -1403,7 +1404,7 @@ describe('pirate objectives', () => {
     expect(ids.has('kegs')).toBe(true);
     expect(ids.has('chest')).toBe(true);
     for (let i = 0; i < 100; i++) expect(['kegs', 'chest']).not.toContain(pickObjective(2, getWorld('sables')).id);
-    expect(pickObjective(2, getWorld('pirates')).text).not.toContain('khépesh');
+    expect(pickObjective(2, getWorld('pirates')).text).not.toContain(getWorld('sables').texts.meleeName);
   });
 
   it('keg kills count for the powder-keg objective', () => {
