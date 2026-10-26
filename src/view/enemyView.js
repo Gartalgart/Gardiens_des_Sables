@@ -56,7 +56,7 @@ const GAIT = {
   crawler: { run: 3, walkRef: 2.5, runRef: 7.5 },
   eggsac: { run: 99, walkRef: 1, runRef: 1 },
 };
-// a swarm (the bats): this many copies of the one-bat model, flapping around the swarm's centre
+// a swarm (the bats): T.flock copies of the one-bat model (else this many), flapping around its centre
 const SWARM = 12;
 
 // Draws what the simulation's enemies, orbs and pickups are doing, and plays their deaths.
@@ -171,7 +171,8 @@ export class EnemyView {
   #swarm(e) {
     const group = new THREE.Group();
     group.userData.bats = [];
-    for (let i = 0; i < SWARM; i++) {
+    group.userData.bats.total = e.T.flock ?? SWARM;
+    for (let i = 0; i < group.userData.bats.total; i++) {
       const bat = this.assets[e.type].clone(true);
       bat.scale.setScalar(0.8 + Math.random() * 0.5);
       group.add(bat);
@@ -495,7 +496,16 @@ export class EnemyView {
     } else if (T.fly) {
       // each bat circles the swarm's centre, bobbing, its wings beating
       v.mesh.position.y += T.height / 2;
-      for (const b of v.mesh.userData.bats) {
+      const bats = v.mesh.userData.bats;
+      // a bat shot down drops out of the swarm in a puff of fur
+      const alive = Math.max(1, Math.ceil(e.hp / (e.maxHp / bats.total) - 0.05));
+      while (bats.length > alive) {
+        const b = bats.pop();
+        const at = b.bat.getWorldPosition(new THREE.Vector3());
+        v.mesh.remove(b.bat);
+        this.effects.burst(at, null, { count: 12, color: ENEMY_LOOK[e.type].color, speed: 3, size: 0.1, life: 0.5, grav: 6 });
+      }
+      for (const b of bats) {
         b.angle += dt * b.speed;
         b.bat.position.set(Math.cos(b.angle) * b.orbit, b.lift + Math.sin(v.phase * 3 + b.seed) * 0.15, Math.sin(b.angle) * b.orbit);
         b.bat.rotation.y = -b.angle;

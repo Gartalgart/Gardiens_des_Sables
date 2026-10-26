@@ -63,11 +63,52 @@ def B(name, x0, x1, y0, y1, z0, z1, m, coll=None, rot=(0, 0, 0)):
                ((x0 + x1) / 2, -(z0 + z1) / 2, (y0 + y1) / 2), m, rot=rot)
 
 
-def C(x0, x1, y0, y1, z0, z1):
+def C(x0, x1, y0, y1, z0, z1, name="C_Block"):
     """Collision only: drawn by nobody."""
-    ob = B("C_Block", x0, x1, y0, y1, z0, z1, None)
+    ob = B(name, x0, x1, y0, y1, z0, z1, None)
     ob.display_type = "WIRE"
     return ob
+
+
+def stair_rail(g, ax, sd, foot, run, n, y0, rise, c0, c1, m):
+    """What is drawn of a stair's balustrade (its stepped boxes are collision only, C_Balustrade):
+    a sloping stringer from the ground hiding the side of the steps, a post per tread and a handrail.
+    The stair climbs along ax ('x' or 'z') in the direction sd (+1/-1) from foot, n treads of run x
+    rise from y0; the balustrade stands between c0 and c1 on the other axis."""
+    L = run * n
+    cm = (c0 + c1) / 2
+    nose = lambda d: y0 + rise + rise * d / run  # the line through the front edges of the treads
+
+    def to_bl(d, y, c):
+        a = foot + sd * d
+        return P(a, y, c) if ax == "x" else P(c, y, a)
+
+    def prism(name, poly, ca, cb):
+        """a side outline (d along the stair, y) extruded across from ca to cb"""
+        bm = bmesh.new()
+        f0 = [bm.verts.new(to_bl(d, y, ca)) for d, y in poly]
+        f1 = [bm.verts.new(to_bl(d, y, cb)) for d, y in poly]
+        bm.faces.new(f0)
+        bm.faces.new(list(reversed(f1)))
+        for i in range(len(poly)):
+            j = (i + 1) % len(poly)
+            bm.faces.new([f0[i], f0[j], f1[j], f1[i]])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        me = bpy.data.meshes.new(name)
+        bm.to_mesh(me)
+        bm.free()
+        ob = bpy.data.objects.new(name, me)
+        LEVEL.objects.link(ob)
+        ob.data.materials.append(m)
+
+    sk, rail, t = 0.12, 0.95, 0.05
+    prism("L_DecoStairStringer_%s" % g, [(0, y0), (L, y0), (L, nose(L) + sk), (0, nose(0) + sk)], c0, c1)
+    for i in range(n + 1):
+        d = min(max(run * i, 0.06), L - 0.06)
+        w = 0.07 if i in (0, n) else 0.035  # a newel post at each end
+        top = nose(d) + rail + (0.12 if i in (0, n) else 0)
+        prism("L_DecoStairPost_%s%d" % (g, i), [(d - w, nose(d - w) + sk - 0.02), (d + w, nose(d + w) + sk - 0.02), (d + w, top), (d - w, top)], cm - w, cm + w)
+    prism("L_DecoStairRail_%s" % g, [(0, nose(0) + rail - t), (L, nose(L) + rail - t), (L, nose(L) + rail + t), (0, nose(0) + rail + t)], cm - 0.07, cm + 0.07)
 
 
 def P(x, y, z):
@@ -217,7 +258,8 @@ for i in range(n):
     B("Step", tx0 - 2.6, tx0 - 0.2, 0, hh, z, z + 0.75, M["wood"])  # clear of the roof's overhang, wide enough for two
     # balustrade on the open side: stairs are entered from their foot only (bodies hugging their
     # side would otherwise be led up a slope they cannot climb, as on the desert temple's stairs)
-    B("Balustrade", tx0 - 2.8, tx0 - 2.6, 0, hh + 1.0, z, z + 0.75, M["wood"])
+    C(tx0 - 2.8, tx0 - 2.6, 0, hh + 1.0, z, z + 0.75, "C_Balustrade_t%d" % i)
+stair_rail("t", "z", -1, tz1 - 0.2, 0.75, n, 0, rise, tx0 - 2.8, tx0 - 2.6, M["wood"])
 pt, ph = 0.25, 0.8
 B("Parapet", tx0, tx1, roof_top, roof_top + ph, tz0, tz0 + pt, M["plaster"])
 B("Parapet", tx0, tx1, roof_top, roof_top + ph, tz1 - pt, tz1, M["plaster"])
@@ -311,7 +353,8 @@ for i in range(n):
     hh = DECK * (i + 1) / n
     x = 37.2 - 0.8 * (i + 1)
     B("ShipStep", x, x + 0.8, 0, hh, GZ0 - 2.0, GZ0, M["plank"])
-    B("Balustrade", x, x + 0.8, 0, hh + 1.0, GZ0 - 2.2, GZ0 - 2.0, M["wood"])
+    C(x, x + 0.8, 0, hh + 1.0, GZ0 - 2.2, GZ0 - 2.0, "C_Balustrade_s%d" % i)
+stair_rail("s", "x", -1, 37.2, 0.8, n, 0, DECK / n, GZ0 - 2.2, GZ0 - 2.0, M["wood"])
 B("ShipStepTop", 28.4, 30.0, 0, DECK, GZ0 - 2.0, GZ0, M["plank"])
 # the raised sterncastle (east end), solid too; a cabin door painted on its front (decor)
 SX = 32  # sterncastle starts here
@@ -329,7 +372,8 @@ for i in range(n):
     hh = DECK + (TOP - DECK) * (i + 1) / n
     x = SX - 0.8 * (n - i)
     B("SternStep", x, x + 0.8, DECK, hh, GZ1 - 2.0, GZ1 - 0.25, M["plank"])
-    B("Balustrade", x, x + 0.8, DECK, hh + 1.0, GZ1 - 2.2, GZ1 - 2.0, M["hull"])
+    C(x, x + 0.8, DECK, hh + 1.0, GZ1 - 2.2, GZ1 - 2.0, "C_Balustrade_c%d" % i)
+stair_rail("c", "x", 1, SX - 0.8 * n, 0.8, n, DECK, (TOP - DECK) / n, GZ1 - 2.2, GZ1 - 2.0, M["hull"])
 # the wheel, masts and rigging
 cyl("Wheel", LEVEL, 0.5, 0.12, P(36, TOP + 1.0, 20), M["wood"], rot=(0, 90, 0), verts=8)
 post(36, 20, TOP, TOP + 0.9, 0.08, deco=False)

@@ -122,9 +122,10 @@ export const PIRATES = {
     },
     // a swarm of bats: one flying body that heads straight for you and nibbles; a blast scatters it
     bats: {
-      hp: 45, speed: 7.5, radius: 0.7, height: 1.0, headY: 99,
+      hp: 60, speed: 7.5, radius: 0.7, height: 1.0, headY: 99,
       melee: { range: 1.4, dmg: 4, windup: 0, cd: 0.35 },
       fly: { height: 1.6, reach: 1.5 }, // cruising height over the ground, distance it bites from
+      flock: 6, // bats in the swarm, sharing its health: a shot or a blow downs one at most
       blastMul: 5, load: 0.5,
     },
     // the Kraken: its body waits out in the deep water between the piers, its tentacles rise along

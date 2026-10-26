@@ -154,6 +154,11 @@ export class Enemies {
     const A = e.T.armor;
     const armored = !!(A && dir && -(Math.sin(e.facing) * dir.x + Math.cos(e.facing) * dir.z) / (Math.hypot(dir.x, dir.z) || 1) > A.arc);
     if (armored) amount *= A.mul;
+    // a swarm (the bats): a shot or a blow downs one bat at most; only a blast takes out several
+    if (e.T.flock && (cause === 'ranged' || cause === 'melee')) {
+      const one = e.maxHp / e.T.flock;
+      amount = Math.min(amount, e.hp - one * (Math.ceil(e.hp / one - 1e-6) - 1));
+    }
     e.hp -= amount;
     this.sim.emit('enemyHit', { id: e.id, armored, pos: armored ? e.pos.clone() : undefined });
     if (e.T.tentacle) {
