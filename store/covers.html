@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- The portal covers: the three worlds in slices split by glowing breaches, the title over them.
+     Open with ?w=1920&h=1080 (landscape), ?w=800&h=1200 (portrait) or ?w=800&h=800 (square) and
+     capture the page at that size (store/README.md). -->
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  @font-face { font-family: 'Rajdhani'; font-weight: 700; src: url('../node_modules/@fontsource/rajdhani/files/rajdhani-latin-700-normal.woff2') format('woff2'); }
+  html, body { margin: 0; background: #05060a; overflow: hidden; }
+  #cover { position: relative; overflow: hidden; }
+  .slice { position: absolute; inset: 0; background-size: cover; }
+  .breach { position: absolute; inset: 0; pointer-events: none; }
+  #title { position: absolute; left: 0; right: 0; text-align: center; font-family: 'Rajdhani', sans-serif; font-weight: 700;
+    color: #fff4e0; text-transform: uppercase;
+    text-shadow: 0 0 0.35em rgba(255, 170, 80, 0.85), 0 0 1.2em rgba(120, 220, 255, 0.45), 0 0.06em 0 #000, 0 0.12em 0.3em rgba(0, 0, 0, 0.9); }
+  #shade { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<div id="cover">
+  <div class="slice" id="s1" style="background-image: url('shots/sables-play.png')"></div>
+  <div class="slice" id="s2" style="background-image: url('shots/pirates-play.png')"></div>
+  <div class="slice" id="s3" style="background-image: url('shots/station-play.png')"></div>
+  <svg class="breach" id="breach"></svg>
+  <div id="shade"></div>
+  <div id="title">Worldbreach</div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const W = Number(q.get('w') || 1920), H = Number(q.get('h') || 1080);
+  const cover = document.getElementById('cover');
+  Object.assign(cover.style, { width: W + 'px', height: H + 'px' });
+  const tall = H > W;
+  // two jagged breaches across the cover: vertical-ish when wide, horizontal-ish when tall
+  const N = 9;
+  const line = (at, tilt, seed) => Array.from({ length: N + 1 }, (_, i) => {
+    const u = i / N, jag = (i % 2 ? 1 : -1) * (0.012 + 0.01 * Math.abs(Math.sin(seed + i * 1.7)));
+    const v = at + tilt * (u - 0.5) + (i && i < N ? jag : 0);
+    return tall ? [u * W, v * H] : [v * W, u * H];
+  });
+  const a = line(0.36, tall ? 0.16 : 0.12, 1), b = line(0.66, tall ? 0.16 : 0.12, 4);
+  const edge = (pts) => pts.map((p) => `${p[0]}px ${p[1]}px`).join(',');
+  const rev = (pts) => [...pts].reverse();
+  const start = tall ? [[0, 0], [W, 0]] : [[0, 0], [0, H]];
+  const end = tall ? [[W, H], [0, H]] : [[W, H], [W, 0]];
+  // slice 1 before the first breach, 2 between, 3 after (each its own world)
+  const s1 = tall ? [[0, 0], [W, 0], ...rev(a)] : [[0, 0], ...a, [0, H]];
+  const s2 = [...a, ...rev(b)];
+  const s3 = tall ? [...b, [W, H], [0, H]] : [...b, [W, H], [W, 0]];
+  document.getElementById('s1').style.clipPath = `polygon(${edge(s1)})`;
+  document.getElementById('s2').style.clipPath = `polygon(${edge(s2)})`;
+  document.getElementById('s3').style.clipPath = `polygon(${edge(s3)})`;
+  // each shot (16:9, its subject in the middle) is moved so that middle lands in the middle of its
+  // slice, and scaled so the slice is always covered
+  const mids = [0.18, 0.51, 0.83];
+  ['s1', 's2', 's3'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    let iw, ih, x, y;
+    if (tall) { ih = 0.85 * H; iw = Math.max(W, ih * 16 / 9); ih = iw * 9 / 16; x = (W - iw) / 2; y = mids[i] * H - ih / 2; }
+    else { iw = Math.max(1.35 * W, 1.05 * H * 16 / 9); ih = iw * 9 / 16; x = mids[i] * W - iw / 2; y = (H - ih) / 2; }
+    Object.assign(el.style, { backgroundSize: `${iw}px ${ih}px`, backgroundPosition: `${x}px ${y}px`, backgroundRepeat: 'no-repeat' });
+  });
+  // the breaches glow: white core, warm then cold halo
+  const path = (pts) => 'M' + pts.map((p) => p.join(' ')).join('L');
+  const k = Math.min(W, H) / 1080;
+  document.getElementById('breach').innerHTML = [a, b].map((pts) => `
+    <path d="${path(pts)}" stroke="rgba(120,220,255,0.35)" stroke-width="${34 * k}" fill="none" stroke-linejoin="miter" filter="url(#blur)"/>
+    <path d="${path(pts)}" stroke="rgba(255,170,80,0.8)" stroke-width="${12 * k}" fill="none" stroke-linejoin="miter" filter="url(#soft)"/>
+    <path d="${path(pts)}" stroke="#fffaf0" stroke-width="${3.5 * k}" fill="none" stroke-linejoin="miter"/>`).join('')
+    + `<defs><filter id="blur"><feGaussianBlur stdDeviation="${14 * k}"/></filter><filter id="soft"><feGaussianBlur stdDeviation="${4 * k}"/></filter></defs>`;
+  document.getElementById('breach').setAttribute('viewBox', `0 0 ${W} ${H}`);
+  document.getElementById('breach').setAttribute('width', W);
+  document.getElementById('breach').setAttribute('height', H);
+  // the title: across the middle, a dark band behind it so it reads over any world
+  const size = (tall ? W * 0.125 : Math.min(W * 0.105, H * 0.2));
+  const title = document.getElementById('title');
+  Object.assign(title.style, { fontSize: size + 'px', letterSpacing: (tall ? 0.04 : 0.08) + 'em', top: (H / 2 - size * 0.62) + 'px' });
+  document.getElementById('shade').style.background =
+    `linear-gradient(180deg, transparent ${50 - 28 * size / H * 1.6}%, rgba(4,4,8,0.62) 50%, transparent ${50 + 28 * size / H * 1.6}%),
+     radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.45) 100%)`;
+</script>
+</body>
+</html>

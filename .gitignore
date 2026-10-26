@@ -3,3 +3,7 @@ dist
 *.blend1
 .playwright-mcp
 .vitest
+release
+
+.vercel
+.env*

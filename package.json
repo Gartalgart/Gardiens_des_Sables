@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "portal:test": "node scripts/portal-test.mjs",
     "test": "vitest run",
-    "server": "node server/index.js"
+    "server": "node server/index.js",
+    "package": "vite build && node scripts/package.mjs"
   },
   "dependencies": {
     "@fontsource/cinzel": "^5.3.0",

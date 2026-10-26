@@ -3,8 +3,8 @@
 // {name}: a slot filled when the text is shown.
 export const STRINGS = {
   // ---------- title screen ----------
-  'game.title': { en: 'Multiverse', fr: 'Multivers' }, // the browser tab
-  'menu.title': { en: 'Multiverse<br /><span>Choose your world</span>', fr: 'Multivers<br /><span>Choisis ton monde</span>' },
+  'game.title': { en: 'Worldbreach', fr: 'Worldbreach' }, // the browser tab; the name stays English in French too
+  'menu.title': { en: 'Worldbreach<br /><span>Choose your world</span>', fr: 'Worldbreach<br /><span>Choisis ton monde</span>' },
   'menu.lede': {
     en: 'Every world has its own weapons, enemies and boss. Hold out for <b>five waves</b>… or for as long as you can.',
     fr: 'Chaque monde a ses armes, ses ennemis et son boss. Tiens bon pendant <b>cinq vagues</b>… ou aussi longtemps que possible.',
