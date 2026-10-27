@@ -70,6 +70,7 @@ export const STRINGS = {
   'opt.defaultName': { en: 'Player', fr: 'Joueur' },
   'opt.lang': { en: 'Language', fr: 'Langue' },
   'opt.sens': { en: 'Mouse sensitivity', fr: 'Sensibilité de la souris' },
+  'opt.touchSens': { en: 'Look sensitivity', fr: 'Sensibilité de la visée' },
   'opt.invert': { en: 'Invert vertical axis', fr: "Inverser l'axe vertical" },
   'opt.fov': { en: 'Field of view', fr: 'Champ de vision' },
   'opt.master': { en: 'Master volume', fr: 'Volume général' },
@@ -115,8 +116,18 @@ export const STRINGS = {
   'help.switch': { en: 'Switch weapon (pick a card between waves)', fr: "Changer d'arme (choisir une carte entre les vagues)" },
   'help.esc': { en: 'Esc', fr: 'Échap' },
   'help.pause': { en: 'Pause / help', fr: 'Pause / aide' },
+  // the same help on a phone or a tablet (src/touch.js)
+  'help.touchMove': { en: 'Left thumb: move — push past the ring to sprint', fr: "Pouce gauche : se déplacer — poussez au-delà de l'anneau pour sprinter" },
+  'help.touchLook': { en: 'Drag anywhere else: look around', fr: 'Glisser ailleurs : regarder autour' },
+  'help.touchFire': { en: 'Hold to shoot — slide on it to aim at the same time', fr: 'Maintenir pour tirer — glisser dessus pour viser en même temps' },
+  'help.touchAim': { en: 'Aim (tap) / parry (<span class="t-melee"></span>, hold)', fr: 'Viser (toucher) / parer (<span class="t-melee"></span>, maintenir)' },
+  'help.touchAction': { en: 'Use: shows by a lever or a downed teammate', fr: "Utiliser : apparaît près d'un levier ou d'un coéquipier à terre" },
+  'help.touchSwitch': { en: 'Touch a weapon to equip it, a card to pick it', fr: 'Touchez une arme pour la prendre, une carte pour la choisir' },
 
   // ---------- HUD ----------
+  'touch.rotate': { en: 'Turn your phone sideways to play', fr: 'Tournez votre téléphone pour jouer' },
+  'touch.aim': { en: 'Aim / parry', fr: 'Viser / parer' },
+  'touch.action': { en: 'Use', fr: 'Utiliser' },
   'hud.health': { en: 'HEALTH', fr: 'SANTÉ' },
   'hud.reload': { en: '[R] RELOAD', fr: '[R] RECHARGER' },
   'hud.wave': { en: 'WAVE', fr: 'VAGUE' },

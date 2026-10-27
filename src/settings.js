@@ -8,7 +8,8 @@ const KEY = 'gds-settings';
 function guessQuality() {
   const mem = globalThis.navigator?.deviceMemory, cores = globalThis.navigator?.hardwareConcurrency;
   if (mem && mem <= 4) return 'low';
-  if (cores && cores <= 4) return 'medium';
+  // phones and tablets: a small, hot GPU behind a dense screen
+  if (cores && cores <= 4 || globalThis.matchMedia?.('(pointer: coarse)').matches) return 'medium';
   return 'high';
 }
 

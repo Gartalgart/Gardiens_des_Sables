@@ -6,6 +6,8 @@ const $ = (id) => document.getElementById(id);
 const RANGE = 40; // metres shown from centre to edge of the minimap
 const MAP_PX = 5; // pixels per metre in the pre-rendered map
 const HALF = 60;
+// on a touch screen the buttons stand for the keys the texts name in brackets ("[E] Open", "bombs [G]")
+const keyless = (text) => (text && document.body.classList.contains('touch') ? text.replace(/\s*\[[A-Z0-9]\]/g, '').trim() : text);
 
 export class Hud {
   // level: collision data of the level (boxes and braziers are drawn on the minimap)
@@ -17,6 +19,7 @@ export class Hud {
     this.mm = $('minimap');
     this.ctx = this.mm.getContext('2d');
     this.theme = world.hud;
+    $('reload-hint').textContent = keyless($('reload-hint').textContent);
     this.guards = world.texts.guards;
     // the kill feed's word for a weapon: its short name, and the blasts in the universe's words
     this.weaponLabel = Object.fromEntries(world.weapons.map((w) => [w.id, (w.short ?? w.name).toUpperCase()]));
@@ -56,6 +59,7 @@ export class Hud {
 
   prompt(text) {
     const el = $('prompt');
+    text = keyless(text);
     el.classList.toggle('hidden', !text);
     if (text && el.textContent !== text) el.textContent = text;
   }
@@ -371,7 +375,7 @@ export class Hud {
   #grenades(n) {
     if (n === this.grenadeCount) return;
     this.grenadeCount = n;
-    $('grenades').innerHTML = 'G' + Array.from({ length: 4 }, (_, i) => `<i class="${i < n ? '' : 'empty'}"></i>`).join('');
+    $('grenades').innerHTML = (document.body.classList.contains('touch') ? '' : 'G') + Array.from({ length: 4 }, (_, i) => `<i class="${i < n ? '' : 'empty'}"></i>`).join('');
   }
 
   // Call of Duty: each gain is a line next to the crosshair, and the total grows while they chain
@@ -420,7 +424,7 @@ export class Hud {
 
   banner(title, sub, duration = 2.5) {
     $('banner-title').textContent = title;
-    $('banner-sub').textContent = sub;
+    $('banner-sub').textContent = keyless(sub);
     const b = $('banner');
     b.classList.remove('hidden');
     b.style.animation = 'none';
@@ -430,7 +434,7 @@ export class Hud {
   }
 
   pickup(text) {
-    this.set('pickup-msg', text);
+    this.set('pickup-msg', keyless(text));
     this.pickupTimer = 1.4;
   }
 }

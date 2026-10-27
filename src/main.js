@@ -23,6 +23,7 @@ import { beamMaterial, makeBeam } from './view/lightBeams.js';
 import { EnemyView, ENEMY_LOOK } from './view/enemyView.js';
 import { WeaponView } from './view/weaponView.js';
 import { Input } from './input.js';
+import { TOUCH, TouchControls } from './touch.js';
 import { Effects } from './effects.js';
 import { Hud, fmtTime } from './hud.js';
 import { Sound } from './audio.js';
@@ -35,7 +36,8 @@ import { t, lang, setLang, num, ordinal, translatePage } from './i18n.js';
 const SOLO_ID = 'local';
 
 const $ = (id) => document.getElementById(id);
-for (const id of ['help-main', 'help-pause']) $(id).appendChild($('help-tpl').content.cloneNode(true));
+// the help shows the keys, or the touch controls on a phone or a tablet
+for (const id of ['help-main', 'help-pause']) $(id).appendChild($(TOUCH ? 'help-touch-tpl' : 'help-tpl').content.cloneNode(true));
 
 // ---------- renderer & scenes ----------
 const canvas = $('game');
@@ -113,6 +115,7 @@ addEventListener('resize', () => {
 // ---------- loading ----------
 const sound = new Sound();
 const input = new Input(canvas);
+const touch = TOUCH ? (input.touch = new TouchControls(input)) : null;
 
 const game = {
   state: 'loading', // loading | menu | playing | paused | over
@@ -152,7 +155,7 @@ const themeVars = (t) => ({
   '--btn-hi': t.button[0], '--btn-lo': t.button[1], '--btn-ink': t.button[2],
   '--health-a': t.health[0], '--health-b': t.health[1], '--grenade': t.grenade[0], '--grenade-radius': t.grenade[1],
 });
-for (const id of ['hud', 'pause', 'end']) for (const [k, v] of Object.entries(themeVars(world.hud))) $(id).style.setProperty(k, v);
+for (const id of ['hud', 'touch', 'pause', 'end']) for (const [k, v] of Object.entries(themeVars(world.hud))) $(id).style.setProperty(k, v);
 // the texts of the HUD and the help that name the universe's weapons
 world.weapons.forEach((w, i) => { const el = document.querySelector(`.slot[data-slot="${i}"]`); if (el) el.innerHTML = `<b>${i + 1}</b> ${w.short ?? w.name}`; });
 $('grenades').title = `${world.texts.grenadeName} [G]`;
@@ -264,6 +267,7 @@ function syncOptionsForm() {
 for (const [key, o] of Object.entries(optionInputs)) {
   o.el.addEventListener('input', () => { updateSettings({ [key]: Number(o.el.value) }); o.out.textContent = o.fmt(settings[key]); });
 }
+if (touch) $('o-sens').labels[0].textContent = t('opt.touchSens'); // the thumb turns the view, not a mouse
 $('o-invert').addEventListener('change', (e) => updateSettings({ invertY: e.target.checked }));
 $('o-fps').addEventListener('change', (e) => updateSettings({ showFps: e.target.checked }));
 $('o-hpnum').addEventListener('change', (e) => updateSettings({ showHealthNum: e.target.checked }));
@@ -438,7 +442,7 @@ function quitCoopGame() {
   if (net.room) net.leave();
   if (game.net) { game.net = null; game.sim = null; resetViews(); }
   game.localId = SOLO_ID;
-  if (game.state !== 'menu') { game.state = 'menu'; if (document.pointerLockElement) document.exitPointerLock(); }
+  if (game.state !== 'menu') { game.state = 'menu'; input.unlock(); }
 }
 function leaveCoop() {
   if (net.room) net.leave();
@@ -571,6 +575,7 @@ function refreshScreens() {
   $('btn-restart').textContent = game.net ? t('btn.quitGame') : t('btn.restart');
   $('end').classList.toggle('hidden', game.state !== 'over');
   hud.show(game.state === 'playing' || game.state === 'paused');
+  $('touch').classList.toggle('hidden', !touch || game.state !== 'playing');
 }
 
 function endGame(victory, winner) {
@@ -600,7 +605,7 @@ function endGame(victory, winner) {
     [t('stat.damage'), Math.round(p.stats.damageTaken)],
   ];
   $('stats').innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
-  document.exitPointerLock();
+  input.unlock();
   refreshScreens();
 }
 
@@ -627,7 +632,7 @@ function endArena(winnerId) {
     [t('stat.accuracy'), `${p.accuracy} %`],
   ];
   $('stats').innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
-  document.exitPointerLock();
+  input.unlock();
   refreshScreens();
 }
 
@@ -985,6 +990,7 @@ function tick(dt, now = (tickClock += dt)) {
     const p = game.player;
     const lo = p.loadout;
     const aiming = lo.adsT > 0.5;
+    if (touch) touchAssist(p, lo.current.def);
     const cmd = game.state === 'playing'
       // aiming slows the mouse down, much more through the precision rifle's scope
       ? input.buildCommand(lo.current.def.melee ? 1 : 1 - lo.adsT * (lo.current.def.scope ? 0.75 : 0.45), !!p.cardOffer)
@@ -1134,6 +1140,26 @@ function updateAirlocks(sim, p) {
   if (prompt !== game.leverPrompt) { hud.prompt(prompt); game.leverPrompt = prompt; }
 }
 
+// The touch controls' share of a frame: the aim button parries with the melee weapon, the use and
+// torch buttons show when they serve, and the aim assist slows the view down over an enemy so a
+// thumb can hold it there (it never turns the view by itself)
+function touchAssist(p, def) {
+  touch.setMelee(!!def.melee);
+  touch.showAction(!p.dead && (!!game.leverPrompt || !!game.revivePrompt));
+  touch.showTorch(!!world.ambiance.flashlight, game.torch);
+  input.lookScale = 1;
+  if (p.dead || def.melee) return;
+  const fwd = camera.getWorldDirection(aimDir);
+  for (const e of game.enemies?.list ?? []) {
+    aimTo.set(e.pos.x, e.pos.y + (e.lift ?? 0) + e.T.height * 0.6, e.pos.z).sub(camera.position);
+    const d = aimTo.length();
+    if (d > 60 || d < 0.5) continue;
+    // within the enemy's width, plus a little
+    if (fwd.angleTo(aimTo) < Math.atan((e.T.radius * 1.4 + 0.3) / d)) { input.lookScale = 0.45; return; }
+  }
+}
+const aimDir = new THREE.Vector3(), aimTo = new THREE.Vector3();
+
 // co-op HUD: teammates, the use prompt next to a downed teammate, and the downed screen
 function coopHud(p, dt) {
   const sim = game.sim;
@@ -1154,6 +1180,7 @@ function coopHud(p, dt) {
       if (o.dead && d < nd) { nd = d; near = o; }
     }
   }
+  game.revivePrompt = !!near;
   hud.prompt(near ? t('hud.revivePrompt', { name: near.name, p: Math.round(near.revive * 100) }) : null);
   hud.downed(p.dead ? p.revive : null, mates.every((o) => o.dead));
 }

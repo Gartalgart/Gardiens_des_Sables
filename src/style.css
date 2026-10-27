@@ -335,3 +335,58 @@ h1 span { letter-spacing: 0.3em; text-transform: uppercase; font-size: 18px; col
   .card .desc { font-size: 13px; }
   #downed .downed-title { font-size: 36px; }
 }
+
+/* ---------- phones and tablets (src/touch.js) ----------
+   body.touch: the thumbstick and the buttons, in the universe's colours (set on #touch from its
+   `hud`); the HUD's bottom corners move to the middle to leave them to the thumbs */
+#touch { position: fixed; inset: 0; z-index: 2; touch-action: none; -webkit-tap-highlight-color: transparent; }
+body.touch, body.touch #game { touch-action: none; }
+#stick { position: absolute; left: calc(36px + env(safe-area-inset-left)); bottom: 36px; width: 120px; height: 120px; border-radius: 50%; opacity: 0.35;
+  border: 2px solid var(--line); background: color-mix(in srgb, var(--panel) 60%, transparent); pointer-events: none; transition: opacity 0.15s; }
+#stick.active { left: 0; top: 0; bottom: auto; margin: -60px 0 0 -60px; opacity: 0.9; transition: none; }
+#stick.sprint { border-color: var(--accent); box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 50%, transparent); }
+#stick-knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: 0 0 0 2px var(--accent); }
+.tbtn { position: absolute; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; color: var(--ink);
+  border: 2px solid var(--line); background: color-mix(in srgb, var(--panel) 70%, transparent); box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+.tbtn svg { width: 55%; height: 55%; pointer-events: none; }
+.tbtn.on { color: var(--btn-ink); background: var(--accent); border-color: var(--accent-hi); }
+.tbtn .gren, .touch-keys .gren { display: block; width: 18px; height: 22px; border-radius: var(--grenade-radius); background: var(--grenade);
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.25); pointer-events: none; }
+#t-fire { right: calc(26px + env(safe-area-inset-right)); bottom: 64px; width: 88px; height: 88px; color: var(--accent); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, rgba(0,0,0,0.35)); }
+#t-aim { right: calc(126px + env(safe-area-inset-right)); bottom: 22px; width: 60px; height: 60px; }
+#t-jump { right: calc(30px + env(safe-area-inset-right)); bottom: 166px; }
+#t-reload { right: calc(104px + env(safe-area-inset-right)); bottom: 146px; width: 50px; height: 50px; }
+#t-grenade { right: calc(160px + env(safe-area-inset-right)); bottom: 96px; width: 50px; height: 50px; }
+#t-action { right: calc(188px + env(safe-area-inset-right)); bottom: 172px; width: 62px; height: 62px; color: var(--accent); border-color: var(--accent);
+  animation: pulse 0.7s infinite alternate; }
+#t-torch { right: calc(30px + env(safe-area-inset-right)); bottom: 232px; width: 46px; height: 46px; }
+#t-torch.lit { color: var(--accent-hi); border-color: var(--accent); }
+/* beside the minimap, which moves in from a notch with the safe area */
+#t-pause { left: calc(138px + env(safe-area-inset-left)); top: 14px; width: 42px; height: 42px; }
+
+body.touch #minimap-wrap, body.touch #minimap { width: 110px; height: 110px; }
+body.touch #minimap-wrap { top: 10px; left: calc(14px + env(safe-area-inset-left)); }
+body.touch #fps, body.touch #team { top: 128px; }
+body.touch #top-right { right: calc(18px + env(safe-area-inset-right)); top: 10px; }
+body.touch #bottom-left { left: auto; right: calc(50% + 14px); bottom: 58px; width: 190px; }
+body.touch #bottom-right { right: auto; left: calc(50% + 14px); bottom: 58px; text-align: left; }
+body.touch #ammo { font-size: 30px; }
+body.touch #slots { display: flex; position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); margin: 0; pointer-events: auto; }
+body.touch .slot { padding: 7px 10px; font-size: 13px; }
+body.touch #cards .card { pointer-events: auto; }
+body.touch #pickup-msg { bottom: 150px; }
+body.touch #prompt { top: 56%; }
+.touch-keys .ti { width: 26px; height: 26px; color: var(--accent); vertical-align: middle; }
+.touch-keys .gren { display: inline-block; vertical-align: middle; }
+
+/* held upright, a phone asks to be turned (the game pauses, see src/touch.js) */
+#rotate { display: none; }
+@media (orientation: portrait) {
+  body.touch #rotate { position: fixed; inset: 0; z-index: 10; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px;
+    background: #05060a; color: var(--accent); text-align: center; }
+  #rotate svg { width: 96px; height: 96px; animation: rotate-hint 1.8s ease-in-out infinite; }
+  #rotate p { margin: 0; font-size: 20px; letter-spacing: 0.1em; color: var(--ink); }
+}
+@keyframes rotate-hint { 0%, 30% { transform: rotate(-90deg); } 60%, 100% { transform: rotate(0deg); } }
