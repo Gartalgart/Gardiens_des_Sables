@@ -141,6 +141,7 @@ export class WaveBase {
       for (const p of sim.alivePlayers()) sim.addScore(p, BONUS.victory);
       return sim.end(true);
     }
+    sim.emit('waveCleared', { wave: n }); // a break before the next wave (the portal's ads use it)
     this.breakTimer = 7;
     this.cardWait = 0;
     const next = n + 1;

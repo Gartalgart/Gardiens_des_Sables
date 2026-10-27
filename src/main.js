@@ -17,6 +17,7 @@ import { KegView } from './view/kegView.js';
 import { multiKillName, spreeName } from './medals.js';
 import { NetSession, defaultServer } from './net/session.js';
 import { MULTIPLAYER } from './features.js';
+import { portal } from './portal.js';
 import { emptyCommand } from './sim/player.js';
 import { WorldView } from './view/worldView.js';
 import { beamMaterial, makeBeam } from './view/lightBeams.js';
@@ -173,7 +174,9 @@ $('world').addEventListener('click', (e) => {
 });
 
 const btnPlay = $('btn-play');
-const [assets, levelData] = await Promise.all([
+// the CrazyGames SDK starts with the loading (it does nothing on other sites, see src/portal.js)
+const [, assets, levelData] = await Promise.all([
+  portal.init(),
   loadAssets(world, (p) => (btnPlay.textContent = t('btn.loading', { p: Math.round(p * 100) }))),
   fetch(world.files.levelData).then((r) => r.json()),
 ]);
@@ -240,11 +243,12 @@ function applySettings(s) {
     effects.density = Q.particles;
     renderer.shadowMap.needsUpdate = true;
   }
-  sound.setVolumes(s.volMaster, s.volSfx, s.volMusic);
+  sound.setVolumes(portal.muted ? 0 : s.volMaster, s.volSfx, s.volMusic);
   $('fps').classList.toggle('hidden', !s.showFps);
   $('health-num').classList.toggle('hidden', !s.showHealthNum);
 }
 onSettingsChange(applySettings);
+portal.onMute = () => applySettings(settings); // the portal's mute wins over the volume options
 
 // options screen, reachable from the title screen and the pause menu
 const optionInputs = {
@@ -452,6 +456,7 @@ function leaveCoop() {
 btnPlay.disabled = false;
 btnPlay.textContent = t('btn.play');
 game.state = 'menu';
+portal.loadingDone();
 
 // ---------- game flow ----------
 // A new simulation per game; the local player is one of its players (alone, for now).
@@ -576,6 +581,7 @@ function refreshScreens() {
   $('end').classList.toggle('hidden', game.state !== 'over');
   hud.show(game.state === 'playing' || game.state === 'paused');
   $('touch').classList.toggle('hidden', !touch || game.state !== 'playing');
+  portal.setPlaying(game.state === 'playing');
 }
 
 function endGame(victory, winner) {
@@ -921,7 +927,13 @@ function handleEvents() {
         if (mine) { hud.pickup(t('hud.revived')); sound.pickup(); }
         else if (ev.by === game.localId) { hud.pickup(t('hud.revivedMate', { name: nameOf(ev.pid) })); sound.pickup(); }
         break;
-      case 'gameOver': clearCharm(); hud.prompt(null); endGame(ev.victory, ev.winner); break;
+      // the break between waves: a portal ad, if one is due. Losing the pointer lock pauses the
+      // game (sound off, gameplayStop); the pause screen then asks for a click to go on.
+      case 'waveCleared': if (!game.net) portal.midgameAd(() => input.unlock(), refreshScreens); break;
+      case 'gameOver':
+        clearCharm(); hud.prompt(null); endGame(ev.victory, ev.winner);
+        if (ev.victory && !game.net) portal.happy();
+        break;
     }
   }
   // Call of Duty: a kill to the head has its own crack and ring, instead of the plain hit sound

@@ -11,6 +11,14 @@ Everything the web portals ask for besides the game itself (phase 4 of the porta
 | `shots/*-play.png` | in-game views, 1920 × 1080 | itch.io screenshots, cover sources |
 | `release/worldbreach-web.zip` | the web build (`npm run package`, not in git) | itch.io upload, CrazyGames build |
 
+## The CrazyGames SDK
+
+`src/portal.js` loads the SDK v3 only on a CrazyGames domain: loading events, gameplayStart/Stop
+(playing vs menus and pause), a midgame ad after each cleared wave (the SDK allows one every
+3 minutes; the game pauses through the pause screen) and the platform's mute. Elsewhere it does
+nothing. To try it locally, open the game with `?crazygames` in the address (`?crazygames&muteAudio=true`
+for the mute): the SDK then shows a demo ad.
+
 ## The covers
 
 `covers.html` lays out the three `shots/*-play.png` in slices with the title. Open it in a browser
