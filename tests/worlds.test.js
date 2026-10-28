@@ -35,3 +35,14 @@ describe('universe interfaces', () => {
     }
   });
 });
+
+// Footsteps follow the floor: every universe turns its materials into surfaces the sound knows.
+describe('universe footsteps', () => {
+  for (const w of worlds) {
+    it(`${w.id} maps its floors to known surfaces`, async () => {
+      const { SURFACES } = await import('../src/audio.js');
+      expect(SURFACES).toContain(w.footsteps?.default);
+      for (const [mat, s] of Object.entries(w.footsteps)) expect(SURFACES, mat).toContain(s);
+    });
+  }
+});

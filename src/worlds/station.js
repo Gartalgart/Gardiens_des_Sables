@@ -285,6 +285,16 @@ export const STATION = {
     },
   },
 
+  // footsteps by the floor's material (see SABLES.footsteps): plates ring, gratings rattle, the
+  // hive's resin squelches
+  footsteps: {
+    default: 'metal',
+    S_Plate: 'metal', S_Panel: 'metal', S_White: 'metal', S_Frame: 'metal', S_Hazard: 'metal', S_Crate: 'metal',
+    S_Deck: 'metal', S_Pipe: 'metal', S_Solar: 'metal', S_Core: 'metal',
+    S_Grating: 'grate', S_Resin: 'resin', S_Egg: 'resin', S_Soil: 'soil', S_Leaf: 'soil', S_Grow: 'soil',
+    S_Wet: 'wet', S_Couch: 'rug', S_Cable: 'rug',
+  },
+
   ambiance: {
     // inside: a thin haze; outside the windows, black space, the stars all round and the planet
     fog: { color: 0x020304, density: 0.03 },

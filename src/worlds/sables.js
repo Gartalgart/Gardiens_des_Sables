@@ -180,6 +180,15 @@ export const SABLES = {
   },
 
   // ---------- the look of the night (src/view/worldView.js) ----------
+  // what the footsteps sound like (src/audio.js STEPS), by the material of the floor under the
+  // feet (WorldView#floorAt); `default` over a material not listed
+  footsteps: {
+    default: 'sand',
+    Sand: 'sand',
+    Sandstone: 'stone', SandstoneDark: 'stone', Basalt: 'stone', Plaster: 'stone', Doorway: 'stone', Pottery: 'stone',
+    Wood: 'wood', Cloth: 'rug', Bronze: 'metal', Gold: 'metal',
+  },
+
   ambiance: {
     fog: { color: 0x0c1124, density: 0.016 },
     sky: { zenith: [0.008, 0.012, 0.035], horizon: [0.07, 0.085, 0.16], haze: [0.16, 0.06, 0.02], glow: [0.25, 0.3, 0.45] },

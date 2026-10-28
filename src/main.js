@@ -686,6 +686,9 @@ const SHOT_SHAKE = { pistol: 0.12, rifle: 0.05, shotgun: 0.35, sniper: 0.3, flin
 const PLAYER_HIT_COLOR = new THREE.Color(0.75, 0.15, 0.1);
 const nameOf = (id) => String(game.sim?.players.get(id)?.name ?? t('hud.ally')).toUpperCase();
 
+// the footsteps' surface: the floor's material under the feet, through the universe's table
+const surfaceUnder = (pos) => world.footsteps[worldView.floorAt(pos)] ?? world.footsteps.default;
+
 function handleEvents() {
   const sim = game.sim;
   let hit = null;
@@ -759,7 +762,7 @@ function handleEvents() {
       case 'dry': if (mine) sound.dry(); break;
       case 'switch': if (mine) sound.weaponSwitch(); break;
       case 'kick': if (mine) input.addPitch(ev.pitch); break;
-      case 'step': if (mine) sound.step(ev.sprint, ev.land, ev.water, ev.high); break;
+      case 'step': if (mine) sound.step(ev.sprint, ev.land, ev.water ? 'water' : surfaceUnder(game.player.pos)); break;
       case 'reflectHit': if (mine) { hud.hit(false); sound.hit(false); } break;
       case 'blocked': if (mine) { sound.clang(); weaponView.onBlocked(); parrySparks(14); addShake(0.2); } break;
       case 'perfectParry':

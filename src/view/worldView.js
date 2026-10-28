@@ -400,11 +400,14 @@ export class WorldView {
         o.matrixWorld.decompose(m.position, m.quaternion, m.scale);
         m.castShadow = m.receiveShadow = true;
         part.group.add(m);
+        m.updateMatrixWorld();
+        this.#addFloorProbe(m, part.group);
         return;
       }
       const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
       // keep only shared attributes so geometries can be merged
       for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal') geo.deleteAttribute(k);
+      if (!o.material?.name?.startsWith('S_Glass')) this.#addFloorProbe(new THREE.Mesh(geo, o.material));
       const list = byMaterial.get(o.material) || [];
       list.push({ geo, name: o.name });
       byMaterial.set(o.material, list);
@@ -441,6 +444,38 @@ export class WorldView {
       this.scene.add(m);
       this.flames.push(m);
     }
+  }
+
+  // ---------- what the feet stand on ----------
+  // Every mesh of the map is kept (unmerged, out of the scene) in a grid of 4 m cells, so a short
+  // ray down from the feet finds the material of the floor: the footsteps follow it.
+  #addFloorProbe(mesh, group = null) {
+    if (!mesh.material?.name) return;
+    const box = new THREE.Box3().setFromObject(mesh);
+    this.floorGrid ??= new Map();
+    for (let x = Math.floor(box.min.x / 4); x <= Math.floor(box.max.x / 4); x++)
+      for (let z = Math.floor(box.min.z / 4); z <= Math.floor(box.max.z / 4); z++) {
+        const k = x * 1000 + z;
+        if (!this.floorGrid.has(k)) this.floorGrid.set(k, []);
+        this.floorGrid.get(k).push({ mesh, box, group });
+      }
+  }
+
+  // the name of the material under the feet (as named in Blender: 'Sandstone', 'P_Plank',
+  // 'S_Grating'...), or null over nothing modelled
+  floorAt(pos) {
+    const list = this.floorGrid?.get(Math.floor(pos.x / 4) * 1000 + Math.floor(pos.z / 4));
+    if (!list) return null;
+    const ray = (this.floorRay ??= new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 1));
+    ray.ray.origin.set(pos.x, pos.y + 0.4, pos.z);
+    let best = null;
+    for (const { mesh, box, group } of list) {
+      if (pos.x < box.min.x || pos.x > box.max.x || pos.z < box.min.z || pos.z > box.max.z) continue;
+      if (box.min.y > pos.y + 0.4 || box.max.y < pos.y - 0.6 || (group && !group.visible)) continue;
+      const hit = ray.intersectObject(mesh, false)[0];
+      if (hit && (!best || hit.distance < best.distance)) best = { distance: hit.distance, mesh };
+    }
+    return best ? best.mesh.material.name.replace(/\.\d+$|\d{3}$/, '') : null;
   }
 
   // Stand-in for a map still to be modelled: sand under everything and plain wooden blocks.

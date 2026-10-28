@@ -33,6 +33,19 @@ const GROUPS = {
     ['10 pas de marche', (s) => walk(s, false), ['footsteps/sand_walk_1']],
     ['10 pas de course', (s) => walk(s, true), ['footsteps/sand_run_1']],
   ],
+  // the other surfaces (src/audio.js STEPS): 6 steps of walk then 6 of run; no file = made from noise
+  'Pas par surface': [
+    ['Pierre', (s) => walk(s, false, 'stone', 6).then(() => walk(s, true, 'stone', 6)), []],
+    ['Planches', (s) => walk(s, false, 'wood', 6).then(() => walk(s, true, 'wood', 6)), ['footsteps/wood_step_1', 'footsteps/wood_step_2']],
+    ['Eau', (s) => walk(s, false, 'water', 6).then(() => walk(s, true, 'water', 6)), ['footsteps/water_step']],
+    ['Tôle', (s) => walk(s, false, 'metal', 6).then(() => walk(s, true, 'metal', 6)), []],
+    ['Grille', (s) => walk(s, false, 'grate', 6).then(() => walk(s, true, 'grate', 6)), []],
+    ['Résine de la ruche', (s) => walk(s, false, 'resin', 6).then(() => walk(s, true, 'resin', 6)), []],
+    ['Terre, mousse', (s) => walk(s, false, 'soil', 6).then(() => walk(s, true, 'soil', 6)), []],
+    ['Tapis, toile', (s) => walk(s, false, 'rug', 6).then(() => walk(s, true, 'rug', 6)), []],
+    ['Flaque', (s) => walk(s, false, 'wet', 6).then(() => walk(s, true, 'wet', 6)), []],
+    ['Réception sur tôle', (s) => s.step(true, true, 'metal'), []],
+  ],
   Ennemis: [
     ['Coureur', (s) => s.growl(0, 1, false, 'runner'), ['enemies/runner_screech']],
     ['Tireur (cri)', (s) => s.growl(0, 1, false, 'shooter'), ['enemies/mummy_groan']],
@@ -106,9 +119,9 @@ const GROUPS = {
   ],
 };
 
-async function walk(s, sprint) {
-  for (let i = 0; i < 10; i++) {
-    s.step(sprint);
+async function walk(s, sprint, surface = 'sand', count = 10) {
+  for (let i = 0; i < count; i++) {
+    s.step(sprint, false, surface);
     await new Promise((r) => setTimeout(r, sprint ? 300 : 450));
   }
 }
@@ -123,7 +136,7 @@ for (const [group, sounds] of Object.entries(GROUPS)) {
   grid.className = 'grid';
   for (const [label, play, files] of sounds) {
     const b = document.createElement('button');
-    b.innerHTML = `${label}<small>${files.join(', ')}</small>`;
+    b.innerHTML = `${label}<small>${files.join(', ') || 'procédural'}</small>`;
     b.addEventListener('click', async () => {
       await start();
       play(sound);
@@ -144,9 +157,9 @@ function start() {
     await sound.samplesReady;
     let missing = 0;
     for (const [b, files] of buttons) {
-      const ok = files.every((f) => sound.hasSample(f));
+      const ok = files.length > 0 && files.every((f) => sound.hasSample(f));
       b.className = ok ? 'file' : 'proc';
-      if (!ok) missing++;
+      if (!ok && files.length) missing++;
     }
     status.textContent = missing ? `${missing} son(s) en procédural de secours (voir la console)` : 'tous les fichiers sont chargés';
   })();

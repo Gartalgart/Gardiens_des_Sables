@@ -290,11 +290,21 @@ export const PIRATES = {
     samples: {
       swing: 'weapons/cutlass_swing', throw: 'grenades/bomb_fuse', slam: 'enemies/tentacle_slam',
       kill: { skeleton: 'enemies/skeleton_death' },
-      highSteps: ['footsteps/wood_step_1', 'footsteps/wood_step_2'], waterStep: 'footsteps/water_step',
     },
   },
   // colours of this universe's own types where the desert has the same key (the boss)
   looks: { boss: { color: [0.75, 0.25, 0.9], dot: '#c060ff' }, kraken: { color: [0.75, 0.25, 0.9], dot: '#c060ff' } },
+
+  // footsteps by the floor's material (see SABLES.footsteps); the shallows are water whatever the floor
+  footsteps: {
+    default: 'sand',
+    P_Sand: 'sand',
+    P_Plank: 'wood', P_Wood: 'wood', P_Hull: 'wood', P_Shutter: 'wood', P_Char: 'wood', P_Keg: 'wood', P_Dark: 'wood',
+    P_Rock: 'stone', P_Stone: 'stone', P_Plaster: 'stone', P_Bone: 'stone',
+    P_Moss: 'soil', P_Grass: 'soil', P_Thatch: 'soil', P_Leaf: 'soil', P_Vine: 'soil', P_Seaweed: 'wet', P_Fish: 'wet',
+    P_Iron: 'metal', P_Gold: 'metal',
+    P_Canvas: 'rug', P_ClothRed: 'rug', P_ClothLinen: 'rug', P_ClothBlue: 'rug', P_Rope: 'rug', P_Flag: 'rug',
+  },
 
   ambiance: {
     fog: { color: 0x0d1a1c, density: 0.024 },

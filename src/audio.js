@@ -16,6 +16,18 @@ const ENERGY = {
   flamer: { noise: ['bandpass', 650, 0.16], vol: 0.35 },
   railgun: { osc: ['sawtooth', 3000, 80, 0.45], noise: ['highpass', 1800, 0.3], boom: 110, vol: 0.85 },
 };
+// footsteps by surface: the recordings it has (walk, run, land) and its loudness; a surface
+// without one is made from noise (Sound#footfall)
+const STEPS = {
+  sand: {
+    walk: ['footsteps/sand_walk_1', 'footsteps/sand_walk_2', 'footsteps/sand_walk_3'],
+    run: ['footsteps/sand_run_1', 'footsteps/sand_run_2'], land: 'footsteps/sand_land', vol: 1,
+  },
+  wood: { walk: ['footsteps/wood_step_1', 'footsteps/wood_step_2'], vol: 1.15 },
+  water: { walk: 'footsteps/water_step', vol: 1.1 },
+  stone: { vol: 1 }, metal: { vol: 1 }, grate: { vol: 1 }, resin: { vol: 1 }, soil: { vol: 1 }, rug: { vol: 1 }, wet: { vol: 1 },
+};
+export const SURFACES = Object.keys(STEPS);
 // the siren's melody, in hertz (A minor, rising and falling)
 const SONG_NOTES = [440, 523, 494, 392, 440, 659, 587, 523, 494, 440, 392, 330];
 
@@ -46,9 +58,8 @@ export class Sound {
     this.growls = { ...GROWLS };
     this.growlRates = { ...GROWL_RATE };
     this.bossDeath = 'enemies/pharaoh_death';
-    // recordings of a few sounds a universe can swap: swing, throw, slam, kill (by enemy type),
-    // high steps (on decks and quays), water step
-    this.samples = { swing: 'weapons/khopesh_swing', throw: 'grenades/grenade_throw', slam: 'enemies/tank_slam', kill: {}, highSteps: null, waterStep: null };
+    // recordings of a few sounds a universe can swap: swing, throw, slam, kill (by enemy type)
+    this.samples = { swing: 'weapons/khopesh_swing', throw: 'grenades/grenade_throw', slam: 'enemies/tank_slam', kill: {} };
   }
 
   // master scales everything; sfx and music are separate buses
@@ -992,27 +1003,87 @@ export class Sound {
     });
   }
 
-  // land: the end of a fall; water: wading through the shallows
-  // high: off the ground (a deck, a quay), where a universe may have its own steps (wood)
-  step(sprint, land = false, water = false, high = false) {
+  // land: the end of a fall; surface: what the foot comes down on (see STEPS), the world's
+  // `footsteps` table turning the floor's material into one
+  step(sprint, land = false, surface = 'sand') {
     if (!this.ctx) return;
-    if (water) {
-      if (this.samples.waterStep && this.#play(this.samples.waterStep, { vol: sprint ? 0.5 : 0.38, rate: 0.9 + Math.random() * 0.2 })) return;
-      return this.#splash(sprint ? 0.5 : 0.35);
+    const s = STEPS[surface] ?? STEPS.sand;
+    const vol = (land ? 0.55 : sprint ? 0.45 : 0.35) * s.vol;
+    const rec = (land && s.land) || (sprint && s.run) || s.walk;
+    if (rec && this.#play(Array.isArray(rec) ? pick(rec) : rec, { vol, rate: 0.9 + Math.random() * 0.2 })) return;
+    this.#footfall(surface, land ? 1.5 : sprint ? 1.25 : 1);
+  }
+
+  // A footfall made from noise when a surface has no recording (or before it loads): a heel and,
+  // 50 ms later, the sole, each a low thud under the surface's own sound. power: 1 walk .. 1.5 a landing
+  #footfall(surface, power) {
+    const t0 = this.ctx.currentTime;
+    const thud = (t, freq, peak, decay) => {
+      const o = this.ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + decay);
+      const g = this.ctx.createGain();
+      this.#env(g, t, 0.003, peak, decay);
+      o.connect(g).connect(this.#out(0, 1));
+      o.start(t); o.stop(t + decay + 0.05);
+    };
+    const hiss = (t, type, freq, q, peak, decay, sweepTo) => {
+      const n = this.#noiseSrc();
+      const f = this.ctx.createBiquadFilter();
+      f.type = type; f.Q.value = q;
+      f.frequency.setValueAtTime(freq, t);
+      if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t + decay);
+      const g = this.ctx.createGain();
+      this.#env(g, t, 0.003, peak, decay);
+      n.connect(f).connect(g).connect(this.#out(0, 1));
+      n.start(t, Math.random() * 1.5); n.stop(t + decay + 0.05);
+    };
+    const jit = () => 0.9 + Math.random() * 0.2;
+    for (const [dt, k] of [[0, 1], [0.05, 0.6]]) {
+      const t = t0 + dt, p = power * k;
+      switch (surface) {
+        case 'stone': // a dry tap on a slab, a little grit
+          thud(t, 130 * jit(), 0.12 * p, 0.05);
+          hiss(t, 'bandpass', 2200 * jit(), 1.8, 0.09 * p, 0.035);
+          break;
+        case 'metal': // a plate that rings under the boot
+          thud(t, 95 * jit(), 0.16 * p, 0.07);
+          hiss(t, 'bandpass', 900 * jit(), 14, 0.22 * p, 0.2);
+          hiss(t, 'bandpass', 2350 * jit(), 18, 0.12 * p, 0.14);
+          break;
+        case 'grate': // a hollow grating that rattles in its frame
+          thud(t, 80 * jit(), 0.1 * p, 0.06);
+          hiss(t, 'bandpass', 1500 * jit(), 9, 0.14 * p, 0.25);
+          for (let i = 1; i <= 3; i++) hiss(t + i * 0.018 * jit(), 'highpass', 3200, 1, 0.05 * p / i, 0.015);
+          break;
+        case 'wood': // hollow boards
+          thud(t, 160 * jit(), 0.13 * p, 0.08);
+          hiss(t, 'bandpass', 650 * jit(), 3, 0.12 * p, 0.07);
+          break;
+        case 'resin': // the hive's slime: the foot sinks in and comes unstuck
+          thud(t, 70 * jit(), 0.08 * p, 0.08);
+          hiss(t, 'bandpass', 350 * jit(), 4, 0.16 * p, 0.12, 1300);
+          hiss(t + 0.09, 'bandpass', 1100 * jit(), 6, 0.06 * p, 0.05, 450);
+          break;
+        case 'soil': // damp earth, a dull crunch
+          thud(t, 90 * jit(), 0.1 * p, 0.06);
+          hiss(t, 'lowpass', 700 * jit(), 0.7, 0.12 * p, 0.07);
+          hiss(t, 'bandpass', 2600 * jit(), 2, 0.025 * p, 0.03);
+          break;
+        case 'rug': // cloth over the floor: almost nothing
+          hiss(t, 'lowpass', 320 * jit(), 0.7, 0.09 * p, 0.06);
+          break;
+        case 'wet': // a puddle on a hard floor
+          thud(t, 110 * jit(), 0.1 * p, 0.05);
+          hiss(t, 'bandpass', 1700 * jit(), 1.2, 0.1 * p, 0.12, 900);
+          break;
+        case 'water':
+          if (dt === 0) this.#splash(0.35 * power);
+          break;
+        default: // sand
+          hiss(t, 'bandpass', 350 + Math.random() * 150, 1.2, 0.14 * p, 0.09);
+      }
     }
-    if (high && this.samples.highSteps && this.#play(pick(this.samples.highSteps), { vol: land ? 0.6 : sprint ? 0.5 : 0.4, rate: 0.9 + Math.random() * 0.2 })) return;
-    const name = land ? 'footsteps/sand_land'
-      : sprint ? pick(['footsteps/sand_run_1', 'footsteps/sand_run_2'])
-      : pick(['footsteps/sand_walk_1', 'footsteps/sand_walk_2', 'footsteps/sand_walk_3']);
-    const vol = land ? 0.55 : sprint ? 0.45 : 0.35;
-    if (this.#play(name, { vol, rate: 0.92 + Math.random() * 0.16 })) return;
-    const t = this.ctx.currentTime;
-    const n = this.#noiseSrc();
-    const f = this.ctx.createBiquadFilter();
-    f.type = 'bandpass'; f.frequency.value = 350 + Math.random() * 150; f.Q.value = 1.2;
-    const g = this.ctx.createGain();
-    this.#env(g, t, 0.005, sprint ? 0.22 : 0.14, 0.09);
-    n.connect(f).connect(g).connect(this.#out(0, 1));
-    n.start(t); n.stop(t + 0.15);
   }
 }
