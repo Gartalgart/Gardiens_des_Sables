@@ -5,7 +5,7 @@
 // Run `npm run build`, then `npm run portal:test` and open http://localhost:4180.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { extname, resolve, sep } from 'node:path';
 
 const PORT = 4180;
 const GAME = '/games/gardiens/';
@@ -38,10 +38,12 @@ const FRAME = `<!doctype html>
 </body></html>`;
 
 async function serveDist(req, res) {
-  const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname.slice(GAME.length));
-  const file = (rel && normalize(rel).replace(/^[\\/]+/, '')) || 'index.html';
   try {
-    const body = await readFile(join(DIST, file));
+    const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname.slice(GAME.length));
+    const file = resolve(DIST, rel.replace(/^[\\/]+/, '') || 'index.html');
+    // never serve anything outside dist/ (../ or %2e%2e%2f in the path)
+    if (!file.startsWith(resolve(DIST) + sep)) throw new Error('outside dist');
+    const body = await readFile(file);
     res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' });
     res.end(body);
   } catch {

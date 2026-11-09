@@ -12,6 +12,10 @@ import { ARENA_DEFAULTS, ARENA_SCORES, ARENA_TIMES } from '../src/sim/modes/aren
 const LEVEL_DATA = JSON.parse(readFileSync(new URL('../public/models/level.json', import.meta.url), 'utf8'));
 const MAX_PLAYERS = 4;
 const MODES = ['waves', 'survival', 'arena'];
+// a client sends one command per rendered frame: a few per tick, even at high refresh rates.
+// Beyond this backlog the oldest commands are dropped, so a flood cannot stall the server.
+const MAX_QUEUED_CMDS = 64;
+const MAX_MESSAGE_BYTES = 16 * 1024;
 
 const rooms = new Map();
 const clients = new Set();
@@ -108,7 +112,7 @@ class Room {
     for (const c of this.clients) {
       const p = sim.players.get(c.id);
       for (const { s, d, c: cmd } of c.cmds) {
-        if (p) sim.stepPlayer(p, cmd, Math.min(0.05, d));
+        if (p) sim.stepPlayer(p, cmd, Math.min(0.05, Math.max(0, Number(d) || 0)));
         c.ack = s;
       }
       c.cmds = [];
@@ -123,7 +127,7 @@ class Room {
   }
 }
 
-const wss = new WebSocketServer({ port: Number(process.env.PORT) || PORT });
+const wss = new WebSocketServer({ port: Number(process.env.PORT) || PORT, maxPayload: MAX_MESSAGE_BYTES });
 wss.on('connection', (ws) => {
   const client = { id: `p${++lastClientId}`, name: 'Joueur', ws, room: null, cmds: [], ack: 0 };
   const error = (msg) => ws.send(JSON.stringify({ t: 'error', msg }));
@@ -169,7 +173,10 @@ wss.on('connection', (ws) => {
         if (room && room.host === client) room.start();
         break;
       case 'cmd':
-        if (room?.playing && Number.isFinite(m.s) && m.c) client.cmds.push(m);
+        if (room?.playing && Number.isFinite(m.s) && m.c && typeof m.c === 'object') {
+          client.cmds.push(m);
+          if (client.cmds.length > MAX_QUEUED_CMDS) client.cmds.shift();
+        }
         break;
       case 'leave':
         if (room) room.remove(client);
